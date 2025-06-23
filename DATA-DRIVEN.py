@@ -245,7 +245,7 @@ def create_chart(df, profit_loss_data, mode):
             fig.add_trace(go.Scatter(
                 x=formatted_dates, y=prices,
                 mode='lines+markers', name=f"Year {year}",
-                line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),  # Ensure color is applied
+                line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),  # Enforce color
                 hovertemplate='Date Range: %{x}<br>Price: %{y}<extra></extra>'
             ), row=1, col=1)
     
@@ -277,7 +277,7 @@ def create_chart(df, profit_loss_data, mode):
             x=1.1, y=1.1
         )]
     )
-    fig.update_xaxes(rangeslider_visible=True, title_text="", tickangle=-45)  # Rotate x-axis labels for better readability
+    fig.update_xaxes(rangeslider_visible=True, title_text="", tickangle=-45)  # Rotate labels for clarity
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text="Profit/Loss (%)", row=2, col=1)
     
@@ -376,7 +376,9 @@ if uploaded_file and run_analysis:
     csv_all = all_df.to_csv(index=False)
     try:
         import openpyxl
-        excel_all = all_df.to_excel("all_profit_loss_data.xlsx", index=False)
+        output = io.BytesIO()
+        all_df.to_excel(output, index=False)
+        excel_all = output.getvalue()
         st.download_button(label="Download as Excel", data=excel_all, file_name="all_profit_loss_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     except ImportError:
         st.warning("Please install 'openpyxl' to enable Excel export: `pip install openpyxl`")
