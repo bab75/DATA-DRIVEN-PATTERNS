@@ -116,22 +116,20 @@ def get_next_available_date(df, current_date):
         next_date += timedelta(days=1)
     return next_date if next_date.year == year and next_date in df['date'].values else None
 
-# Function to generate calendar-based column headers
-def generate_calendar_columns(compare_days):
-    """Generate calendar-based column headers"""
-    columns = []
-    current_date = datetime(2024, 1, 1).date()  # Start from Jan 1st
-    max_iterations = 366  # Prevent infinite loop (max days in a year)
-    iteration_count = 0
-    while current_date.month <= 12 and iteration_count < max_iterations:
-        end_date = current_date + timedelta(days=compare_days-1)
-        if end_date.year == current_date.year:  # Stay within same year
-            columns.append(format_date_range(current_date, end_date))
-        current_date += timedelta(days=compare_days)  # Non-overlapping
-        iteration_count += 1
-    if iteration_count >= max_iterations:
-        st.warning("Reached maximum calendar iterations. Some periods may be truncated.")
-    return columns
+# Function to generate month-aligned periods
+def generate_monthly_periods(compare_days):
+    """Generate month-aligned periods"""
+    periods = []
+    for month in range(1, 13):  # Jan to Dec
+        days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month-1]
+        start_day = 1
+        while start_day <= days_in_month:
+            end_day = min(start_day + compare_days - 1, days_in_month)
+            start_date = datetime(2024, month, start_day).date()
+            end_date = datetime(2024, month, end_day).date()
+            periods.append(format_date_range(start_date, end_date))
+            start_day += compare_days
+    return periods
 
 # Function to calculate rolling profit/loss within each year
 def calculate_rolling_profit_loss(dframe, compare_days, mode):
@@ -141,42 +139,47 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
 
     for year in years:
         year_df = dframe[dframe['date'].apply(lambda x: x.year) == year].copy()
-        if len(year_df) < compare_days:  # Ensure enough data
-            st.warning(f"Year {year} has insufficient data ({len(year_df)} days). Minimum required: {compare_days}")
+        if len(year_df) < max(1, compare_days // 2):  # Relaxed requirement
+            st.warning(f"Year {year} has insufficient data ({len(year_df)} days). Minimum required: {max(1, compare_days // 2)}")
             continue
         
-        # Generate fixed intervals (non-overlapping)
-        start_date = datetime(year, 1, 1).date()
-        while start_date.month <= 12:
-            end_date = start_date + timedelta(days=compare_days-1)
-            if end_date.year != year:
-                break
+        # Generate month-aligned intervals
+        for month in range(1, 13):
+            days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month-1]
+            if year % 4 == 0 and month == 2:  # Leap year adjustment
+                days_in_month = 29
+            start_day = 1
+            while start_day <= days_in_month:
+                start_date = datetime(year, month, start_day).date()
+                end_date = datetime(year, month, min(start_day + compare_days - 1, days_in_month)).date()
                 
-            # Find actual data for this period
-            period_data = year_df[
-                (year_df['date'] >= start_date) & 
-                (year_df['date'] <= end_date)
-            ]
-            
-            if len(period_data) >= compare_days:  # Need at least compare_days
-                start_price = period_data.iloc[0]['open']
-                end_price = period_data.iloc[-1]['close']
-                profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else 0.0
+                # Find actual data for this period
+                period_data = year_df[
+                    (year_df['date'] >= start_date) & 
+                    (year_df['date'] <= end_date)
+                ]
                 
-                profit_loss_data.append({
-                    'Year': year,
-                    'Start Date': start_date,
-                    'End Date': end_date,
-                    'Profit/Loss (%)': profit_loss_percent
-                })
-            
-            start_date += timedelta(days=compare_days)  # Next period
+                if len(period_data) >= max(1, compare_days // 2):  # At least half the required days
+                    start_price = period_data.iloc[0]['open']
+                    end_price = period_data.iloc[-1]['close']
+                    profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else 0.0
+                    
+                    profit_loss_data.append({
+                        'Year': year,
+                        'Start Date': start_date,
+                        'End Date': end_date,
+                        'Profit/Loss (%)': profit_loss_percent
+                    })
+                
+                start_day += compare_days
 
     # ML Prediction for 2025
     historical_data = pd.DataFrame([d for d in profit_loss_data if d['Year'] != current_year])
     future_data = []
-    if len(historical_data) > compare_days and 'Profit/Loss (%)' in historical_data.columns:
-        X = historical_data[['Profit/Loss (%)']].values
+    if len(historical_data) > 5:
+        # Use time-based features
+        historical_data['period_index'] = range(len(historical_data))
+        X = historical_data[['period_index']].values
         y = historical_data['Profit/Loss (%)'].values
         model = LinearRegression()
         try:
@@ -184,20 +187,20 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
             last_date = dframe[dframe['date'].apply(lambda x: x.year) == current_year]['date'].iloc[-1]
             if last_date.year == current_year:
                 start_idx = dframe.index[dframe['date'] == last_date][0]
-                start_price = dframe['open'].iloc[start_idx]
+                next_period_idx = len(historical_data)
+                predicted_pl = model.predict([[next_period_idx]])[0]
                 end_date = last_date + timedelta(days=compare_days)
                 if end_date > datetime(current_year, 12, 31).date():
                     end_date = datetime(current_year, 12, 31).date()
-                predicted_profit_loss = model.predict([[0]])[0]
                 future_data.append({
                     'Year': current_year,
                     'Start Date': last_date,
                     'End Date': end_date,
-                    'Profit/Loss (%)': predicted_profit_loss
+                    'Profit/Loss (%)': predicted_pl
                 })
         except Exception as e:
             st.warning(f"ML prediction failed: {str(e)}. Using last known value.")
-            predicted_profit_loss = 0.0
+            predicted_pl = 0.0
         profit_loss_data.extend(future_data)
 
     return profit_loss_data
@@ -237,8 +240,8 @@ def create_chart(dframe, profit_loss_data, mode):
         x=dates,
         y=profits,
         name='Profit/Loss (%)',
-        marker_color=['#006400' if p >= 0 else '#8B0000' for p in profits],  # Darker green and red
-        opacity=0.9,  # Increased opacity for better visibility
+        marker_color=['#006400' if p >= 0 else '#8B0000' for p in profits],
+        opacity=0.9,
         hovertemplate='Date: %{x}<br>Profit/Loss: %{y}%<extra></extra>'
     ), row=2, col=1)
     
@@ -276,8 +279,8 @@ def create_year_table(profit_loss_data, compare_days):
     if not profit_loss_data:
         return None
     
-    # Generate calendar-based columns
-    calendar_columns = generate_calendar_columns(compare_days)
+    # Generate month-aligned periods
+    calendar_columns = generate_monthly_periods(compare_days)
     
     # Create pivot table with calendar structure
     years = sorted(set(d['Year'] for d in profit_loss_data))
@@ -295,14 +298,32 @@ def create_year_table(profit_loss_data, compare_days):
     
     df = pd.DataFrame(table_data)
     
-    # Apply simple conditional styling for Profit/Loss
+    # Integrate 2025 predictions
+    historical_data = pd.DataFrame([d for d in profit_loss_data if d['Year'] != 2025])
+    if len(historical_data) > 5:
+        historical_data['period_index'] = range(len(historical_data))
+        X = historical_data[['period_index']].values
+        y = historical_data['Profit/Loss (%)'].values
+        model = LinearRegression()
+        try:
+            model.fit(X, y)
+            predicted_pl = model.predict([[len(historical_data)]])[0]
+            pred_row = {'Year': '2025 (Predicted)'}
+            for col in calendar_columns:
+                pred_row[col] = predicted_pl
+            df = pd.concat([df, pd.DataFrame([pred_row])], ignore_index=True)
+        except Exception as e:
+            st.warning(f"Failed to integrate predictions: {str(e)}")
+    
+    # Apply conditional styling
     def color_profit(val):
         if isinstance(val, (int, float)) and not pd.isna(val):
             color = '#90EE90' if val >= 0 else '#FFB6C1'
             return f'background-color: {color}'
         return ''
     styled_df = df.style.applymap(color_profit, subset=[col for col in df.columns if col != 'Year'])
-    return styled_df
+    
+    return styled_df, df
 
 # Function to create prediction card
 def create_prediction_card(pred_data):
@@ -339,9 +360,32 @@ if uploaded_file and run_analysis:
 
     # Display table for all years
     st.subheader("Historical Profit/Loss by Year")
-    styled_df = create_year_table(profit_loss_data, compare_days)
+    styled_df, df = create_year_table(profit_loss_data, compare_days)
     if styled_df is not None:
-        st.dataframe(styled_df, use_container_width=True)
+        st.write(f"📊 **Table Summary**: {len(df.columns)-1} periods across {len(df)} years")
+        display_mode = st.selectbox("Display Mode", ["Show All Columns", "Show First 20", "Show by Month"])
+        
+        if display_mode == "Show First 20":
+            limited_df = df.iloc[:, :21]  # First 20 periods + Year
+            styled_limited_df = limited_df.style.applymap(color_profit, subset=[col for col in limited_df.columns if col != 'Year'])
+            st.dataframe(styled_limited_df, use_container_width=True)
+        elif display_mode == "Show by Month":
+            month = st.selectbox("Select Month", [month_name[i][:3] for i in range(1, 13)])
+            month_columns = [col for col in df.columns if col.startswith(month)]
+            if month_columns:
+                month_df = df[['Year'] + month_columns]
+                styled_month_df = month_df.style.applymap(color_profit, subset=[col for col in month_df.columns if col != 'Year'])
+                st.dataframe(styled_month_df, use_container_width=True)
+            else:
+                st.warning(f"No data available for {month}")
+        else:
+            st.dataframe(styled_df, use_container_width=True)
+        
+        if st.checkbox("Transpose Table (Years as columns)"):
+            df_transposed = df.set_index('Year').T
+            styled_transposed = df_transposed.style.applymap(color_profit)
+            st.dataframe(styled_transposed, use_container_width=True)
+        
         st.button("Copy to Clipboard", key="copy_all", on_click=lambda: st.write(styled_df.to_html(), unsafe_allow_html=True))
 
     # Display 2025 prediction
