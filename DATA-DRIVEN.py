@@ -123,12 +123,15 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
         if len(year_df) < compare_days:
             continue
         current_date = min(year_df['date'])
-        # Find the first valid start_date that ensures a valid end_date
+        # Find the first valid start_date that ensures a valid end_date within compare_days
         while current_date:
             start_date = current_date
             end_date = start_date + timedelta(days=compare_days-1)
-            if start_date in year_df['date'].values and end_date in year_df['date'].values:
-                break
+            if start_date in year_df['date'].values:
+                end_date_idx = year_df.index[year_df['date'] >= end_date].min()
+                if pd.notna(end_date_idx) and end_date_idx < len(year_df):
+                    end_date = year_df['date'].iloc[end_date_idx]
+                    break
             current_date = get_next_available_date(year_df, current_date)
             if not current_date or current_date > max(year_df['date']):
                 break
@@ -142,13 +145,15 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
                 continue
             end_date = start_date + timedelta(days=compare_days-1)
             if end_date not in year_df['date'].values:
-                end_date = get_next_available_date(year_df, end_date)
-                if not end_date or end_date > max(year_df['date']):
-                    break
+                end_date_idx = year_df.index[year_df['date'] >= end_date].min()
+                if pd.isna(end_date_idx) or end_date_idx >= len(year_df):
+                    current_date = get_next_available_date(year_df, start_date)
+                    continue
+                end_date = year_df['date'].iloc[end_date_idx]
             start_idx = year_df.index[year_df['date'] == start_date][0]
             end_idx = year_df.index[year_df['date'] == end_date][0]
             if start_idx >= len(year_df) or end_idx >= len(year_df):
-                st.warning(f"Index out of bounds for year {year} at {format_date(start_date)} to {format_date(end_date)}. Skipping this iteration.")
+                st.warning(f"Index out of bounds for year {year} at {format_date(start_date)} to {format_date(end_date)}. Data length: {len(year_df)}, Last date: {format_date(max(year_df['date']))}. Skipping this iteration.")
                 current_date = get_next_available_date(year_df, end_date)
                 continue
             start_price = year_df['open'].iloc[start_idx]
