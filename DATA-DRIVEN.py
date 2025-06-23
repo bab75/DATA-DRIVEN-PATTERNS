@@ -91,12 +91,6 @@ def load_data(file):
         if len(dframe) < compare_days:
             st.error(f"Dataset has {len(dframe)} rows, but at least {compare_days} are required.")
             return None
-        # Validate data coverage
-        years = set(dframe['date'].apply(lambda x: x.year))
-        for year in years:
-            year_data = dframe[dframe['date'].apply(lambda x: x.year) == year]
-            if len(year_data) < compare_days:
-                st.warning(f"Year {year} has only {len(year_data)} days, less than required {compare_days}. Results may be incomplete.")
         return dframe
     except Exception as e:
         st.error(f"Error loading file: {str(e)}")
@@ -130,43 +124,26 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
 
     for year in years:
         year_df = dframe[dframe['date'].apply(lambda x: x.year) == year].copy()
-        if len(year_df) < compare_days:
-            st.warning(f"Skipping year {year} due to insufficient data ({len(year_df)} days < {compare_days}).")
+        if len(year_df) < compare_days * 2:  # Ensure enough data for comparisons
+            st.warning(f"Year {year} has insufficient data ({len(year_df)} days). Minimum required: {compare_days * 2}")
             continue
-        # Start from the first available date in the year
-        start_date = min(year_df['date'])
-        end_date = datetime(year, 12, 31).date()
-        current_date = start_date
-
-        while current_date and current_date <= end_date:
-            start_date = current_date
-            if start_date not in year_df['date'].values:
-                current_date = get_next_available_date(year_df, start_date)
+        # Process consecutive days
+        for i in range(len(year_df) - compare_days + 1):
+            start_date = year_df.iloc[i]['date']
+            try:
+                end_date = year_df.iloc[i + compare_days - 1]['date']
+                start_price = year_df.iloc[i]['open']
+                end_price = year_df.iloc[i + compare_days - 1]['close']
+                profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else 0.0
+                profit_loss_data.append({
+                    'Year': year,
+                    'Start Date': start_date,
+                    'End Date': end_date,
+                    'Profit/Loss (%)': profit_loss_percent
+                })
+            except IndexError:
+                st.warning(f"Date range exceeded for year {year} at {format_date_range(start_date, end_date)}. Skipping.")
                 continue
-            # Find the next (compare_days-1) valid dates
-            valid_dates_after = year_df[year_df['date'] > start_date]['date'].sort_values().tolist()
-            if len(valid_dates_after) < compare_days - 1:
-                current_date = get_next_available_date(year_df, start_date)
-                continue
-            end_date_calc = valid_dates_after[compare_days - 2]  # (compare_days-1)th date after start
-            if end_date_calc > end_date:
-                break
-            start_idx = year_df.index[year_df['date'] == start_date][0]
-            end_idx = year_df.index[year_df['date'] == end_date_calc][0]
-            if start_idx >= len(year_df) or end_idx >= len(year_df) or end_idx < start_idx:
-                st.warning(f"Index out of bounds for year {year} at {format_date_range(start_date, end_date_calc)}. Skipping this iteration. Available dates: {year_df['date'].head(5).tolist()}")
-                current_date = get_next_available_date(year_df, end_date_calc)
-                continue
-            start_price = year_df['open'].iloc[start_idx]
-            end_price = year_df['close'].iloc[end_idx]
-            profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else 0.0
-            profit_loss_data.append({
-                'Year': year,
-                'Start Date': start_date,
-                'End Date': end_date_calc,
-                'Profit/Loss (%)': profit_loss_percent
-            })
-            current_date = get_next_available_date(year_df, end_date_calc)
 
     # ML Prediction for 2025
     historical_data = pd.DataFrame([d for d in profit_loss_data if d['Year'] != current_year])
