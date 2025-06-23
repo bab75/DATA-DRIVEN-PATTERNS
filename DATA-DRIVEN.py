@@ -51,16 +51,32 @@ st.markdown(
 # Set Streamlit page config
 st.set_page_config(page_title="Stock Pattern Analyzer", layout="wide")
 
+# Initialize session state
+if 'dframe' not in st.session_state:
+    st.session_state.dframe = None
+if 'profit_loss_data' not in st.session_state:
+    st.session_state.profit_loss_data = None
+if 'display_mode' not in st.session_state:
+    st.session_state.display_mode = "Show All Columns"
+if 'selected_month' not in st.session_state:
+    st.session_state.selected_month = month_name[1][:3]
+if 'transpose_table' not in st.session_state:
+    st.session_state.transpose_table = False
+if 'file_key' not in st.session_state:
+    st.session_state.file_key = 0
+
 # Sidebar: Control Panel
 with st.sidebar:
     st.header("Control Panel")
-    uploaded_file = st.file_uploader("Upload CSV or Excel file", type=['csv', 'xlsx'], help="Upload a file with 'date', 'open', 'close' columns.")
+    uploaded_file = st.file_uploader("Upload CSV or Excel file", type=['csv', 'xlsx'], help="Upload a file with 'date', 'open', 'close' columns.", key=f"file_uploader_{st.session_state.file_key}")
     compare_days = st.number_input("Compare Days (1-30)", min_value=1, max_value=30, value=2, help="Number of days to compare for profit/loss within each year.")
     analysis_mode = st.radio("Analysis Mode", ["Raw Data (Open vs. Close)", "Open/Close/High/Low", "Technical Indicators"],
                              help="Choose the data features for analysis.")
     run_analysis = st.button("Run Analysis")
     if st.button("Reset", key="reset"):
         st.session_state.clear()
+        st.session_state.file_key += 1
+        st.experimental_rerun()
     if st.button("Mode Description"):
         st.write("""
         - **Raw Data (Open vs. Close)**: Uses only 'open' and 'close' prices.
@@ -277,7 +293,7 @@ def create_chart(dframe, profit_loss_data, mode):
 # Function to create styled table for all years
 def create_year_table(profit_loss_data, compare_days):
     if not profit_loss_data:
-        return None
+        return None, None
     
     # Generate month-aligned periods
     calendar_columns = generate_monthly_periods(compare_days)
@@ -338,73 +354,93 @@ def create_prediction_card(pred_data):
 
 # Main app logic
 if uploaded_file and run_analysis:
-    st.header("Stock Pattern Analyzer")
-    st.write("Analyze stock patterns and predict future trends. Current date: June 23, 2025.")
-
-    # Load data with progress
+    # Load and process data only if new analysis is triggered
     progress = st.progress(0)
     dframe = load_data(uploaded_file)
     if dframe is None:
         st.stop()
+    st.session_state.dframe = dframe
     progress.progress(50)
 
     # Calculate rolling profit/loss
     with st.spinner("Calculating profit/loss..."):
         profit_loss_data = calculate_rolling_profit_loss(dframe, compare_days, analysis_mode)
-    progress.progress(100)
+    st.session_state = profit_loss_data
+    st.session_state.profit_loss_data = pd.DataFrame(profit_loss_data)
+    progress.progress(1.0)
+
+# Display results if data is available
+if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
+    st.header("Stock Pattern Analyzer")
+    st.write(f"Analyze stock patterns and predict future trends. Date: June 16, 2025, 06:15 PM EDT")
 
     # Create and display chart
+    st.subheader("Stock Pattern Analyzer")
     st.subheader("Price and Profit/Loss Visualization")
-    fig = create_chart(dframe, profit_loss_data, analysis_mode)
+    fig = create_chart(st.session_state.dframe, st.session_state.profit_loss_data.to_dict('records'), analysis_mode)
     st.plotly_chart(fig, use_container_width=True)
 
     # Display table for all years
     st.subheader("Historical Profit/Loss by Year")
-    styled_df, df = create_year_table(profit_loss_data, compare_days)
-    if styled_df is not None:
-        st.write(f"📊 **Table Summary**: {len(df.columns)-1} periods across {len(df)} years")
-        display_mode = st.selectbox("Display Mode", ["Show All Columns", "Show First 20", "Show by Month"])
+    styled_df, df = create_year_table(st.session_state.profit_loss_data.to_dict('records'), compare_days)
+    if df is not None:
+        st.write(f"📊📜 Table Summary: {len(df.columns)-1} periods across {len(df)} years")
         
-        if display_mode == "Show First 20":
-            limited_df = df.iloc[:, :21]  # First 20 periods + Year
+        # Display options
+        def update_display_mode():
+            st.session_state.display_mode = st.session_state['display_mode_select']
+        def update_month():
+            st.session_state.selected_month = st.session_state['month_select']
+        def update_transpose():
+            st.session_state.transpose_table = st.session_state['transpose_table_check']
+
+        st.selectbox("Display Mode", ["Show All Columns", "Show First 20", "Show by Month", key="display_mode_select", on_change=update_display_mode)
+        if st.session_state.display_mode == "Show by Month":
+            st.selectbox("Select Month", [month_name[i][:3] for i in range(1, 13)], index=month_name.index(st.session_state.selected_month[:3]) + 1, key="month_select", on_change=update_month)
+        
+        if st.session_state.display_mode == "Show First 20":
+            limited_df = df.iloc[:, :20]  # First 20 periods + Year
             styled_limited_df = limited_df.style.applymap(color_profit, subset=[col for col in limited_df.columns if col != 'Year'])
             st.dataframe(styled_limited_df, use_container_width=True)
-        elif display_mode == "Show by Month":
-            month = st.selectbox("Select Month", [month_name[i][:3] for i in range(1, 13)])
-            month_columns = [col for col in df.columns if col.startswith(month)]
+        elif st.session_state.display_mode == "Show by Month":
+            month_columns = [col for col in df.columns if col.startswith(st.session_state.selected_month)]
             if month_columns:
                 month_df = df[['Year'] + month_columns]
                 styled_month_df = month_df.style.applymap(color_profit, subset=[col for col in month_df.columns if col != 'Year'])
                 st.dataframe(styled_month_df, use_container_width=True)
             else:
-                st.warning(f"No data available for {month}")
+                st.warning(f"No data available for month {st.session_state.selected_month}")
         else:
             st.dataframe(styled_df, use_container_width=True)
         
-        if st.checkbox("Transpose Table (Years as columns)"):
+        st.checkbox("Transpose Table (Years as columns)", value=st.session_state.transpose_table, key="transpose_table_check", on_change=update_transpose)
+        if st.session_state.transpose_table:
             df_transposed = df.set_index('Year').T
             styled_transposed = df_transposed.style.applymap(color_profit)
             st.dataframe(styled_transposed, use_container_width=True)
-        
-        st.button("Copy to Clipboard", key="copy_all", on_click=lambda: st.write(styled_df.to_html(), unsafe_allow_html=True))
 
-    # Display 2025 prediction
+        st.button("Copy to Clipboard", key="Copy", on_click=lambda: st.write_clipboard(styled_df.to_csv()))
+
+    # Display 2025 predictions
     st.subheader("2025 Prediction")
-    current_year_data = [d for d in profit_loss_data if d['Year'] == 2025]
+    current_year_data = [d for d in st.session_state.profit_loss_data.to_dict('records') if d['Year'] == 2025]
     if current_year_data:
         with st.container():
-            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.markdown('<div style="card">', unsafe_allow_html=True)
             styled_pred_df = create_prediction_card(current_year_data)
             if styled_pred_df is not None:
                 st.dataframe(styled_pred_df, use_container_width=True)
                 csv = pd.DataFrame(current_year_data).to_csv(index=False)
                 st.download_button(label="Download 2025 Prediction", data=csv, file_name="2025_prediction.csv", mime="text/csv")
                 if st.button("Predict Again", key="predict_again"):
+                    # Recompute profit/loss
+                    with st.spinner("Computing predictions..."):
+                        st.session_state.profit_loss_data = pd.DataFrame(calculate_rolling_profit_loss(st.session_state.dframe, compare_days, analysis_mode))
                     st.experimental_rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('</div>')
 
     # Download all data
-    all_df = pd.DataFrame(profit_loss_data).fillna(0)
+    all_df = st.session_state.profit_loss_data.fillna(0)
     csv_all = all_df.to_csv(index=False)
     try:
         import openpyxl
@@ -412,10 +448,10 @@ if uploaded_file and run_analysis:
         all_df.to_excel(output, index=False)
         excel_all = output.getvalue()
         st.download_button(label="Download as Excel", data=excel_all, file_name="all_profit_loss_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    except ImportError:
+    except Exception as e:
         st.warning("Please install 'openpyxl' to enable Excel export: `pip install openpyxl`")
-    with st.expander("Download All Data"):
-        st.download_button(label="Download as CSV", data=csv_all, file_name="all_profit_loss_data.csv", mime="text/csv")
+    with st.expander("Download all data"):
+        st.download_button(label="Download as CSV", data=csv_all, file_name="all_data.csv", mime="text/csv")
 
     # Help section
     with st.expander("Help"):
@@ -424,7 +460,7 @@ if uploaded_file and run_analysis:
         - Upload a CSV/Excel file with stock data.
         - Set 'Compare Days' and select an 'Analysis Mode'.
         - Click 'Run Analysis' to process data.
-        - Explore charts, tables, and download results.
+        - Explore results interactively without resetting until new analysis.
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
         - Check for data gaps or formatting issues.
@@ -432,7 +468,7 @@ if uploaded_file and run_analysis:
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 1.0 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 10px;">Version 2.0 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
