@@ -14,7 +14,6 @@ st.set_page_config(page_title="Stock Pattern Analyzer", layout="wide")
 st.sidebar.header("Control Panel")
 uploaded_file = st.sidebar.file_uploader("Upload CSV or Excel file", type=['csv', 'xlsx'])
 compare_days = st.sidebar.number_input("Compare Days (1-30)", min_value=1, max_value=30, value=6)
-initial_investment = st.sidebar.number_input("Initial Investment ($)", min_value=1.0, value=100.0)
 analysis_mode = st.sidebar.radio("Analysis Mode", ["Raw Data (Open vs. Close)", "Open/Close/High/Low", "Technical Indicators"])
 run_analysis = st.sidebar.button("Run Analysis")
 
@@ -45,7 +44,7 @@ def load_data(file):
         return None
 
 # Function to calculate rolling profit/loss with ML prediction
-def calculate_rolling_profit_loss(df, compare_days, initial_investment, mode):
+def calculate_rolling_profit_loss(df, compare_days, mode):
     profit_loss_data = []
     current_year = datetime.now().year  # 2025
     years = range(df['date'].dt.year.min(), current_year + 1)
@@ -60,7 +59,6 @@ def calculate_rolling_profit_loss(df, compare_days, initial_investment, mode):
             start_price = year_df['open'].iloc[i]
             end_price = year_df['close'].iloc[i + compare_days - 1]
             profit_loss_percent = ((end_price - start_price) / start_price) * 100
-            profit_loss_dollar = (end_price - start_price) * (initial_investment / start_price)
             features = {'Start Open': start_price, 'End Close': end_price}
             if mode == "Open/Close/High/Low":
                 features.update({
@@ -85,7 +83,6 @@ def calculate_rolling_profit_loss(df, compare_days, initial_investment, mode):
                 'Start Open Price': start_price,
                 'End Close Price': end_price,
                 'Profit/Loss (%)': profit_loss_percent,
-                'Profit/Loss ($)': profit_loss_dollar,
                 **features
             })
     
@@ -124,7 +121,6 @@ def calculate_rolling_profit_loss(df, compare_days, initial_investment, mode):
                     predicted_end_price = model.predict([X_predict])[0]
                     end_date = last_date + timedelta(days=compare_days)
                     profit_loss_percent = ((predicted_end_price - start_price) / start_price) * 100
-                    profit_loss_dollar = (predicted_end_price - start_price) * (initial_investment / start_price)
                     future_data.append({
                         'Year': current_year,
                         'Start Date': last_date,
@@ -132,7 +128,6 @@ def calculate_rolling_profit_loss(df, compare_days, initial_investment, mode):
                         'Start Open Price': start_price,
                         'End Close Price': predicted_end_price,
                         'Profit/Loss (%)': profit_loss_percent,
-                        'Profit/Loss ($)': profit_loss_dollar,
                         **features_dict
                     })
         except Exception as e:
@@ -160,11 +155,11 @@ def create_chart(df, profit_loss_data, mode):
                 line=dict(width=1, dash='dash' if year == 2025 else 'solid')
             ), row=1, col=1)
     
-    profits = [d['Profit/Loss ($)'] for d in profit_loss_data]
+    profits = [d['Profit/Loss (%)'] for d in profit_loss_data]
     dates = [d['End Date'] for d in profit_loss_data]
     fig.add_trace(go.Bar(
         x=dates, y=profits,
-        name='Profit/Loss ($)',
+        name='Profit/Loss (%)',
         marker_color=['green' if p >= 0 else 'red' for p in profits],
         opacity=0.7
     ), row=2, col=1)
@@ -173,7 +168,7 @@ def create_chart(df, profit_loss_data, mode):
         title=f"Stock Price and Profit/Loss Analysis ({mode})",
         xaxis_title="Date",
         yaxis_title="Price",
-        yaxis2_title="Profit/Loss ($)",
+        yaxis2_title="Profit/Loss (%)",
         hovermode="x unified",
         showlegend=True,
         height=800,
@@ -181,7 +176,7 @@ def create_chart(df, profit_loss_data, mode):
     )
     fig.update_xaxes(rangeslider_visible=False)
     fig.update_yaxes(title_text="Price", row=1, col=1)
-    fig.update_yaxes(title_text="Profit/Loss ($)", row=2, col=1)
+    fig.update_yaxes(title_text="Profit/Loss (%)", row=2, col=1)
     
     return fig
 
@@ -195,7 +190,7 @@ if uploaded_file and run_analysis:
         st.stop()
     
     # Calculate rolling profit/loss
-    profit_loss_data = calculate_rolling_profit_loss(df, compare_days, initial_investment, analysis_mode)
+    profit_loss_data = calculate_rolling_profit_loss(df, compare_days, analysis_mode)
     
     # Create and display chart
     fig = create_chart(df, profit_loss_data, analysis_mode)
@@ -206,13 +201,13 @@ if uploaded_file and run_analysis:
         if profit_loss_data:
             profit_loss_df = pd.DataFrame(profit_loss_data)
             styled_df = profit_loss_df.style.apply(
-                lambda x: ['background-color: green' if v >= 0 else 'background-color: red' for v in x['Profit/Loss ($)']],
-                subset=['Profit/Loss (%)', 'Profit/Loss ($)']
+                lambda x: ['background-color: green' if v >= 0 else 'background-color: red' for v in x['Profit/Loss (%)']],
+                subset=['Profit/Loss (%)']
             )
             st.table(styled_df)
             if any(d['Year'] == 2025 for d in profit_loss_data):
-                predicted_pl = next(d for d in profit_loss_data if d['Year'] == 2025)['Profit/Loss ($)']
-                st.write(f"Predicted Profit/Loss for 2025 ({compare_days}-day window): ${predicted_pl:.2f}")
+                predicted_pl = next(d for d in profit_loss_data if d['Year'] == 2025)['Profit/Loss (%)']
+                st.write(f"Predicted Profit/Loss for 2025 ({compare_days}-day window): {predicted_pl:.2f}%")
         
         # Download predicted data
         pred_df = pd.DataFrame(profit_loss_data)
