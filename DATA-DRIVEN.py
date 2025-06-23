@@ -58,7 +58,7 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
             end_date = year_df['date'].iloc[i + compare_days - 1]
             start_price = year_df['open'].iloc[i]
             end_price = year_df['close'].iloc[i + compare_days - 1]
-            profit_loss_percent = ((end_price - start_price) / start_price) * 100
+            profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else 0.0
             features = {'Start Open': start_price, 'End Close': end_price}
             if mode == "Open/Close/High/Low":
                 features.update({
@@ -83,14 +83,14 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
                 'Start Open Price': start_price,
                 'End Close Price': end_price,
                 'Profit/Loss (%)': profit_loss_percent,
-                **features
+                **{k: v for k, v in features.items() if v is not np.nan}
             })
     
     # ML Prediction for 2025 future dates
     historical_data = pd.DataFrame(profit_loss_data[:-len([d for d in profit_loss_data if d['Year'] == current_year])])
     future_data = []
-    if len(historical_data) > compare_days:
-        X = historical_data[['Start Open Price'] + [k for k in features.keys() if k not in ['Start Open', 'End Close']]].values
+    if len(historical_data) > compare_days and 'Profit/Loss (%)' in historical_data.columns:
+        X = historical_data[['Start Open Price'] + [k for k in historical_data.columns if k not in ['Year', 'Start Date', 'End Date', 'Start Open Price', 'End Close Price', 'Profit/Loss (%)']]].values
         y = historical_data['End Close Price'].values
         model = LinearRegression()
         try:
@@ -117,10 +117,13 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
                             'ATR': df['atr'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
                             'VWAP': df['vwap'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan
                         })
-                    X_predict = [v for k, v in features_dict.items() if k != 'Start Open']
-                    predicted_end_price = model.predict([X_predict])[0]
+                    X_predict = [v for k, v in features_dict.items() if k != 'Start Open' and k in historical_data.columns]
+                    if X_predict and len(X_predict) == X.shape[1]:
+                        predicted_end_price = model.predict([X_predict])[0]
+                    else:
+                        predicted_end_price = start_price  # Fallback if features mismatch
                     end_date = last_date + timedelta(days=compare_days)
-                    profit_loss_percent = ((predicted_end_price - start_price) / start_price) * 100
+                    profit_loss_percent = ((predicted_end_price - start_price) / start_price) * 100 if not np.isnan(predicted_end_price - start_price) else 0.0
                     future_data.append({
                         'Year': current_year,
                         'Start Date': last_date,
@@ -128,11 +131,12 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
                         'Start Open Price': start_price,
                         'End Close Price': predicted_end_price,
                         'Profit/Loss (%)': profit_loss_percent,
-                        **features_dict
+                        **{k: v for k, v in features_dict.items() if v is not np.nan and k in historical_data.columns}
                     })
         except Exception as e:
             st.warning(f"ML prediction failed: {str(e)}. Using last known value.")
-            predicted_end_price = start_price  # Fallback
+            predicted_end_price = start_price
+            profit_loss_percent = 0.0
         profit_loss_data.extend(future_data)
     
     return profit_loss_data
@@ -155,8 +159,8 @@ def create_chart(df, profit_loss_data, mode):
                 line=dict(width=1, dash='dash' if year == 2025 else 'solid')
             ), row=1, col=1)
     
-    profits = [d['Profit/Loss (%)'] for d in profit_loss_data]
-    dates = [d['End Date'] for d in profit_loss_data]
+    profits = [d['Profit/Loss (%)'] for d in profit_loss_data if 'Profit/Loss (%)' in d]
+    dates = [d['End Date'] for d in profit_loss_data if 'Profit/Loss (%)' in d]
     fig.add_trace(go.Bar(
         x=dates, y=profits,
         name='Profit/Loss (%)',
@@ -199,18 +203,19 @@ if uploaded_file and run_analysis:
     # Prediction summary in expandable section
     with st.expander("Profit/Loss Summary"):
         if profit_loss_data:
-            profit_loss_df = pd.DataFrame(profit_loss_data)
+            profit_loss_df = pd.DataFrame(profit_loss_data).fillna(0)  # Fill NaN with 0 to avoid KeyError
             styled_df = profit_loss_df.style.apply(
                 lambda x: ['background-color: green' if v >= 0 else 'background-color: red' for v in x['Profit/Loss (%)']],
-                subset=['Profit/Loss (%)']
+                subset=['Profit/Loss (%)'],
+                axis=1
             )
             st.table(styled_df)
             if any(d['Year'] == 2025 for d in profit_loss_data):
-                predicted_pl = next(d for d in profit_loss_data if d['Year'] == 2025)['Profit/Loss (%)']
+                predicted_pl = next(d for d in profit_loss_data if d['Year'] == 2025).get('Profit/Loss (%)', 0.0)
                 st.write(f"Predicted Profit/Loss for 2025 ({compare_days}-day window): {predicted_pl:.2f}%")
         
         # Download predicted data
-        pred_df = pd.DataFrame(profit_loss_data)
+        pred_df = pd.DataFrame(profit_loss_data).fillna(0)
         csv = pred_df.to_csv(index=False)
         st.download_button(
             label="Download Predicted Data",
