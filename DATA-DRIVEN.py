@@ -140,17 +140,18 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
                 current_date = get_next_available_date(year_df, start_date)
                 continue
             end_date_calc = start_date + timedelta(days=compare_days-1)
-            if end_date_calc > datetime(year, 12, 31).date():
+            if end_date_calc > end_date:
                 break
             if end_date_calc not in year_df['date'].values:
-                end_date_idx = year_df.index[year_df['date'] >= end_date_calc].min()
-                if pd.isna(end_date_idx) or end_date_idx >= len(year_df):
+                # Find the closest available date within range
+                valid_end_dates = year_df[year_df['date'] >= start_date]['date']
+                end_date_calc = valid_end_dates[valid_end_dates <= end_date].iloc[compare_days-1] if len(valid_end_dates) >= compare_days else None
+                if end_date_calc is None:
                     current_date = get_next_available_date(year_df, start_date)
                     continue
-                end_date_calc = year_df['date'].iloc[end_date_idx]
             start_idx = year_df.index[year_df['date'] == start_date][0]
             end_idx = year_df.index[year_df['date'] == end_date_calc][0]
-            if start_idx >= len(year_df) or end_idx >= len(year_df):
+            if start_idx >= len(year_df) or end_idx >= len(year_df) or end_idx < start_idx:
                 st.warning(f"Index out of bounds for year {year} at {format_date_range(start_date, end_date_calc)}. Skipping this iteration.")
                 current_date = get_next_available_date(year_df, end_date_calc)
                 continue
@@ -370,8 +371,7 @@ if uploaded_file and run_analysis:
         - Explore charts, tables, and download results.
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
-        - Check for missing columns based on the selected mode.
-        - If 'Index out of bounds' warnings appear, verify data continuity.
+        - Check for missing days (e.g., gaps in 2021 data).
         - Install 'openpyxl' for Excel export: `pip install openpyxl`.
         """)
 
