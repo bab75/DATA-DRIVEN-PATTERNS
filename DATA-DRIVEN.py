@@ -125,6 +125,12 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
         current_date = min(year_df['date'])
         while current_date and (current_date + timedelta(days=compare_days-1) <= max(year_df['date'])):
             start_date = current_date
+            # Validate start_date exists in year_df
+            if start_date not in year_df['date'].values:
+                current_date = get_next_available_date(year_df, current_date)
+                if not current_date:
+                    break
+                continue
             end_date = start_date + timedelta(days=compare_days-1)
             if end_date not in year_df['date'].values:
                 end_date = get_next_available_date(year_df, end_date)
@@ -132,6 +138,10 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
                     break
             start_idx = year_df.index[year_df['date'] == start_date][0]
             end_idx = year_df.index[year_df['date'] == end_date][0]
+            if start_idx >= len(year_df) or end_idx >= len(year_df):
+                st.warning(f"Index out of bounds for year {year} at {format_date(start_date)}. Skipping this iteration.")
+                current_date = get_next_available_date(year_df, end_date)
+                continue
             start_price = year_df['open'].iloc[start_idx]
             end_price = year_df['close'].iloc[end_idx]
             profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else 0.0
