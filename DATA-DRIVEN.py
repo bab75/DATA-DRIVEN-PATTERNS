@@ -336,7 +336,7 @@ if uploaded_file and run_analysis:
     st.subheader("Historical Profit/Loss by Year")
     years = sorted(set(d['Year'] for d in profit_loss_data) - {2025})
     for year in years:
-        year_data = [d for d in profit_loss_data if d['Year'] == year and (str(year) in search_term or any(search_term.lower() in format_date(d['Start Date']).lower() for d in year_data))]
+        year_data = [d for d in profit_loss_data if d['Year'] == year and (str(year) in search_term or any(search_term.lower() in format_date(d['Start Date']).lower() for d in [d]))]
         if year_data:
             with st.expander(f"Year {year}"):
                 styled_df = create_year_table(year_data)
