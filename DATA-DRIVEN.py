@@ -397,7 +397,7 @@ def create_year_table(profit_loss_data, compare_days, unit):
     calendar_columns = generate_monthly_periods(compare_days, year=2024)
     
     # Create pivot table
-    years = sorted(set(d['Year'] for d in profit_loss_data)
+    years = sorted(set(d['Year'] for d in profit_loss_data))
     table_data = {'Year': years}
     
     for col in calendar_columns:
