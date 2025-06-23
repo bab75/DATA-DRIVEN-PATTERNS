@@ -91,6 +91,12 @@ def load_data(file):
         if len(df) < compare_days:
             st.error(f"Dataset has {len(df)} rows, but at least {compare_days} are required.")
             return None
+        # Validate data coverage
+        years = set(df['date'].apply(lambda x: x.year))
+        for year in years:
+            year_data = df[df['date'].apply(lambda x: x.year) == year]
+            if len(year_data) < compare_days:
+                st.warning(f"Year {year} has only {len(year_data)} days, less than required {compare_days}. Results may be incomplete.")
         return df
     except Exception as e:
         st.error(f"Error loading file: {str(e)}")
@@ -125,6 +131,7 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
     for year in years:
         year_df = df[df['date'].apply(lambda x: x.year) == year].copy()
         if len(year_df) < compare_days:
+            st.warning(f"Skipping year {year} due to insufficient data ({len(year_df)} days < {compare_days}).")
             continue
         # Start from the first available date in the year
         start_date = min(year_df['date'])
@@ -366,7 +373,7 @@ if uploaded_file and run_analysis:
         - Explore charts, tables, and download results.
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
-        - Check for missing days (e.g., gaps in 2021 data like Jan 5th, 7th).
+        - Check for missing days (e.g., 2021 data stops at Jan 8th).
         - Install 'openpyxl' for Excel export: `pip install openpyxl`.
         """)
 
