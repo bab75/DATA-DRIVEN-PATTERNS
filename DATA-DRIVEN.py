@@ -18,31 +18,49 @@ days_to_analyze = st.sidebar.number_input("Days to Analyze (1-365)", min_value=1
 days_to_predict = st.sidebar.number_input("Days to Predict (1-30)", min_value=1, max_value=30, value=10)
 analysis_mode = st.sidebar.radio("Analysis Mode", ["Raw Data Only", "Use Technical Indicators"])
 show_indicators = st.sidebar.checkbox("Show Technical Indicators on Chart", value=False)
+show_candlestick = st.sidebar.checkbox("Show Candlestick Chart", value=False)
 run_analysis = st.sidebar.button("Run Analysis")
 
 # Function to load and preprocess data
 def load_data(file):
-    if file.name.endswith('.csv'):
-        df = pd.read_csv(file)
-    else:
-        df = pd.read_excel(file)
-    df['date'] = pd.to_datetime(df['date'])
-    df = df.sort_values('date').reset_index(drop=True)
-    return df
+    try:
+        if file.name.endswith('.csv'):
+            df = pd.read_csv(file)
+        else:
+            df = pd.read_excel(file)
+        df['date'] = pd.to_datetime(df['date'])
+        df = df.sort_values('date').reset_index(drop=True)
+        required_columns = ['date', 'close']
+        if analysis_mode == "Use Technical Indicators":
+            required_columns.extend(['macd', 'rsi', 'atr', 'vwap'])
+        if show_candlestick:
+            required_columns.extend(['open', 'high', 'low'])
+        if not all(col in df.columns for col in required_columns):
+            missing = [col for col in required_columns if col not in df.columns]
+            st.error(f"Missing required columns: {', '.join(missing)}")
+            return None
+        return df
+    except Exception as e:
+        st.error(f"Error loading file: {str(e)}")
+        return None
 
 # Function to compute similarity between two series
 def compute_similarity(series1, series2, method='pearson'):
-    if method == 'pearson':
-        return pearsonr(series1, series2)[0]
-    else:  # cosine
-        return cosine_similarity([series1], [series2])[0][0]
+    if len(series1) != len(series2) or len(series1) == 0:
+        return np.nan
+    try:
+        if method == 'pearson':
+            return pearsonr(series1, series2)[0]
+        else:  # cosine
+            return cosine_similarity([series1], [series2])[0][0]
+    except:
+        return np.nan
 
 # Function to extract pattern and compare
 def find_similar_patterns(df, days_analyze, days_predict, mode):
     recent_pattern = df.tail(days_analyze).copy()
     recent_date = recent_pattern['date'].iloc[-1]
     recent_close = recent_pattern['close'].pct_change().fillna(0)
-    recent_volatility = recent_pattern['close'].std()
     
     matches = []
     
@@ -52,87 +70,127 @@ def find_similar_patterns(df, days_analyze, days_predict, mode):
     else:
         features = ['close', 'macd', 'rsi', 'atr', 'vwap']
     
-    # Slide through historical data
+    # Slide through historical data with ±5-day window
     for year in range(df['date'].dt.year.min(), df['date'].dt.year.max()):
-        target_date = recent_date.replace(year=year)
-        if target_date in df['date'].values:
-            idx = df[df['date'] == target_date].index[0]
-            if idx >= days_analyze:
-                historical = df.iloc[idx-days_analyze:idx+1].copy()
-                if len(historical) == len(recent_pattern):
-                    # Compute similarity
-                    similarity_scores = []
-                    for feature in features:
-                        hist_series = historical[feature].pct_change().fillna(0)
-                        recent_series = recent_pattern[feature].pct_change().fillna(0)
-                        score = compute_similarity(hist_series, recent_series)
-                        similarity_scores.append(score)
-                    avg_similarity = np.nanmean(similarity_scores)
-                    
-                    # Get forward movement
-                    if idx + days_predict < len(df):
-                        forward_data = df.iloc[idx:idx+days_predict+1]
-                        forward_return = (forward_data['close'].iloc[-1] / forward_data['close'].iloc[0] - 1) * 100
-                        matches.append({
-                            'year': year,
-                            'similarity': avg_similarity,
-                            'forward_return': forward_return,
-                            'historical_pattern': historical,
-                            'forward_data': forward_data
-                        })
+        for day_offset in range(-5, 6):  # ±5-day window
+            target_date = recent_date.replace(year=year) + timedelta(days=day_offset)
+            if target_date in df['date'].values:
+                idx = df[df['date'] == target_date].index[0]
+                if idx >= days_analyze - 1:
+                    historical = df.iloc[idx-days_analyze+1:idx+1].copy()
+                    if len(historical) == len(recent_pattern):
+                        # Compute similarity
+                        similarity_scores = []
+                        for feature in features:
+                            hist_series = historical[feature].pct_change().fillna(0)
+                            recent_series = recent_pattern[feature].pct_change().fillna(0)
+                            score = compute_similarity(hist_series, recent_series)
+                            if not np.isnan(score):
+                                similarity_scores.append(score)
+                        if similarity_scores:
+                            avg_similarity = np.nanmean(similarity_scores)
+                            # Get forward movement
+                            if idx + days_predict < len(df):
+                                forward_data = df.iloc[idx:idx+days_predict+1]
+                                forward_return = (forward_data['close'].iloc[-1] / forward_data['close'].iloc[0] - 1) * 100
+                                matches.append({
+                                    'year': year,
+                                    'target_date': target_date,
+                                    'similarity': avg_similarity,
+                                    'forward_return': forward_return,
+                                    'historical_pattern': historical,
+                                    'forward_data': forward_data
+                                })
     
     # Sort and select top matches
-    matches = sorted(matches, key=lambda x: x['similarity'], reverse=True)[:3]
-    return matches, recent_pattern
+    matches = sorted(matches, key=lambda x: x['similarity'], reverse=True)
+    if not matches:
+        return [], recent_pattern
+    return matches[:3], recent_pattern
 
 # Function to create interactive Plotly chart
-def create_chart(df, recent_pattern, matches, show_indicators):
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                        vertical_spacing=0.05, subplot_titles=['Price Patterns', 'Volume'],
-                        row_heights=[0.7, 0.3])
+def create_chart(df, recent_pattern, matches, show_indicators, show_candlestick):
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
+                        vertical_spacing=0.05, 
+                        subplot_titles=['Price Patterns', 'Volume', 'Technical Indicators'],
+                        row_heights=[0.5, 0.2, 0.3])
     
     # Plot recent pattern
-    fig.add_trace(go.Scatter(x=recent_pattern['date'], y=recent_pattern['close'],
-                             mode='lines', name='Current Pattern', line=dict(color='blue', width=2)),
-                  row=1, col=1)
+    if show_candlestick:
+        fig.add_trace(go.Candlestick(
+            x=recent_pattern['date'],
+            open=recent_pattern['open'],
+            high=recent_pattern['high'],
+            low=recent_pattern['low'],
+            close=recent_pattern['close'],
+            name='Current Pattern'
+        ), row=1, col=1)
+    else:
+        fig.add_trace(go.Scatter(
+            x=recent_pattern['date'], y=recent_pattern['close'],
+            mode='lines', name='Current Pattern', line=dict(color='blue', width=2)
+        ), row=1, col=1)
     
     # Plot historical matches
     colors = ['red', 'green', 'purple']
     for i, match in enumerate(matches):
         hist = match['historical_pattern']
-        fig.add_trace(go.Scatter(x=hist['date'], y=hist['close'],
-                                 mode='lines', name=f"Match {match['year']} (Sim: {match['similarity']:.2f})",
-                                 line=dict(color=colors[i], width=1, dash='dash')),
-                      row=1, col=1)
-        fig.add_trace(go.Bar(x=hist['date'], y=hist['volume'], name=f"Vol {match['year']}",
-                             marker_color=colors[i], opacity=0.3, showlegend=False),
-                      row=2, col=1)
+        if show_candlestick:
+            fig.add_trace(go.Candlestick(
+                x=hist['date'],
+                open=hist['open'],
+                high=hist['high'],
+                low=hist['low'],
+                close=hist['close'],
+                name=f"Match {match['year']} (Sim: {match['similarity']:.2f})",
+                increasing_line_color=colors[i], decreasing_line_color=colors[i], opacity=0.5
+            ), row=1, col=1)
+        else:
+            fig.add_trace(go.Scatter(
+                x=hist['date'], y=hist['close'],
+                mode='lines', name=f"Match {match['year']} (Sim: {match['similarity']:.2f})",
+                line=dict(color=colors[i], width=1, dash='dash')
+            ), row=1, col=1)
+        fig.add_trace(go.Bar(
+            x=hist['date'], y=hist['volume'], name=f"Vol {match['year']}",
+            marker_color=colors[i], opacity=0.3, showlegend=False
+        ), row=2, col=1)
+    
+    # Add volume for recent pattern
+    fig.add_trace(go.Bar(
+        x=recent_pattern['date'], y=recent_pattern['volume'],
+        name='Current Volume', marker_color='blue', opacity=0.5
+    ), row=2, col=1)
     
     # Add technical indicators if selected
     if show_indicators:
-        for col in ['ma20', 'ma50', 'macd', 'rsi']:
+        indicators = ['ma20', 'ma50', 'macd', 'rsi']
+        ind_colors = ['orange', 'purple', 'pink', 'cyan']
+        for i, col in enumerate(indicators):
             if col in recent_pattern.columns:
-                fig.add_trace(go.Scatter(x=recent_pattern['date'], y=recent_pattern[col],
-                                         mode='lines', name=col.upper(),
-                                         line=dict(width=1, dash='dot')),
-                              row=1, col=1)
-    
-    # Add volume for recent pattern
-    fig.add_trace(go.Bar(x=recent_pattern['date'], y=recent_pattern['volume'],
-                         name='Current Volume', marker_color='blue', opacity=0.5),
-                  row=2, col=1)
+                fig.add_trace(go.Scatter(
+                    x=recent_pattern['date'], y=recent_pattern[col],
+                    mode='lines', name=col.upper(),
+                    line=dict(width=1, dash='dot', color=ind_colors[i]),
+                    yaxis='y3'
+                ), row=3, col=1)
     
     # Update layout
     fig.update_layout(
         title="Stock Pattern Comparison",
         xaxis_title="Date",
         yaxis_title="Price",
+        yaxis2_title="Volume",
+        yaxis3_title="Indicators",
         hovermode="x unified",
         showlegend=True,
-        height=800,
+        height=900,
         template="plotly_white"
     )
     fig.update_xaxes(rangeslider_visible=False)
+    fig.update_yaxes(title_text="Price", row=1, col=1)
+    fig.update_yaxes(title_text="Volume", row=2, col=1)
+    fig.update_yaxes(title_text="Indicators", row=3, col=1, secondary_y=True)
     
     return fig
 
@@ -142,19 +200,22 @@ if uploaded_file and run_analysis:
     
     # Load data
     df = load_data(uploaded_file)
+    if df is None:
+        st.stop()
     
     # Run analysis
     matches, recent_pattern = find_similar_patterns(df, days_to_analyze, days_to_predict, analysis_mode)
     
     if matches:
         # Create and display chart
-        fig = create_chart(df, recent_pattern, matches, show_indicators)
+        fig = create_chart(df, recent_pattern, matches, show_indicators, show_candlestick)
         st.plotly_chart(fig, use_container_width=True)
         
         # Prediction summary
         st.subheader("Prediction Summary")
         summary_data = [{
             'Year': m['year'],
+            'Target Date': m['target_date'].strftime('%Y-%m-%d'),
             'Correlation Score': f"{m['similarity']:.2f}",
             'Forward Movement (%)': f"{m['forward_return']:.2f}"
         } for m in matches]
@@ -186,7 +247,11 @@ if uploaded_file and run_analysis:
             mime="image/png"
         )
     else:
-        st.error("No matching patterns found. Try adjusting the analysis window or uploading a different dataset.")
+        st.error("No matching patterns found. Suggestions:\n"
+                 "- Ensure your dataset spans multiple years.\n"
+                 "- Adjust 'Days to Analyze' to a smaller or larger window.\n"
+                 "- Verify the date column is in a valid format (e.g., YYYY-MM-DD).\n"
+                 "- Check for sufficient data points in the uploaded file.")
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
 else:
