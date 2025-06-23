@@ -123,23 +123,32 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
         if len(year_df) < compare_days:
             continue
         current_date = min(year_df['date'])
-        while current_date and (current_date + timedelta(days=compare_days-1) <= max(year_df['date'])):
+        # Find the first valid start_date that ensures a valid end_date
+        while current_date:
             start_date = current_date
-            # Validate start_date exists in year_df
+            end_date = start_date + timedelta(days=compare_days-1)
+            if start_date in year_df['date'].values and end_date in year_df['date'].values:
+                break
+            current_date = get_next_available_date(year_df, current_date)
+            if not current_date or current_date > max(year_df['date']):
+                break
+        if not current_date:
+            continue
+
+        while current_date and current_date <= max(year_df['date']):
+            start_date = current_date
             if start_date not in year_df['date'].values:
                 current_date = get_next_available_date(year_df, current_date)
-                if not current_date:
-                    break
                 continue
             end_date = start_date + timedelta(days=compare_days-1)
             if end_date not in year_df['date'].values:
                 end_date = get_next_available_date(year_df, end_date)
-                if not end_date:
+                if not end_date or end_date > max(year_df['date']):
                     break
             start_idx = year_df.index[year_df['date'] == start_date][0]
             end_idx = year_df.index[year_df['date'] == end_date][0]
             if start_idx >= len(year_df) or end_idx >= len(year_df):
-                st.warning(f"Index out of bounds for year {year} at {format_date(start_date)}. Skipping this iteration.")
+                st.warning(f"Index out of bounds for year {year} at {format_date(start_date)} to {format_date(end_date)}. Skipping this iteration.")
                 current_date = get_next_available_date(year_df, end_date)
                 continue
             start_price = year_df['open'].iloc[start_idx]
@@ -364,6 +373,7 @@ if uploaded_file and run_analysis:
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
         - Check for missing columns based on the selected mode.
+        - If 'Index out of bounds' warnings appear, verify data continuity (e.g., no large gaps).
         """)
 
     # Footer
