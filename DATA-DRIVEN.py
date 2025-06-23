@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import io
 from calendar import month_name
 import time
+import pandas_market_calendars as mcal
 
 # Custom CSS for beautiful design
 st.markdown(
@@ -71,7 +72,7 @@ if 'profit_loss_unit' not in st.session_state:
 with st.sidebar:
     st.header("Control Panel")
     uploaded_file = st.file_uploader("Upload CSV or Excel file", type=['csv', 'xlsx'], help="Upload a file with 'date', 'open', 'close' columns.", key=f"file_uploader_{st.session_state.file_key}")
-    compare_days = st.number_input("Compare Days (1-30)", min_value=1, max_value=30, value=2, help="Number of days to compare for profit/loss within each year.")
+    compare_days = st.number_input("Compare Days (1-30)", min_value=1, max_value=30, value=2, help="Number of trading days to compare for profit/loss within each year.")
     analysis_mode = st.radio("Analysis Mode", ["Raw Data (Open vs. Close)", "Open/Close/High/Low", "Technical Indicators"],
                              help="Choose the data features for analysis.")
     run_analysis = st.button("Run Analysis")
@@ -85,6 +86,13 @@ with st.sidebar:
         - **Open/Close/High/Low**: Considers high and low prices within the period for potential profit/loss.
         - **Technical Indicators**: Uses indicators (ma20, ma50, macd, rsi, atr, vwap) to adjust predictions.
         """)
+
+# Function to get trading days
+def get_trading_days(start_date, end_date, exchange='NYSE'):
+    nyse = mcal.get_calendar(exchange)
+    schedule = nyse.schedule(start_date=start_date, end_date=end_date)
+    trading_days = mcal.date_range(schedule, frequency='1D').date
+    return trading_days
 
 # Function to load and preprocess data
 def load_data(file):
@@ -109,7 +117,15 @@ def load_data(file):
         if len(dframe) < compare_days:
             st.error(f"Dataset has {len(dframe)} rows, but at least {compare_days} are required.")
             return None
-        st.info(f"Loaded {len(dframe)} rows with columns: {', '.join(dframe.columns)}")
+        # Filter for trading days
+        min_date = dframe['date'].min()
+        max_date = dframe['date'].max()
+        trading_days = get_trading_days(min_date, max_date)
+        dframe = dframe[dframe['date'].isin(trading_days)]
+        if len(dframe) < compare_days:
+            st.error(f"After filtering for trading days, dataset has {len(dframe)} rows, but at least {compare_days} are required.")
+            return None
+        st.info(f"Loaded {len(dframe)} trading days with columns: {', '.join(dframe.columns)}")
         return dframe
     except Exception as e:
         st.error(f"Error loading file: {str(e)}")
@@ -127,27 +143,31 @@ def format_date_range(start_date, end_date):
         return f"{start_month} {start_day}{start_suffix} to {end_day}{end_suffix}"
     return f"{start_month} {start_day}{start_suffix} to {end_month} {end_day}{end_suffix}"
 
-# Function to get next available date within the same year
-def get_next_available_date(df, current_date):
+# Function to get next available trading date
+def get_next_trading_date(df, current_date, trading_days):
     year = current_date.year
     next_date = current_date + timedelta(days=1)
-    while next_date.year == year and next_date not in df['date'].values and (next_date - df['date'].iloc[-1]).days < 365:
+    while next_date.year == year and next_date not in trading_days and (next_date - df['date'].iloc[-1]).days < 365:
         next_date += timedelta(days=1)
     return next_date if next_date.year == year and next_date in df['date'].values else None
 
-# Function to generate month-aligned periods
-def generate_monthly_periods(compare_days):
-    """Generate month-aligned periods"""
+# Function to generate month-aligned trading periods
+def generate_monthly_periods(compare_days, year=2024, exchange='NYSE'):
     periods = []
-    for month in range(1, 13):  # Jan to Dec
-        days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month-1]
-        start_day = 1
-        while start_day <= days_in_month:
-            end_day = min(start_day + compare_days - 1, days_in_month)
-            start_date = datetime(2024, month, start_day).date()
-            end_date = datetime(2024, month, end_day).date()
-            periods.append(format_date_range(start_date, end_date))
-            start_day += compare_days
+    nyse = mcal.get_calendar(exchange)
+    for month in range(1, 13):
+        start_date = datetime(year, month, 1).date()
+        end_date = datetime(year, month, [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month-1]).date()
+        trading_days = get_trading_days(start_date, end_date)
+        if not trading_days.size:
+            continue
+        i = 0
+        while i < len(trading_days):
+            start_trading_date = trading_days[i]
+            end_idx = min(i + compare_days - 1, len(trading_days) - 1)
+            end_trading_date = trading_days[end_idx]
+            periods.append(format_date_range(start_trading_date, end_trading_date))
+            i += compare_days
     return periods
 
 # Function to calculate rolling profit/loss within each year
@@ -155,22 +175,34 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
     profit_loss_data = []
     current_year = datetime.now().year  # 2025
     years = sorted(set(dframe['date'].apply(lambda x: x.year)))
-
+    
     for year in years:
         year_df = dframe[dframe['date'].apply(lambda x: x.year) == year].copy()
         if len(year_df) < max(1, compare_days // 2):
             st.warning(f"Year {year} has insufficient data ({len(year_df)} days). Minimum required: {max(1, compare_days // 2)}")
             continue
         
-        # Generate month-aligned intervals
+        # Get trading days for the year
+        start_date = datetime(year, 1, 1).date()
+        end_date = datetime(year, 12, 31).date()
+        trading_days = get_trading_days(start_date, end_date)
+        
         for month in range(1, 13):
+            month_start = datetime(year, month, 1).date()
             days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month-1]
-            if year % 4 == 0 and month == 2:  # Leap year adjustment
+            if year % 4 == 0 and month == 2:
                 days_in_month = 29
-            start_day = 1
-            while start_day <= days_in_month:
-                start_date = datetime(year, month, start_day).date()
-                end_date = datetime(year, month, min(start_day + compare_days - 1, days_in_month)).date()
+            month_end = datetime(year, month, days_in_month).date()
+            month_trading_days = trading_days[(trading_days >= month_start) & (trading_days <= month_end)]
+            
+            if not month_trading_days.size:
+                continue
+                
+            i = 0
+            while i < len(month_trading_days):
+                start_date = month_trading_days[i]
+                end_idx = min(i + compare_days - 1, len(month_trading_days) - 1)
+                end_date = month_trading_days[end_idx]
                 
                 # Find actual data for this period
                 period_data = year_df[
@@ -187,23 +219,21 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                         profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else 0.0
                         profit_loss_value = end_price - start_price if not np.isnan(end_price - start_price) else 0.0
                     elif mode == "Open/Close/High/Low":
-                        # Use high/low to estimate max potential profit/loss
                         max_high = period_data['high'].max()
                         min_low = period_data['low'].min()
                         profit_loss_percent = ((max_high - min_low) / start_price) * 100 if not np.isnan(max_high - min_low) else 0.0
                         profit_loss_value = max_high - min_low if not np.isnan(max_high - min_low) else 0.0
                     elif mode == "Technical Indicators":
-                        # Weight profit/loss by RSI and MACD signals
                         rsi_avg = period_data['rsi'].mean()
                         macd_avg = period_data['macd'].mean()
                         weight = 1.0
-                        if rsi_avg > 70:  # Overbought
+                        if rsi_avg > 70:
                             weight *= 0.8
-                        elif rsi_avg < 30:  # Oversold
+                        elif rsi_avg < 30:
                             weight *= 1.2
-                        if macd_avg > 0:  # Bullish
+                        if macd_avg > 0:
                             weight *= 1.1
-                        elif macd_avg < 0:  # Bearish
+                        elif macd_avg < 0:
                             weight *= 0.9
                         profit_loss_percent = ((end_price - start_price) / start_price) * 100 * weight if not np.isnan(end_price - start_price) else 0.0
                         profit_loss_value = (end_price - start_price) * weight if not np.isnan(end_price - start_price) else 0.0
@@ -216,10 +246,10 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                         'Profit/Loss (Value)': profit_loss_value
                     })
                 
-                start_day += compare_days
+                i += compare_days
 
     if not profit_loss_data:
-        st.warning("No valid periods found for profit/loss calculation. Check data for gaps or insufficient rows.")
+        st.warning("No valid periods found for profit/loss calculation. Check data for gaps or insufficient trading days.")
         return []
 
     # ML Prediction for 2025
@@ -237,12 +267,17 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
             model_value.fit(X, y_value)
             last_date = dframe[dframe['date'].apply(lambda x: x.year) == current_year]['date'].iloc[-1]
             if last_date.year == current_year:
+                trading_days = get_trading_days(last_date, datetime(current_year, 12, 31).date())
                 next_period_idx = len(historical_data)
                 predicted_pl_percent = model_percent.predict([[next_period_idx]])[0]
                 predicted_pl_value = model_value.predict([[next_period_idx]])[0]
-                end_date = last_date + timedelta(days=compare_days)
-                if end_date > datetime(current_year, 12, 31).date():
-                    end_date = datetime(current_year, 12, 31).date()
+                end_date = last_date
+                for _ in range(compare_days - 1):
+                    next_date = get_next_trading_date(dframe, end_date, trading_days)
+                    if next_date:
+                        end_date = next_date
+                    else:
+                        break
                 future_data.append({
                     'Year': current_year,
                     'Start Date': last_date,
@@ -265,7 +300,6 @@ def create_chart(dframe, profit_loss_data, mode, unit):
                         subplot_titles=['Price Patterns', f'Profit/Loss ({unit})'],
                         row_heights=[0.7, 0.3])
     
-    # Define color map for each year
     color_map = {
         2020: '#FF6B6B', 2021: '#4ECDC4', 2022: '#45B7D1', 2023: '#96CEB4',
         2024: '#FFEEAD', 2025: '#D4A5A5',
@@ -284,7 +318,7 @@ def create_chart(dframe, profit_loss_data, mode, unit):
                         x=valid_dates,
                         y=prices,
                         mode='lines+markers', name=f"Year {year} (Open)",
-                        line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
+                        line=dict(width=2, dash='solid', color=color_map[year]),
                         hovertemplate='Date: %{x}<br>Price: %{y}<extra></extra>'
                     ), row=1, col=1)
                 elif mode == "Open/Close/High/Low":
@@ -294,7 +328,7 @@ def create_chart(dframe, profit_loss_data, mode, unit):
                         x=valid_dates,
                         y=highs,
                         mode='lines+markers', name=f"Year {year} (High)",
-                        line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
+                        line=dict(width=2, dash='solid', color=color_map[year]),
                         hovertemplate='Date: %{x}<br>High: %{y}<extra></extra>'
                     ), row=1, col=1)
                     fig.add_trace(go.Scatter(
@@ -310,7 +344,7 @@ def create_chart(dframe, profit_loss_data, mode, unit):
                         x=valid_dates,
                         y=ma20,
                         mode='lines+markers', name=f"Year {year} (MA20)",
-                        line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
+                        line=dict(width=2, dash='solid', color=color_map[year]),
                         hovertemplate='Date: %{x}<br>MA20: %{y}<extra></extra>'
                     ), row=1, col=1)
     
@@ -342,12 +376,11 @@ def create_chart(dframe, profit_loss_data, mode, unit):
                 dict(label="All Years", method="update", args=[{"visible": [True] * len(fig.data)}]),
                 *[dict(label=f"Year {year}", method="update", args=[{"visible": [d.name.startswith(f"Year {year}") for d in fig.data]}]) for year in unique_years]
             ]),
-            x=1.1, y=1.1
-        )]
-    )
+        x=1.1, y=1.1)
+        ])
     fig.update_xaxes(tickformat="%Y-%m-%d")
-    fig.update_yaxes(title_text="Price", row=1, col=1)
-    fig.update_yaxes(title_text=f"Profit/Loss ({unit_symbol})", row=2, col=1)
+    fig.update_yaxes(title_text="Year", row=1, col=0)
+    st.dataframe(styled_df, use_container_width=True)
     
     # Download chart button
     chart_div = fig.to_html(include_plotlyjs='cdn', full_html=False)
@@ -360,20 +393,20 @@ def create_year_table(profit_loss_data, compare_days, unit):
     if not profit_loss_data:
         return None, None
     
-    # Generate month-aligned periods
-    calendar_columns = generate_monthly_periods(compare_days)
+    # Generate month-aligned trading periods
+    calendar_columns = generate_monthly_periods(compare_days, year=2024)
     
-    # Create pivot table with calendar structure
-    years = sorted(set(d['Year'] for d in profit_loss_data))
+    # Create pivot table
+    years = sorted(set(d['Year'] for d in profit_loss_data)
     table_data = {'Year': years}
     
     for col in calendar_columns:
-        table_data[col] = [0] * len(years)  # Initialize with zeros
+        table_data[col] = [0] * len(years)
     
     # Fill with actual data
     for d in profit_loss_data:
         year_idx = years.index(d['Year'])
-        date_range = format_date_range(d['Start Date'], d['End Date'])
+        date_range = format_date_range(d['Start Date'].date(), d['End Date'].date())
         if date_range in table_data:
             table_data[date_range][year_idx] = d[f'Profit/Loss ({unit})']
     
@@ -396,7 +429,7 @@ def create_year_table(profit_loss_data, compare_days, unit):
         except Exception as e:
             st.warning(f"Failed to integrate predictions: {str(e)}")
     
-    # Apply color styling to numeric columns
+    # Apply color styling
     numeric_cols = [col for col in df.columns if col != 'Year']
     styled_df = df.style.applymap(color_profit, subset=numeric_cols)
     
@@ -420,7 +453,7 @@ def color_profit(val):
 
 # Main app logic
 if uploaded_file and run_analysis:
-    # Load and process data only if new analysis is triggered
+    # Load and process data
     progress = st.progress(0)
     dframe = load_data(uploaded_file)
     if dframe is None:
@@ -434,10 +467,10 @@ if uploaded_file and run_analysis:
     st.session_state.profit_loss_data = pd.DataFrame(profit_loss_data)
     progress.progress(100)
 
-# Display results if data is available
+# Display results
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 07:09 PM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 07:20 PM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -501,7 +534,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         st.button("Copy to Clipboard", key="copy_all", on_click=lambda: st.write_clipboard(df.to_csv()))
 
     else:
-        st.warning("No table data available. Ensure your dataset has sufficient data for the selected 'Compare Days' and analysis mode.")
+        st.warning("No table data available. Ensure your dataset has sufficient trading days for the selected 'Compare Days' and analysis mode.")
 
     # Display 2025 prediction
     st.subheader("2025 Prediction")
@@ -515,7 +548,6 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
                 csv = pd.DataFrame(current_year_data).to_csv(index=False)
                 st.download_button(label="Download 2025 Prediction", data=csv, file_name="2025_prediction.csv", mime="text/csv")
                 if st.button("Predict Again", key="predict_again"):
-                    # Recompute profit/loss
                     with st.spinner("Computing predictions..."):
                         st.session_state.profit_loss_data = pd.DataFrame(calculate_rolling_profit_loss(st.session_state.dframe, compare_days, analysis_mode))
                     st.experimental_rerun()
@@ -540,27 +572,29 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         st.write("""
         **Usage Guide**:
         - Upload a CSV/Excel file with stock data.
-        - Set 'Compare Days' and select an 'Analysis Mode'.
+        - Set 'Compare Days' (number of trading days) and select an 'Analysis Mode'.
         - Click 'Run Analysis' to process data.
         - Toggle 'Show Profit/Loss as Percentage' to switch between percentage and absolute value.
-        - Explore charts, tables, and download results without resetting until new analysis.
+        - Explore charts, tables, and download results.
         **Analysis Modes**:
         - **Raw Data**: Uses open/close prices for profit/loss.
         - **Open/Close/High/Low**: Uses high/low prices for max potential profit/loss.
         - **Technical Indicators**: Adjusts profit/loss based on RSI and MACD signals.
         **Table Display**:
         - Profit/loss values are color-coded: green for positive, red for negative.
+        - Periods are based on trading days, excluding weekends and holidays (e.g., Jan 1st).
         - Use 'Show First 20', 'Show by Month', or 'Show All Columns' to filter data.
         - Transpose table to view years as columns.
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
         - Verify required columns for the selected mode.
-        - Check for data gaps or insufficient rows.
+        - Check for sufficient trading days.
         - Install 'openpyxl' for Excel export: `pip install openpyxl`.
+        - Install 'pandas_market_calendars' for trading day calculations: `pip install pandas_market_calendars`.
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.5 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.6 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
