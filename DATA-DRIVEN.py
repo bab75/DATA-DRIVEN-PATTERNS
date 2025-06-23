@@ -96,16 +96,17 @@ def load_data(file):
         st.error(f"Error loading file: {str(e)}")
         return None
 
-# Function to format date as "Jan 2, 2020"
-def format_date(date):
-    if pd.isna(date):
-        return ""
-    day = date.day
-    if 4 <= day <= 20 or 24 <= day <= 30:
-        suffix = "th"
-    else:
-        suffix = ["st", "nd", "rd"][day % 10 - 1]
-    return f"{month_name[date.month][:3]} {day}{suffix}, {date.year}"
+# Function to format date range
+def format_date_range(start_date, end_date):
+    start_day = start_date.day
+    end_day = end_date.day
+    start_suffix = "th" if 4 <= start_day <= 20 or 24 <= start_day <= 30 else ["st", "nd", "rd"][start_day % 10 - 1]
+    end_suffix = "th" if 4 <= end_day <= 20 or 24 <= end_day <= 30 else ["st", "nd", "rd"][end_day % 10 - 1]
+    start_month = month_name[start_date.month][:3]
+    end_month = month_name[end_date.month][:3]
+    if start_date.month == end_date.month:
+        return f"{start_month} {start_day}{start_suffix} to {end_day}{end_suffix}"
+    return f"{start_month} {start_day}{start_suffix} to {end_month} {end_day}{end_suffix}"
 
 # Function to get next available date
 def get_next_available_date(df, current_date):
@@ -154,7 +155,7 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
             start_idx = year_df.index[year_df['date'] == start_date][0]
             end_idx = year_df.index[year_df['date'] == end_date][0]
             if start_idx >= len(year_df) or end_idx >= len(year_df):
-                st.warning(f"Index out of bounds for year {year} at {format_date(start_date)} to {format_date(end_date)}. Data length: {len(year_df)}, Last date: {format_date(max(year_df['date']))}. Skipping this iteration.")
+                st.warning(f"Index out of bounds for year {year} at {format_date_range(start_date, end_date)}. Data length: {len(year_df)}, Last date: {format_date_range(min(year_df['date']), max(year_df['date']))}. Skipping this iteration.")
                 current_date = get_next_available_date(year_df, end_date)
                 continue
             start_price = year_df['open'].iloc[start_idx]
@@ -192,7 +193,7 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
     historical_data = pd.DataFrame([d for d in profit_loss_data if d['Year'] != current_year])
     future_data = []
     if len(historical_data) > compare_days and 'Profit/Loss (%)' in historical_data.columns:
-        X = historical_data[['Start Open Price']].values  # Raw Data mode uses only Start Open
+        X = historical_data[['Start Open Price']].values
         y = historical_data['End Close Price'].values
         model = LinearRegression()
         try:
@@ -231,7 +232,7 @@ def create_chart(df, profit_loss_data, mode):
     # Define color map for each year
     color_map = {
         2020: '#FF6B6B', 2021: '#4ECDC4', 2022: '#45B7D1', 2023: '#96CEB4',
-        2024: '#FFEEAD', 2025: '#D4A5A5',  # Add more years as needed
+        2024: '#FFEEAD', 2025: '#D4A5A5',
     }
     
     unique_years = set(d['Year'] for d in profit_loss_data)
@@ -240,22 +241,22 @@ def create_chart(df, profit_loss_data, mode):
         if year_data:
             dates = [d['Start Date'] for d in year_data] + [year_data[-1]['End Date']]
             prices = [d['Start Open Price'] for d in year_data] + [year_data[-1]['End Close Price']]
-            formatted_dates = [format_date(d) for d in dates]
+            formatted_dates = [format_date_range(d['Start Date'], d['End Date']) for d in year_data] + [format_date_range(year_data[-1]['Start Date'], year_data[-1]['End Date'])]
             fig.add_trace(go.Scatter(
                 x=formatted_dates, y=prices,
                 mode='lines+markers', name=f"Year {year}",
                 line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map.get(year, '#888888')),
-                hovertemplate='Date: %{x}<br>Price: %{y}<extra></extra>'
+                hovertemplate='Date Range: %{x}<br>Price: %{y}<extra></extra>'
             ), row=1, col=1)
     
     profits = [d['Profit/Loss (%)'] for d in profit_loss_data if 'Profit/Loss (%)' in d]
-    dates = [format_date(d['End Date']) for d in profit_loss_data if 'Profit/Loss (%)' in d]
+    dates = [format_date_range(d['Start Date'], d['End Date']) for d in profit_loss_data if 'Profit/Loss (%)' in d]
     fig.add_trace(go.Bar(
         x=dates, y=profits,
         name='Profit/Loss (%)',
         marker_color=['#90EE90' if p >= 0 else '#FFB6C1' for p in profits],
         opacity=0.7,
-        hovertemplate='Date: %{x}<br>Profit/Loss: %{y}%<extra></extra>'
+        hovertemplate='Date Range: %{x}<br>Profit/Loss: %{y}%<extra></extra>'
     ), row=2, col=1)
     
     fig.update_layout(
@@ -287,22 +288,27 @@ def create_chart(df, profit_loss_data, mode):
     return fig
 
 # Function to create styled table for a year
-def create_year_table(year_data):
+def create_year_table(year_data, compare_days):
     if not year_data:
         return None
-    # Convert to a multi-row DataFrame with fixed columns
-    data = {
-        'Year': [d['Year'] for d in year_data],
-        'Start Date': [format_date(d['Start Date']) for d in year_data],
-        'End Date': [format_date(d['End Date']) for d in year_data],
-        'Profit/Loss (%)': [d['Profit/Loss (%)'] for d in year_data]
-    }
+    # Create a dictionary to store data by date range
+    data = {'Year': year_data[0]['Year']}
+    for i, d in enumerate(year_data):
+        date_range = format_date_range(d['Start Date'], d['End Date'])
+        data[f"{date_range} - Start Price"] = [d['Start Open Price']]
+        data[f"{date_range} - End Price"] = [d['End Close Price']]
+        data[f"{date_range} - Profit/Loss (%)"] = [d['Profit/Loss (%)']]
     df = pd.DataFrame(data)
-    # Apply simple conditional styling
+    # Transpose for horizontal layout
+    df = df.T.reset_index()
+    df.columns = ['Date Range - Metric', year_data[0]['Year']]
+    # Apply simple conditional styling for Profit/Loss
     def color_profit(val):
-        color = '#90EE90' if val >= 0 else '#FFB6C1'
-        return f'background-color: {color}'
-    styled_df = df.style.applymap(color_profit, subset=['Profit/Loss (%)'])
+        if isinstance(val, (int, float)) and not pd.isna(val):
+            color = '#90EE90' if val >= 0 else '#FFB6C1'
+            return f'background-color: {color}'
+        return ''
+    styled_df = df.style.applymap(color_profit, subset=[year_data[0]['Year']])
     return styled_df
 
 # Function to create prediction card
@@ -345,13 +351,12 @@ if uploaded_file and run_analysis:
     st.subheader("Historical Profit/Loss by Year")
     years = sorted(set(d['Year'] for d in profit_loss_data) - {2025})
     for year in years:
-        year_data = [d for d in profit_loss_data if d['Year'] == year and (str(year) in search_term or any(search_term.lower() in format_date(d['Start Date']).lower() for d in [d]))]
+        year_data = [d for d in profit_loss_data if d['Year'] == year and (str(year) in search_term or any(search_term.lower() in format_date_range(d['Start Date'], d['End Date']).lower() for d in [d]))]
         if year_data:
-            with st.expander(f"Year {year}"):
-                styled_df = create_year_table(year_data)
-                if styled_df is not None:
-                    st.dataframe(styled_df, use_container_width=True)
-                    st.button("Copy to Clipboard", key=f"copy_{year}", on_click=lambda: st.write(styled_df.to_html(), unsafe_allow_html=True))
+            styled_df = create_year_table(year_data, compare_days)
+            if styled_df is not None:
+                st.dataframe(styled_df, use_container_width=True)
+                st.button("Copy to Clipboard", key=f"copy_{year}", on_click=lambda: st.write(styled_df.to_html(), unsafe_allow_html=True))
 
     # Display 2025 prediction
     st.subheader("2025 Prediction")
