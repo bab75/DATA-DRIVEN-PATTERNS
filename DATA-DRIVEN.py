@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import io
+from calendar import month_name
 
 # Set Streamlit page config
 st.set_page_config(page_title="Stock Pattern Analyzer", layout="wide")
@@ -42,6 +43,17 @@ def load_data(file):
     except Exception as e:
         st.error(f"Error loading file: {str(e)}")
         return None
+
+# Function to format date as "June 1, 2020"
+def format_date(date):
+    if pd.isna(date):
+        return ""
+    day = date.day
+    if 4 <= day <= 20 or 24 <= day <= 30:
+        suffix = "th"
+    else:
+        suffix = ["st", "nd", "rd"][day % 10 - 1]
+    return f"{month_name[date.month]} {day}{suffix}, {date.year}"
 
 # Function to calculate rolling profit/loss with ML prediction
 def calculate_rolling_profit_loss(df, compare_days, mode):
@@ -153,14 +165,15 @@ def create_chart(df, profit_loss_data, mode):
         if year_data:
             dates = [d['Start Date'] for d in year_data] + [year_data[-1]['End Date']]
             prices = [d['Start Open Price'] for d in year_data] + [year_data[-1]['End Close Price']]
+            formatted_dates = [format_date(d) for d in dates]
             fig.add_trace(go.Scatter(
-                x=dates, y=prices,
+                x=formatted_dates, y=prices,
                 mode='lines+markers', name=f"Year {year}",
                 line=dict(width=1, dash='dash' if year == 2025 else 'solid')
             ), row=1, col=1)
     
     profits = [d['Profit/Loss (%)'] for d in profit_loss_data if 'Profit/Loss (%)' in d]
-    dates = [d['End Date'] for d in profit_loss_data if 'Profit/Loss (%)' in d]
+    dates = [format_date(d['End Date']) for d in profit_loss_data if 'Profit/Loss (%)' in d]
     fig.add_trace(go.Bar(
         x=dates, y=profits,
         name='Profit/Loss (%)',
@@ -203,12 +216,12 @@ if uploaded_file and run_analysis:
     # Prediction summary in expandable section
     with st.expander("Profit/Loss Summary"):
         if profit_loss_data:
-            profit_loss_df = pd.DataFrame(profit_loss_data).fillna(0)  # Fill NaN with 0 to avoid KeyError
-            styled_df = profit_loss_df.style.apply(
-                lambda x: ['background-color: green' if v >= 0 else 'background-color: red' for v in x['Profit/Loss (%)']],
-                subset=['Profit/Loss (%)'],
-                axis=1
-            )
+            profit_loss_df = pd.DataFrame(profit_loss_data).fillna(0)  # Fill NaN with 0 to avoid errors
+            # Apply styling with a function returning a Series
+            def highlight_profit_loss(s):
+                is_positive = s['Profit/Loss (%)'] >= 0
+                return ['background-color: green' if is_positive else 'background-color: red' for _ in s]
+            styled_df = profit_loss_df.style.apply(highlight_profit_loss, axis=1)
             st.table(styled_df)
             if any(d['Year'] == 2025 for d in profit_loss_data):
                 predicted_pl = next(d for d in profit_loss_data if d['Year'] == 2025).get('Profit/Loss (%)', 0.0)
