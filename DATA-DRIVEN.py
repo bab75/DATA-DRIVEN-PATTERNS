@@ -259,7 +259,7 @@ if uploaded_file and run_analysis:
         st.subheader("2025 Prediction")
         pred_df = pd.DataFrame(current_year_data).fillna(0)
         styled_pred_df = pred_df.style.apply(
-            lambda x: ['background-color: #90EE90' if v >= 0 else 'background-color: #FFB6C1' for v in x['Profit/Loss (%)']:],
+            lambda x: ['background-color: #90EE90' if v >= 0 else 'background-color: #FFB6C1' for v in x['Profit/Loss (%)']],
             subset=['Profit/Loss (%)'],
             axis=1
         ).set_properties(**{'text-align': 'center'})
