@@ -116,6 +116,18 @@ def get_next_available_date(df, current_date):
         next_date += timedelta(days=1)
     return next_date if next_date.year == year and next_date in df['date'].values else None
 
+# Function to generate calendar-based column headers
+def generate_calendar_columns(compare_days):
+    """Generate calendar-based column headers"""
+    columns = []
+    current_date = datetime(2024, 1, 1).date()  # Start from Jan 1st
+    while current_date.month <= 12:
+        end_date = current_date + timedelta(days=compare_days-1)
+        if end_date.year == current_date.year:  # Stay within same year
+            columns.append(format_date_range(current_date, end_date))
+        current_date += timedelta(days=compare_days)  # Non-overlapping
+    return columns
+
 # Function to calculate rolling profit/loss within each year
 def calculate_rolling_profit_loss(dframe, compare_days, mode):
     profit_loss_data = []
@@ -124,26 +136,36 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
 
     for year in years:
         year_df = dframe[dframe['date'].apply(lambda x: x.year) == year].copy()
-        if len(year_df) < compare_days * 2:  # Ensure enough data for comparisons
-            st.warning(f"Year {year} has insufficient data ({len(year_df)} days). Minimum required: {compare_days * 2}")
+        if len(year_df) < compare_days:  # Ensure enough data
+            st.warning(f"Year {year} has insufficient data ({len(year_df)} days). Minimum required: {compare_days}")
             continue
-        # Process consecutive days
-        for i in range(len(year_df) - compare_days + 1):
-            start_date = year_df.iloc[i]['date']
-            try:
-                end_date = year_df.iloc[i + compare_days - 1]['date']
-                start_price = year_df.iloc[i]['open']
-                end_price = year_df.iloc[i + compare_days - 1]['close']
+        
+        # Generate fixed intervals (non-overlapping)
+        start_date = datetime(year, 1, 1).date()
+        while start_date.month <= 12:
+            end_date = start_date + timedelta(days=compare_days-1)
+            if end_date.year != year:
+                break
+                
+            # Find actual data for this period
+            period_data = year_df[
+                (year_df['date'] >= start_date) & 
+                (year_df['date'] <= end_date)
+            ]
+            
+            if len(period_data) >= compare_days:  # Need at least compare_days
+                start_price = period_data.iloc[0]['open']
+                end_price = period_data.iloc[-1]['close']
                 profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else 0.0
+                
                 profit_loss_data.append({
                     'Year': year,
                     'Start Date': start_date,
                     'End Date': end_date,
                     'Profit/Loss (%)': profit_loss_percent
                 })
-            except IndexError:
-                st.warning(f"Date range exceeded for year {year} at {format_date_range(start_date, end_date)}. Skipping.")
-                continue
+            
+            start_date += timedelta(days=compare_days)  # Next period
 
     # ML Prediction for 2025
     historical_data = pd.DataFrame([d for d in profit_loss_data if d['Year'] != current_year])
@@ -248,19 +270,25 @@ def create_chart(dframe, profit_loss_data, mode):
 def create_year_table(profit_loss_data, compare_days):
     if not profit_loss_data:
         return None
-    # Pivot data to create dynamic columns based on compare_days
-    pivot_data = {}
-    for d in profit_loss_data:
-        date_range = format_date_range(d['Start Date'], d['End Date'])
-        if d['Year'] not in pivot_data:
-            pivot_data[d['Year']] = {}
-        pivot_data[d['Year']][date_range] = d['Profit/Loss (%)']
     
-    # Create DataFrame with all years and dynamic columns
-    years = sorted(pivot_data.keys())
-    columns = ['Year'] + sorted(set(date_range for d in profit_loss_data for date_range in pivot_data[d['Year']]))
-    data = {col: [pivot_data.get(year, {}).get(col, 0) if col != 'Year' else year for year in years] for col in columns}
-    df = pd.DataFrame(data)
+    # Generate calendar-based columns
+    calendar_columns = generate_calendar_columns(compare_days)
+    
+    # Create pivot table with calendar structure
+    years = sorted(set(d['Year'] for d in profit_loss_data))
+    table_data = {'Year': years}
+    
+    for col in calendar_columns:
+        table_data[col] = [0] * len(years)  # Initialize with zeros
+    
+    # Fill with actual data
+    for d in profit_loss_data:
+        year_idx = years.index(d['Year'])
+        date_range = format_date_range(d['Start Date'], d['End Date'])
+        if date_range in table_data:
+            table_data[date_range][year_idx] = d['Profit/Loss (%)']
+    
+    df = pd.DataFrame(table_data)
     
     # Apply simple conditional styling for Profit/Loss
     def color_profit(val):
