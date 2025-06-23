@@ -396,7 +396,11 @@ def create_year_table(profit_loss_data, compare_days, unit):
         except Exception as e:
             st.warning(f"Failed to integrate predictions: {str(e)}")
     
-    return df, df.style
+    # Apply color styling to numeric columns
+    numeric_cols = [col for col in df.columns if col != 'Year']
+    styled_df = df.style.applymap(color_profit, subset=numeric_cols)
+    
+    return df, styled_df
 
 # Function to create prediction card
 def create_prediction_card(pred_data, unit):
@@ -404,7 +408,7 @@ def create_prediction_card(pred_data, unit):
         return None
     pred_df = pd.DataFrame(pred_data).fillna(0)
     pred_df = pred_df[['Year', 'Start Date', 'End Date', f'Profit/Loss ({unit})']]
-    styled_df = pred_df.style
+    styled_df = pred_df.style.applymap(color_profit, subset=[f'Profit/Loss ({unit})'])
     return styled_df
 
 # Global color_profit function
@@ -433,7 +437,7 @@ if uploaded_file and run_analysis:
 # Display results if data is available
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 07:04 PM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 07:09 PM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -544,6 +548,10 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         - **Raw Data**: Uses open/close prices for profit/loss.
         - **Open/Close/High/Low**: Uses high/low prices for max potential profit/loss.
         - **Technical Indicators**: Adjusts profit/loss based on RSI and MACD signals.
+        **Table Display**:
+        - Profit/loss values are color-coded: green for positive, red for negative.
+        - Use 'Show First 20', 'Show by Month', or 'Show All Columns' to filter data.
+        - Transpose table to view years as columns.
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
         - Verify required columns for the selected mode.
@@ -552,7 +560,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.4 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.5 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
