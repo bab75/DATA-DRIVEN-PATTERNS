@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from scipy.stats import pearsonr
 from sklearn.linear_model import LinearRegression
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -15,11 +13,7 @@ st.set_page_config(page_title="Stock Pattern Analyzer", layout="wide")
 # Sidebar: Control Panel
 st.sidebar.header("Control Panel")
 uploaded_file = st.sidebar.file_uploader("Upload CSV or Excel file", type=['csv', 'xlsx'])
-days_to_analyze = st.sidebar.number_input("Days to Analyze (1-365)", min_value=1, max_value=365, value=60)
-days_to_predict = st.sidebar.number_input("Days to Predict (1-30)", min_value=1, max_value=30, value=5)  # Set to 5 days
-analysis_mode = st.sidebar.radio("Analysis Mode", ["Raw Data Only", "Use Technical Indicators"])
-show_indicators = st.sidebar.checkbox("Show Technical Indicators on Chart", value=False)
-show_candlestick = st.sidebar.checkbox("Show Candlestick Chart", value=False)
+compare_days = st.sidebar.number_input("Compare Days (1-30)", min_value=1, max_value=30, value=6)
 initial_investment = st.sidebar.number_input("Initial Investment ($)", min_value=1.0, value=100.0)
 run_analysis = st.sidebar.button("Run Analysis")
 
@@ -32,202 +26,120 @@ def load_data(file):
             df = pd.read_excel(file)
         df['date'] = pd.to_datetime(df['date'])
         df = df.sort_values('date').reset_index(drop=True)
-        required_columns = ['date', 'close']
-        if analysis_mode == "Use Technical Indicators":
-            required_columns.extend(['macd', 'rsi', 'atr', 'vwap'])
-        if show_candlestick:
-            required_columns.extend(['open', 'high', 'low'])
-        if not all(col in df.columns for col in required_columns):
-            missing = [col for col in required_columns if col not in df.columns]
-            st.error(f"Missing required columns: {', '.join(missing)}")
+        if 'close' not in df.columns:
+            st.error("Missing required column: 'close'")
             return None
-        if len(df) < days_to_analyze:
-            st.error(f"Dataset has {len(df)} rows, but at least {days_to_analyze} are required.")
+        if len(df) < compare_days:
+            st.error(f"Dataset has {len(df)} rows, but at least {compare_days} are required.")
             return None
         return df
     except Exception as e:
         st.error(f"Error loading file: {str(e)}")
         return None
 
-# Function to compute similarity between two series
-def compute_similarity(series1, series2, method='pearson'):
-    if len(series1) != len(series2) or len(series1) == 0:
-        return np.nan
-    try:
-        if method == 'pearson':
-            return pearsonr(series1, series2)[0]
-        else:  # cosine
-            return cosine_similarity([series1], [series2])[0][0]
-    except:
-        return np.nan
-
-# Function to extract pattern and compare
-def find_similar_patterns(df, days_analyze, days_predict, mode):
-    recent_pattern = df.tail(days_analyze).copy()
-    recent_date = recent_pattern['date'].iloc[-1]
-    recent_close = recent_pattern['close'].pct_change().fillna(0)
-    
-    matches = []
-    
-    # Define features based on mode
-    if mode == "Raw Data Only":
-        features = ['close']
-    else:
-        features = ['close', 'macd', 'rsi', 'atr', 'vwap']
-    
-    # Slide through historical data with ±5-day window
-    for year in range(df['date'].dt.year.min(), df['date'].dt.year.max() + 1):
-        for day_offset in range(-5, 6):  # ±5-day window
-            target_date = recent_date.replace(year=year) + timedelta(days=day_offset)
-            if target_date in df['date'].values:
-                idx = df[df['date'] == target_date].index[0]
-                if idx >= days_analyze - 1:
-                    historical = df.iloc[idx-days_analyze+1:idx+1].copy()
-                    if len(historical) == len(recent_pattern):
-                        similarity_scores = []
-                        for feature in features:
-                            hist_series = historical[feature].pct_change().fillna(0)
-                            recent_series = recent_pattern[feature].pct_change().fillna(0)
-                            score = compute_similarity(hist_series, recent_series)
-                            if not np.isnan(score):
-                                similarity_scores.append(score)
-                        if similarity_scores:
-                            avg_similarity = np.nanmean(similarity_scores)
-                            if idx + days_predict < len(df):
-                                forward_data = df.iloc[idx:idx+days_predict+1]
-                                forward_return = (forward_data['close'].iloc[-1] / forward_data['close'].iloc[0] - 1) * 100
-                                matches.append({
-                                    'year': year,
-                                    'target_date': target_date,
-                                    'similarity': avg_similarity,
-                                    'forward_return': forward_return,
-                                    'historical_pattern': historical,
-                                    'forward_data': forward_data
-                                })
-    
-    matches = sorted(matches, key=lambda x: x['similarity'], reverse=True)
-    return matches, recent_pattern
-
-# Function to create interactive Plotly chart
-def create_chart(df, recent_pattern, matches, show_indicators, show_candlestick):
-    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
-                        vertical_spacing=0.05, 
-                        subplot_titles=['Price Patterns', 'Volume', 'Technical Indicators'],
-                        row_heights=[0.5, 0.2, 0.3])
-    
-    if not recent_pattern.empty:
-        if show_candlestick and all(col in recent_pattern.columns for col in ['open', 'high', 'low', 'close']):
-            fig.add_trace(go.Candlestick(
-                x=recent_pattern['date'],
-                open=recent_pattern['open'],
-                high=recent_pattern['high'],
-                low=recent_pattern['low'],
-                close=recent_pattern['close'],
-                name='Current Pattern'
-            ), row=1, col=1)
-        else:
-            fig.add_trace(go.Scatter(
-                x=recent_pattern['date'], y=recent_pattern['close'],
-                mode='lines', name='Current Pattern', line=dict(color='blue', width=2)
-            ), row=1, col=1)
-    
-    colors = ['red', 'green', 'purple', 'orange', 'pink', 'cyan']
-    for i, match in enumerate(matches[:6]):
-        hist = match['historical_pattern']
-        if not hist.empty:
-            if show_candlestick and all(col in hist.columns for col in ['open', 'high', 'low', 'close']):
-                fig.add_trace(go.Candlestick(
-                    x=hist['date'],
-                    open=hist['open'],
-                    high=hist['high'],
-                    low=hist['low'],
-                    close=hist['close'],
-                    name=f"Match {match['year']} (Sim: {match['similarity']:.2f})",
-                    increasing_line_color=colors[i % len(colors)], 
-                    decreasing_line_color=colors[i % len(colors)], 
-                    opacity=0.5
-                ), row=1, col=1)
-            else:
-                fig.add_trace(go.Scatter(
-                    x=hist['date'], y=hist['close'],
-                    mode='lines', name=f"Match {match['year']} (Sim: {match['similarity']:.2f})",
-                    line=dict(color=colors[i % len(colors)], width=1, dash='dash')
-                ), row=1, col=1)
-            if 'volume' in hist.columns:
-                fig.add_trace(go.Bar(
-                    x=hist['date'], y=hist['volume'], name=f"Vol {match['year']}",
-                    marker_color=colors[i % len(colors)], opacity=0.3, showlegend=False
-                ), row=2, col=1)
-    
-    if 'volume' in recent_pattern.columns and not recent_pattern.empty:
-        fig.add_trace(go.Bar(
-            x=recent_pattern['date'], y=recent_pattern['volume'],
-            name='Current Volume', marker_color='blue', opacity=0.5
-        ), row=2, col=1)
-    
-    if show_indicators:
-        indicators = ['ma20', 'ma50', 'macd', 'rsi']
-        ind_colors = ['orange', 'purple', 'pink', 'cyan']
-        for i, col in enumerate(indicators):
-            if col in recent_pattern.columns and not recent_pattern.empty:
-                fig.add_trace(go.Scatter(
-                    x=recent_pattern['date'], y=recent_pattern['close'],
-                    mode='lines', name=col.upper(),
-                    line=dict(width=1, dash='dot', color=ind_colors[i]),
-                    yaxis='y3'
-                ), row=3, col=1)
-    
-    fig.update_layout(
-        title="Stock Pattern Comparison",
-        xaxis_title="Date",
-        yaxis_title="Price",
-        yaxis2_title="Volume",
-        yaxis3_title="Indicators",
-        hovermode="x unified",
-        showlegend=True,
-        height=900,
-        template="plotly_white"
-    )
-    fig.update_xaxes(rangeslider_visible=False)
-    fig.update_yaxes(title_text="Price", row=1, col=1)
-    fig.update_yaxes(title_text="Volume", row=2, col=1)
-    fig.update_yaxes(title_text="Indicators", row=3, col=1, secondary_y=True)
-    
-    return fig
-
-# Function to calculate profit/loss and train ML model
-def calculate_profit_loss(df, initial_investment, days_predict):
+# Function to calculate rolling profit/loss
+def calculate_rolling_profit_loss(df, compare_days, initial_investment):
     profit_loss_data = []
-    years = range(2010, 2026)  # 2010 to 2025
+    current_year = datetime.now().year  # 2025
+    years = range(df['date'].dt.year.min(), current_year + 1)
+    
     for year in years:
-        start_date = datetime(year, 6, 21)
-        end_date = start_date + timedelta(days=days_predict)
-        start_price = df[df['date'] == start_date]['close'].iloc[0] if start_date in df['date'].values else np.nan
-        end_price = df[df['date'] == end_date]['close'].iloc[0] if end_date in df['date'].values else np.nan
-        if not np.isnan(start_price) and not np.isnan(end_price):
-            profit_loss = (end_price - start_price) / start_price * 100
-            dollar_change = (end_price - start_price) * (initial_investment / start_price)
+        year_df = df[df['date'].dt.year == year].copy()
+        if len(year_df) < compare_days:
+            continue
+        for i in range(len(year_df) - compare_days + 1):
+            start_date = year_df['date'].iloc[i]
+            end_date = year_df['date'].iloc[i + compare_days - 1]
+            start_price = year_df['close'].iloc[i]
+            end_price = year_df['close'].iloc[i + compare_days - 1]
+            profit_loss_percent = ((end_price - start_price) / start_price) * 100
+            profit_loss_dollar = (end_price - start_price) * (initial_investment / start_price)
             profit_loss_data.append({
                 'Year': year,
+                'Start Date': start_date,
+                'End Date': end_date,
                 'Start Price': start_price,
                 'End Price': end_price,
-                'Profit/Loss (%)': profit_loss,
-                'Profit/Loss ($)': dollar_change
+                'Profit/Loss (%)': profit_loss_percent,
+                'Profit/Loss ($)': profit_loss_dollar
             })
     
-    # ML Prediction for 2025
-    historical_data = pd.DataFrame(profit_loss_data[:-1])  # Exclude 2025 for training
-    if len(historical_data) > 1 and 'Start Price' in historical_data.columns and 'End Price' in historical_data.columns:
+    # ML Prediction for 2025 future dates
+    historical_data = pd.DataFrame(profit_loss_data)
+    future_data = []
+    if len(historical_data) > compare_days:
         X = historical_data[['Start Price']].values
         y = historical_data['End Price'].values
         model = LinearRegression()
         model.fit(X, y)
-        predicted_end_price_2025 = model.predict([[profit_loss_data[-1]['Start Price']]])
-        profit_loss_data[-1]['End Price'] = predicted_end_price_2025[0]
-        profit_loss_data[-1]['Profit/Loss (%)'] = ((predicted_end_price_2025[0] - profit_loss_data[-1]['Start Price']) / profit_loss_data[-1]['Start Price']) * 100
-        profit_loss_data[-1]['Profit/Loss ($)'] = (predicted_end_price_2025[0] - profit_loss_data[-1]['Start Price']) * (initial_investment / profit_loss_data[-1]['Start Price'])
+        
+        # Predict for 2025 from the last available date
+        last_date = df['date'].iloc[-1]
+        if last_date.year == current_year:
+            start_idx = df[df['date'] == last_date].index[0]
+            if start_idx + compare_days - 1 < len(df):
+                start_price = df['close'].iloc[start_idx]
+                predicted_end_price = model.predict([[start_price]])[0]
+                end_date = last_date + timedelta(days=compare_days)
+                profit_loss_percent = ((predicted_end_price - start_price) / start_price) * 100
+                profit_loss_dollar = (predicted_end_price - start_price) * (initial_investment / start_price)
+                future_data.append({
+                    'Year': current_year,
+                    'Start Date': last_date,
+                    'End Date': end_date,
+                    'Start Price': start_price,
+                    'End Price': predicted_end_price,
+                    'Profit/Loss (%)': profit_loss_percent,
+                    'Profit/Loss ($)': profit_loss_dollar
+                })
+            profit_loss_data.extend(future_data)
     
     return profit_loss_data
+
+# Function to create interactive Plotly chart
+def create_chart(df, profit_loss_data):
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
+                        vertical_spacing=0.1, 
+                        subplot_titles=['Price Patterns', 'Profit/Loss'],
+                        row_heights=[0.7, 0.3])
+    
+    # Plot price patterns
+    for year in set(d['Year'] for d in profit_loss_data):
+        year_data = [d for d in profit_loss_data if d['Year'] == year]
+        if year_data:
+            dates = [d['Start Date'] for d in year_data] + [year_data[-1]['End Date']]
+            prices = [d['Start Price'] for d in year_data] + [year_data[-1]['End Price']]
+            fig.add_trace(go.Scatter(
+                x=dates, y=prices,
+                mode='lines+markers', name=f"Year {year}",
+                line=dict(width=1, dash='dash' if year == 2025 else 'solid')
+            ), row=1, col=1)
+    
+    # Plot profit/loss
+    profits = [d['Profit/Loss ($)'] for d in profit_loss_data]
+    dates = [d['End Date'] for d in profit_loss_data]
+    fig.add_trace(go.Bar(
+        x=dates, y=profits,
+        name='Profit/Loss ($)',
+        marker_color=['green' if p >= 0 else 'red' for p in profits],
+        opacity=0.7
+    ), row=2, col=1)
+    
+    fig.update_layout(
+        title="Stock Price and Profit/Loss Analysis",
+        xaxis_title="Date",
+        yaxis_title="Price",
+        yaxis2_title="Profit/Loss ($)",
+        hovermode="x unified",
+        showlegend=True,
+        height=800,
+        template="plotly_white"
+    )
+    fig.update_xaxes(rangeslider_visible=False)
+    fig.update_yaxes(title_text="Price", row=1, col=1)
+    fig.update_yaxes(title_text="Profit/Loss ($)", row=2, col=1)
+    
+    return fig
 
 # Main app logic
 if uploaded_file and run_analysis:
@@ -238,53 +150,41 @@ if uploaded_file and run_analysis:
     if df is None:
         st.stop()
     
-    # Run pattern analysis
-    matches, recent_pattern = find_similar_patterns(df, days_to_analyze, days_predict, analysis_mode)
+    # Calculate rolling profit/loss
+    profit_loss_data = calculate_rolling_profit_loss(df, compare_days, initial_investment)
     
     # Create and display chart
-    fig = create_chart(df, recent_pattern, matches, show_indicators, show_candlestick)
+    fig = create_chart(df, profit_loss_data)
     st.plotly_chart(fig, use_container_width=True)
     
     # Prediction summary in expandable section
-    with st.expander("Prediction and Profit/Loss Summary"):
-        if matches:
-            st.subheader("Pattern Matches")
-            summary_data = [{
-                'Year': m['year'],
-                'Target Date': m['target_date'].strftime('%Y-%m-%d'),
-                'Correlation Score': f"{m['similarity']:.2f}",
-                'Forward Movement (%)': f"{m['forward_return']:.2f}"
-            } for m in matches]
-            st.table(summary_data)
-        
-        # Calculate and display profit/loss
-        st.subheader("Profit/Loss Comparison (June 21 to June 26)")
-        profit_loss_data = calculate_profit_loss(df, initial_investment, days_predict)
+    with st.expander("Profit/Loss Summary"):
         if profit_loss_data:
             profit_loss_df = pd.DataFrame(profit_loss_data)
-            st.table(profit_loss_df)
-            predicted_return = profit_loss_data[-1]['Profit/Loss (%)']
-            st.write(f"Projected {days_predict}-day movement for 2025: {predicted_return:.2f}%")
+            styled_df = profit_loss_df.style.apply(
+                lambda x: ['background-color: green' if v >= 0 else 'background-color: red' for v in x['Profit/Loss ($)']],
+                subset=['Profit/Loss (%)', 'Profit/Loss ($)']
+            )
+            st.table(styled_df)
+            if any(d['Year'] == 2025 for d in profit_loss_data):
+                predicted_pl = next(d for d in profit_loss_data if d['Year'] == 2025)['Profit/Loss ($)']
+                st.write(f"Predicted Profit/Loss for 2025 ({compare_days}-day window): ${predicted_pl:.2f}")
         
         # Download predicted data
-        pred_df = pd.DataFrame({
-            'Date': [datetime(2025, 6, 21) + timedelta(days=i) for i in range(days_predict + 1)],
-            'Predicted_Close': [profit_loss_data[-1]['Start Price']] + [profit_loss_data[-1]['End Price']] * days_predict
-        })
+        pred_df = pd.DataFrame(profit_loss_data)
         csv = pred_df.to_csv(index=False)
         st.download_button(
             label="Download Predicted Data",
             data=csv,
-            file_name="predicted_stock_data.csv",
+            file_name="profit_loss_data.csv",
             mime="text/csv"
         )
     
-    if not matches:
-        st.error("No matching patterns found. Suggestions:\n"
+    if not profit_loss_data:
+        st.error("No profit/loss data calculated. Suggestions:\n"
                  "- Ensure your dataset spans multiple years (at least 2010–2025).\n"
-                 "- Adjust 'Days to Analyze' to a smaller or larger window.\n"
                  "- Verify the date column is in a valid format (e.g., YYYY-MM-DD).\n"
-                 "- Check for sufficient data points.")
+                 "- Check for sufficient data points (at least {compare_days} rows per year).")
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
 else:
