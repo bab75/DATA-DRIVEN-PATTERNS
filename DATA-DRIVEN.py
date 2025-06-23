@@ -253,7 +253,6 @@ def create_chart(df, profit_loss_data, mode):
     
     fig.update_layout(
         title=f"Stock Price and Profit/Loss Analysis ({mode})",
-        xaxis_title="Date",
         yaxis_title="Price",
         yaxis2_title="Profit/Loss (%)",
         hovermode="x unified",
@@ -270,7 +269,7 @@ def create_chart(df, profit_loss_data, mode):
             x=1.1, y=1.1
         )]
     )
-    fig.update_xaxes(rangeslider_visible=True)
+    fig.update_xaxes(rangeslider_visible=True, title_text="")
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text="Profit/Loss (%)", row=2, col=1)
     
@@ -288,9 +287,9 @@ def create_year_table(year_data):
     columns = ['Year'] + [f"{format_date(d['Start Date'])} to {format_date(d['End Date'])}" for d in year_data]
     values = [year] + [d['Profit/Loss (%)'] for d in year_data]
     df = pd.DataFrame([values], columns=columns)
+    # Ensure styling aligns with DataFrame structure
     styled_df = df.style.apply(
         lambda x: ['background-color: #90EE90' if v >= 0 else 'background-color: #FFB6C1' for v in x[1:]],
-        subset=[col for col in df.columns if col != 'Year'],
         axis=1
     ).set_properties(**{'text-align': 'center', 'border': '1px solid #ddd', 'padding': '8px'})
     return styled_df
