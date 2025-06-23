@@ -81,9 +81,9 @@ with st.sidebar:
         st.experimental_rerun()
     if st.button("Mode Description"):
         st.write("""
-        - **Raw Data (Open vs. Close)**: Uses only 'open' and 'close' prices.
-        - **Open/Close/High/Low**: Includes 'high' and 'low' prices.
-        - **Technical Indicators**: Uses 'high', 'low', 'ma20', 'ma50', 'macd', 'rsi', 'atr', 'vwap'.
+        - **Raw Data (Open vs. Close)**: Analyzes profit/loss using opening and closing prices.
+        - **Open/Close/High/Low**: Considers high and low prices within the period for potential profit/loss.
+        - **Technical Indicators**: Uses indicators (ma20, ma50, macd, rsi, atr, vwap) to adjust predictions.
         """)
 
 # Function to load and preprocess data
@@ -109,6 +109,7 @@ def load_data(file):
         if len(dframe) < compare_days:
             st.error(f"Dataset has {len(dframe)} rows, but at least {compare_days} are required.")
             return None
+        st.info(f"Loaded {len(dframe)} rows with columns: {', '.join(dframe.columns)}")
         return dframe
     except Exception as e:
         st.error(f"Error loading file: {str(e)}")
@@ -157,7 +158,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
 
     for year in years:
         year_df = dframe[dframe['date'].apply(lambda x: x.year) == year].copy()
-        if len(year_df) < max(1, compare_days // 2):  # Relaxed requirement
+        if len(year_df) < max(1, compare_days // 2):
             st.warning(f"Year {year} has insufficient data ({len(year_df)} days). Minimum required: {max(1, compare_days // 2)}")
             continue
         
@@ -177,11 +178,35 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                     (year_df['date'] <= end_date)
                 ]
                 
-                if len(period_data) >= max(1, compare_days // 2):  # At least half the required days
+                if len(period_data) >= max(1, compare_days // 2):
                     start_price = period_data.iloc[0]['open']
                     end_price = period_data.iloc[-1]['close']
-                    profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else 0.0
-                    profit_loss_value = (end_price - start_price) if not np.isnan(end_price - start_price) else 0.0
+                    
+                    # Mode-specific profit/loss calculation
+                    if mode == "Raw Data (Open vs. Close)":
+                        profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else 0.0
+                        profit_loss_value = end_price - start_price if not np.isnan(end_price - start_price) else 0.0
+                    elif mode == "Open/Close/High/Low":
+                        # Use high/low to estimate max potential profit/loss
+                        max_high = period_data['high'].max()
+                        min_low = period_data['low'].min()
+                        profit_loss_percent = ((max_high - min_low) / start_price) * 100 if not np.isnan(max_high - min_low) else 0.0
+                        profit_loss_value = max_high - min_low if not np.isnan(max_high - min_low) else 0.0
+                    elif mode == "Technical Indicators":
+                        # Weight profit/loss by RSI and MACD signals
+                        rsi_avg = period_data['rsi'].mean()
+                        macd_avg = period_data['macd'].mean()
+                        weight = 1.0
+                        if rsi_avg > 70:  # Overbought
+                            weight *= 0.8
+                        elif rsi_avg < 30:  # Oversold
+                            weight *= 1.2
+                        if macd_avg > 0:  # Bullish
+                            weight *= 1.1
+                        elif macd_avg < 0:  # Bearish
+                            weight *= 0.9
+                        profit_loss_percent = ((end_price - start_price) / start_price) * 100 * weight if not np.isnan(end_price - start_price) else 0.0
+                        profit_loss_value = (end_price - start_price) * weight if not np.isnan(end_price - start_price) else 0.0
                     
                     profit_loss_data.append({
                         'Year': year,
@@ -193,11 +218,14 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                 
                 start_day += compare_days
 
+    if not profit_loss_data:
+        st.warning("No valid periods found for profit/loss calculation. Check data for gaps or insufficient rows.")
+        return []
+
     # ML Prediction for 2025
     historical_data = pd.DataFrame([d for d in profit_loss_data if d['Year'] != current_year])
     future_data = []
     if len(historical_data) > 5:
-        # Use time-based features
         historical_data['period_index'] = range(len(historical_data))
         X = historical_data[['period_index']].values
         y_percent = historical_data['Profit/Loss (Percentage)'].values
@@ -209,7 +237,6 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
             model_value.fit(X, y_value)
             last_date = dframe[dframe['date'].apply(lambda x: x.year) == current_year]['date'].iloc[-1]
             if last_date.year == current_year:
-                start_idx = dframe.index[dframe['date'] == last_date][0]
                 next_period_idx = len(historical_data)
                 predicted_pl_percent = model_percent.predict([[next_period_idx]])[0]
                 predicted_pl_value = model_value.predict([[next_period_idx]])[0]
@@ -251,14 +278,41 @@ def create_chart(dframe, profit_loss_data, mode, unit):
             dates = [d['Start Date'] for d in year_data]
             valid_dates = [d for d in dates if d in dframe['date'].values]
             if valid_dates:
-                prices = [dframe[dframe['date'] == d]['open'].iloc[0] for d in valid_dates]
-                fig.add_trace(go.Scatter(
-                    x=valid_dates,
-                    y=prices,
-                    mode='lines+markers', name=f"Year {year}",
-                    line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
-                    hovertemplate='Date: %{x}<br>Price: %{y}<extra></extra>'
-                ), row=1, col=1)
+                if mode == "Raw Data (Open vs. Close)":
+                    prices = [dframe[dframe['date'] == d]['open'].iloc[0] for d in valid_dates]
+                    fig.add_trace(go.Scatter(
+                        x=valid_dates,
+                        y=prices,
+                        mode='lines+markers', name=f"Year {year} (Open)",
+                        line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
+                        hovertemplate='Date: %{x}<br>Price: %{y}<extra></extra>'
+                    ), row=1, col=1)
+                elif mode == "Open/Close/High/Low":
+                    highs = [dframe[dframe['date'] == d]['high'].iloc[0] for d in valid_dates]
+                    lows = [dframe[dframe['date'] == d]['low'].iloc[0] for d in valid_dates]
+                    fig.add_trace(go.Scatter(
+                        x=valid_dates,
+                        y=highs,
+                        mode='lines+markers', name=f"Year {year} (High)",
+                        line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
+                        hovertemplate='Date: %{x}<br>High: %{y}<extra></extra>'
+                    ), row=1, col=1)
+                    fig.add_trace(go.Scatter(
+                        x=valid_dates,
+                        y=lows,
+                        mode='lines+markers', name=f"Year {year} (Low)",
+                        line=dict(width=1, dash='dot', color=color_map[year]),
+                        hovertemplate='Date: %{x}<br>Low: %{y}<extra></extra>'
+                    ), row=1, col=1)
+                elif mode == "Technical Indicators":
+                    ma20 = [dframe[dframe['date'] == d]['ma20'].iloc[0] for d in valid_dates]
+                    fig.add_trace(go.Scatter(
+                        x=valid_dates,
+                        y=ma20,
+                        mode='lines+markers', name=f"Year {year} (MA20)",
+                        line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
+                        hovertemplate='Date: %{x}<br>MA20: %{y}<extra></extra>'
+                    ), row=1, col=1)
     
     profits = [d[f'Profit/Loss ({unit})'] for d in profit_loss_data]
     dates = [d['Start Date'] for d in profit_loss_data]
@@ -285,8 +339,8 @@ def create_chart(dframe, profit_loss_data, mode, unit):
             type="dropdown",
             direction="down",
             buttons=list([
-                dict(label="All Years", method="update", args=[{"visible": [True] * len(unique_years)}]),
-                *[dict(label=f"Year {year}", method="update", args=[{"visible": [year == y for y in unique_years]}]) for year in unique_years]
+                dict(label="All Years", method="update", args=[{"visible": [True] * len(fig.data)}]),
+                *[dict(label=f"Year {year}", method="update", args=[{"visible": [d.name.startswith(f"Year {year}") for d in fig.data]}]) for year in unique_years]
             ]),
             x=1.1, y=1.1
         )]
@@ -379,7 +433,7 @@ if uploaded_file and run_analysis:
 # Display results if data is available
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write("Analyze stock patterns and predict future trends. Current date: June 23, 2025, 06:58 PM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 07:04 PM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -394,8 +448,8 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
 
     # Display table for all years
     st.subheader("Historical Profit/Loss by Year")
-    styled_df, df = create_year_table(st.session_state.profit_loss_data.to_dict('records'), compare_days, unit)
-    if df is not None:
+    df, styled_df = create_year_table(st.session_state.profit_loss_data.to_dict('records'), compare_days, unit)
+    if df is not None and not df.empty:
         st.write(f"📊 **Table Summary**: {len(df.columns)-1} periods across {len(df)} years")
         
         # Display options
@@ -442,6 +496,9 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         
         st.button("Copy to Clipboard", key="copy_all", on_click=lambda: st.write_clipboard(df.to_csv()))
 
+    else:
+        st.warning("No table data available. Ensure your dataset has sufficient data for the selected 'Compare Days' and analysis mode.")
+
     # Display 2025 prediction
     st.subheader("2025 Prediction")
     current_year_data = [d for d in st.session_state.profit_loss_data.to_dict('records') if d['Year'] == 2025]
@@ -483,14 +540,19 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         - Click 'Run Analysis' to process data.
         - Toggle 'Show Profit/Loss as Percentage' to switch between percentage and absolute value.
         - Explore charts, tables, and download results without resetting until new analysis.
+        **Analysis Modes**:
+        - **Raw Data**: Uses open/close prices for profit/loss.
+        - **Open/Close/High/Low**: Uses high/low prices for max potential profit/loss.
+        - **Technical Indicators**: Adjusts profit/loss based on RSI and MACD signals.
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
-        - Check for data gaps or formatting issues.
+        - Verify required columns for the selected mode.
+        - Check for data gaps or insufficient rows.
         - Install 'openpyxl' for Excel export: `pip install openpyxl`.
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.3 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.4 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
