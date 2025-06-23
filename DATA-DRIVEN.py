@@ -38,8 +38,10 @@ st.markdown(
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         margin-bottom: 15px;
     }
-    .stDataFrame tr:hover {
-        background-color: #F0F8FF;
+    .custom-table td {
+        text-align: center;
+        border: 1px solid #ddd;
+        padding: 8px;
     }
     </style>
     """,
@@ -123,7 +125,6 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
         if len(year_df) < compare_days:
             continue
         current_date = min(year_df['date'])
-        # Find the first valid start_date that ensures a valid end_date within compare_days
         while current_date:
             start_date = current_date
             end_date = start_date + timedelta(days=compare_days-1)
@@ -227,6 +228,12 @@ def create_chart(df, profit_loss_data, mode):
                         subplot_titles=['Price Patterns', 'Profit/Loss'],
                         row_heights=[0.7, 0.3])
     
+    # Define color map for each year
+    color_map = {
+        2020: '#FF6B6B', 2021: '#4ECDC4', 2022: '#45B7D1', 2023: '#96CEB4',
+        2024: '#FFEEAD', 2025: '#D4A5A5',  # Add more years as needed
+    }
+    
     unique_years = set(d['Year'] for d in profit_loss_data)
     for year in unique_years:
         year_data = [d for d in profit_loss_data if d['Year'] == year]
@@ -237,7 +244,7 @@ def create_chart(df, profit_loss_data, mode):
             fig.add_trace(go.Scatter(
                 x=formatted_dates, y=prices,
                 mode='lines+markers', name=f"Year {year}",
-                line=dict(width=2, dash='dash' if year == 2025 else 'solid'),
+                line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map.get(year, '#888888')),
                 hovertemplate='Date: %{x}<br>Price: %{y}<extra></extra>'
             ), row=1, col=1)
     
@@ -257,7 +264,7 @@ def create_chart(df, profit_loss_data, mode):
         yaxis2_title="Profit/Loss (%)",
         hovermode="x unified",
         showlegend=True,
-        height=800,
+        height=900,
         template="plotly_white",
         updatemenus=[dict(
             type="dropdown",
@@ -283,15 +290,19 @@ def create_chart(df, profit_loss_data, mode):
 def create_year_table(year_data):
     if not year_data:
         return None
-    year = year_data[0]['Year']
-    columns = ['Year'] + [f"{format_date(d['Start Date'])} to {format_date(d['End Date'])}" for d in year_data]
-    values = [year] + [d['Profit/Loss (%)'] for d in year_data]
-    df = pd.DataFrame([values], columns=columns)
-    # Ensure styling aligns with DataFrame structure
-    styled_df = df.style.apply(
-        lambda x: ['background-color: #90EE90' if v >= 0 else 'background-color: #FFB6C1' for v in x[1:]],
-        axis=1
-    ).set_properties(**{'text-align': 'center', 'border': '1px solid #ddd', 'padding': '8px'})
+    # Convert to a multi-row DataFrame with fixed columns
+    data = {
+        'Year': [d['Year'] for d in year_data],
+        'Start Date': [format_date(d['Start Date']) for d in year_data],
+        'End Date': [format_date(d['End Date']) for d in year_data],
+        'Profit/Loss (%)': [d['Profit/Loss (%)'] for d in year_data]
+    }
+    df = pd.DataFrame(data)
+    # Apply simple conditional styling
+    def color_profit(val):
+        color = '#90EE90' if val >= 0 else '#FFB6C1'
+        return f'background-color: {color}'
+    styled_df = df.style.applymap(color_profit, subset=['Profit/Loss (%)'])
     return styled_df
 
 # Function to create prediction card
@@ -299,11 +310,10 @@ def create_prediction_card(pred_data):
     if not pred_data:
         return None
     pred_df = pd.DataFrame(pred_data).fillna(0)
-    styled_df = pred_df.style.apply(
-        lambda x: ['background-color: #90EE90' if v >= 0 else 'background-color: #FFB6C1' for v in x['Profit/Loss (%)']],
-        subset=['Profit/Loss (%)'],
-        axis=1
-    ).set_properties(**{'text-align': 'center', 'border': '1px solid #ddd', 'padding': '8px'})
+    def color_profit(val):
+        color = '#90EE90' if val >= 0 else '#FFB6C1'
+        return f'background-color: {color}'
+    styled_df = pred_df.style.applymap(color_profit, subset=['Profit/Loss (%)'])
     return styled_df
 
 # Main app logic
