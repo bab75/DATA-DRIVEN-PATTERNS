@@ -245,7 +245,7 @@ def create_chart(df, profit_loss_data, mode):
             fig.add_trace(go.Scatter(
                 x=formatted_dates, y=prices,
                 mode='lines+markers', name=f"Year {year}",
-                line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map.get(year, '#888888')),
+                line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),  # Ensure color is applied
                 hovertemplate='Date Range: %{x}<br>Price: %{y}<extra></extra>'
             ), row=1, col=1)
     
@@ -277,7 +277,7 @@ def create_chart(df, profit_loss_data, mode):
             x=1.1, y=1.1
         )]
     )
-    fig.update_xaxes(rangeslider_visible=True, title_text="")
+    fig.update_xaxes(rangeslider_visible=True, title_text="", tickangle=-45)  # Rotate x-axis labels for better readability
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text="Profit/Loss (%)", row=2, col=1)
     
@@ -295,8 +295,6 @@ def create_year_table(year_data, compare_days):
     data = {'Year': year_data[0]['Year']}
     for i, d in enumerate(year_data):
         date_range = format_date_range(d['Start Date'], d['End Date'])
-        data[f"{date_range} - Start Price"] = [d['Start Open Price']]
-        data[f"{date_range} - End Price"] = [d['End Close Price']]
         data[f"{date_range} - Profit/Loss (%)"] = [d['Profit/Loss (%)']]
     df = pd.DataFrame(data)
     # Transpose for horizontal layout
@@ -376,10 +374,14 @@ if uploaded_file and run_analysis:
     # Download all data
     all_df = pd.DataFrame(profit_loss_data).fillna(0)
     csv_all = all_df.to_csv(index=False)
-    excel_all = all_df.to_excel("all_profit_loss_data.xlsx", index=False)
+    try:
+        import openpyxl
+        excel_all = all_df.to_excel("all_profit_loss_data.xlsx", index=False)
+        st.download_button(label="Download as Excel", data=excel_all, file_name="all_profit_loss_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except ImportError:
+        st.warning("Please install 'openpyxl' to enable Excel export: `pip install openpyxl`")
     with st.expander("Download All Data"):
         st.download_button(label="Download as CSV", data=csv_all, file_name="all_profit_loss_data.csv", mime="text/csv")
-        st.download_button(label="Download as Excel", data=excel_all, file_name="all_profit_loss_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     # Help section
     with st.expander("Help"):
@@ -393,6 +395,7 @@ if uploaded_file and run_analysis:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
         - Check for missing columns based on the selected mode.
         - If 'Index out of bounds' warnings appear, verify data continuity (e.g., no large gaps).
+        - Install 'openpyxl' for Excel export: `pip install openpyxl`.
         """)
 
     # Footer
