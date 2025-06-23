@@ -214,31 +214,34 @@ def create_chart(df, profit_loss_data, mode):
     for year in unique_years:
         year_data = [d for d in profit_loss_data if d['Year'] == year]
         if year_data:
-            dates = [d['Start Date'] for d in year_data] + [year_data[-1]['End Date']]
-            prices = [df[df['date'] == d]['open'].iloc[0] for d in dates]  # Use open price for chart
-            formatted_dates = [format_date_range(d['Start Date'], d['End Date']) for d in year_data] + [format_date_range(year_data[-1]['Start Date'], year_data[-1]['End Date'])]
-            fig.add_trace(go.Scatter(
-                x=range(len(formatted_dates)), y=prices,  # Use index instead of dates on x-axis
-                mode='lines+markers', name=f"Year {year}",
-                line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
-                hovertemplate='Index: %{x}<br>Price: %{y}<extra></extra>'
-            ), row=1, col=1)
+            dates = [d['Start Date'] for d in year_data]  # Use Start Date for x-axis
+            valid_dates = [d for d in dates if d in df['date'].values]  # Filter valid dates
+            if valid_dates:
+                prices = [df[df['date'] == d]['open'].iloc[0] for d in valid_dates]  # Safe access
+                fig.add_trace(go.Scatter(
+                    x=valid_dates,  # Use actual dates on x-axis
+                    y=prices,
+                    mode='lines+markers', name=f"Year {year}",
+                    line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
+                    hovertemplate='Date: %{x}<br>Price: %{y}<extra></extra>'
+                ), row=1, col=1)
     
     profits = [d['Profit/Loss (%)'] for d in profit_loss_data]
-    indices = range(len(profits))
+    dates = [d['Start Date'] for d in profit_loss_data]  # Use Start Date for x-axis
     fig.add_trace(go.Bar(
-        x=indices,
+        x=dates,
         y=profits,
         name='Profit/Loss (%)',
         marker_color=['#90EE90' if p >= 0 else '#FFB6C1' for p in profits],
         opacity=0.7,
-        hovertemplate='Index: %{x}<br>Profit/Loss: %{y}%<extra></extra>'
+        hovertemplate='Date: %{x}<br>Profit/Loss: %{y}%<extra></extra>'
     ), row=2, col=1)
     
     fig.update_layout(
         title=f"Stock Price and Profit/Loss Analysis ({mode})",
         yaxis_title="Price",
         yaxis2_title="Profit/Loss (%)",
+        xaxis_title="Date",  # Label x-axis as Date
         hovermode="x unified",
         showlegend=True,
         height=900,
@@ -253,7 +256,7 @@ def create_chart(df, profit_loss_data, mode):
             x=1.1, y=1.1
         )]
     )
-    fig.update_xaxes(visible=False)  # Remove x-axis display
+    fig.update_xaxes(tickformat="%Y-%m-%d")  # Format dates on x-axis
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text="Profit/Loss (%)", row=2, col=1)
     
