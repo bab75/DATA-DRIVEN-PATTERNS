@@ -158,6 +158,8 @@ def generate_monthly_periods(compare_days, year=2024, exchange='NYSE'):
     for month in range(1, 13):
         start_date = datetime(year, month, 1).date()
         end_date = datetime(year, month, [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month-1]).date()
+        if year % 4 == 0 and month == 2:
+            end_date = datetime(year, month, 29).date()
         trading_days = get_trading_days(start_date, end_date)
         if not trading_days.size:
             continue
@@ -376,11 +378,12 @@ def create_chart(dframe, profit_loss_data, mode, unit):
                 dict(label="All Years", method="update", args=[{"visible": [True] * len(fig.data)}]),
                 *[dict(label=f"Year {year}", method="update", args=[{"visible": [d.name.startswith(f"Year {year}") for d in fig.data]}]) for year in unique_years]
             ]),
-        x=1.1, y=1.1)
-        ])
+            x=1.1, y=1.1
+        )]
+    )
     fig.update_xaxes(tickformat="%Y-%m-%d")
-    fig.update_yaxes(title_text="Year", row=1, col=0)
-    st.dataframe(styled_df, use_container_width=True)
+    fig.update_yaxes(title_text="Price", row=1, col=1)
+    fig.update_yaxes(title_text=f"Profit/Loss ({unit_symbol})", row=2, col=1)
     
     # Download chart button
     chart_div = fig.to_html(include_plotlyjs='cdn', full_html=False)
@@ -406,7 +409,7 @@ def create_year_table(profit_loss_data, compare_days, unit):
     # Fill with actual data
     for d in profit_loss_data:
         year_idx = years.index(d['Year'])
-        date_range = format_date_range(d['Start Date'].date(), d['End Date'].date())
+        date_range = format_date_range(d['Start Date'], d['End Date'])
         if date_range in table_data:
             table_data[date_range][year_idx] = d[f'Profit/Loss ({unit})']
     
@@ -470,7 +473,7 @@ if uploaded_file and run_analysis:
 # Display results
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 07:20 PM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 07:35 PM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -594,7 +597,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.6 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.7 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
