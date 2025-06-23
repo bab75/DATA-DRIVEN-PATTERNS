@@ -15,6 +15,7 @@ st.sidebar.header("Control Panel")
 uploaded_file = st.sidebar.file_uploader("Upload CSV or Excel file", type=['csv', 'xlsx'])
 compare_days = st.sidebar.number_input("Compare Days (1-30)", min_value=1, max_value=30, value=6)
 initial_investment = st.sidebar.number_input("Initial Investment ($)", min_value=1.0, value=100.0)
+analysis_mode = st.sidebar.radio("Analysis Mode", ["Raw Data (Open vs. Close)", "Open/Close/High/Low", "Technical Indicators"])
 run_analysis = st.sidebar.button("Run Analysis")
 
 # Function to load and preprocess data
@@ -26,8 +27,14 @@ def load_data(file):
             df = pd.read_excel(file)
         df['date'] = pd.to_datetime(df['date'])
         df = df.sort_values('date').reset_index(drop=True)
-        if 'close' not in df.columns:
-            st.error("Missing required column: 'close'")
+        required_columns = ['date', 'open', 'close']
+        if analysis_mode == "Open/Close/High/Low":
+            required_columns.extend(['high', 'low'])
+        elif analysis_mode == "Technical Indicators":
+            required_columns.extend(['high', 'low', 'ma20', 'ma50', 'macd', 'rsi', 'atr', 'vwap'])
+        if not all(col in df.columns for col in required_columns):
+            missing = [col for col in required_columns if col not in df.columns]
+            st.error(f"Missing required columns for {analysis_mode}: {', '.join(missing)}")
             return None
         if len(df) < compare_days:
             st.error(f"Dataset has {len(df)} rows, but at least {compare_days} are required.")
@@ -37,8 +44,8 @@ def load_data(file):
         st.error(f"Error loading file: {str(e)}")
         return None
 
-# Function to calculate rolling profit/loss
-def calculate_rolling_profit_loss(df, compare_days, initial_investment):
+# Function to calculate rolling profit/loss with ML prediction
+def calculate_rolling_profit_loss(df, compare_days, initial_investment, mode):
     profit_loss_data = []
     current_year = datetime.now().year  # 2025
     years = range(df['date'].dt.year.min(), current_year + 1)
@@ -50,72 +57,109 @@ def calculate_rolling_profit_loss(df, compare_days, initial_investment):
         for i in range(len(year_df) - compare_days + 1):
             start_date = year_df['date'].iloc[i]
             end_date = year_df['date'].iloc[i + compare_days - 1]
-            start_price = year_df['close'].iloc[i]
+            start_price = year_df['open'].iloc[i]
             end_price = year_df['close'].iloc[i + compare_days - 1]
             profit_loss_percent = ((end_price - start_price) / start_price) * 100
             profit_loss_dollar = (end_price - start_price) * (initial_investment / start_price)
+            features = {'Start Open': start_price, 'End Close': end_price}
+            if mode == "Open/Close/High/Low":
+                features.update({
+                    'High': year_df['high'].iloc[i + compare_days - 1],
+                    'Low': year_df['low'].iloc[i + compare_days - 1]
+                })
+            elif mode == "Technical Indicators":
+                features.update({
+                    'High': year_df['high'].iloc[i + compare_days - 1],
+                    'Low': year_df['low'].iloc[i + compare_days - 1],
+                    'MA20': year_df['ma20'].iloc[i + compare_days - 1],
+                    'MA50': year_df['ma50'].iloc[i + compare_days - 1],
+                    'MACD': year_df['macd'].iloc[i + compare_days - 1],
+                    'RSI': year_df['rsi'].iloc[i + compare_days - 1],
+                    'ATR': year_df['atr'].iloc[i + compare_days - 1],
+                    'VWAP': year_df['vwap'].iloc[i + compare_days - 1]
+                })
             profit_loss_data.append({
                 'Year': year,
                 'Start Date': start_date,
                 'End Date': end_date,
-                'Start Price': start_price,
-                'End Price': end_price,
+                'Start Open Price': start_price,
+                'End Close Price': end_price,
                 'Profit/Loss (%)': profit_loss_percent,
-                'Profit/Loss ($)': profit_loss_dollar
+                'Profit/Loss ($)': profit_loss_dollar,
+                **features
             })
     
     # ML Prediction for 2025 future dates
-    historical_data = pd.DataFrame(profit_loss_data)
+    historical_data = pd.DataFrame(profit_loss_data[:-len([d for d in profit_loss_data if d['Year'] == current_year])])
     future_data = []
     if len(historical_data) > compare_days:
-        X = historical_data[['Start Price']].values
-        y = historical_data['End Price'].values
+        X = historical_data[['Start Open Price'] + [k for k in features.keys() if k not in ['Start Open', 'End Close']]].values
+        y = historical_data['End Close Price'].values
         model = LinearRegression()
-        model.fit(X, y)
-        
-        # Predict for 2025 from the last available date
-        last_date = df['date'].iloc[-1]
-        if last_date.year == current_year:
-            start_idx = df[df['date'] == last_date].index[0]
-            if start_idx + compare_days - 1 < len(df):
-                start_price = df['close'].iloc[start_idx]
-                predicted_end_price = model.predict([[start_price]])[0]
-                end_date = last_date + timedelta(days=compare_days)
-                profit_loss_percent = ((predicted_end_price - start_price) / start_price) * 100
-                profit_loss_dollar = (predicted_end_price - start_price) * (initial_investment / start_price)
-                future_data.append({
-                    'Year': current_year,
-                    'Start Date': last_date,
-                    'End Date': end_date,
-                    'Start Price': start_price,
-                    'End Price': predicted_end_price,
-                    'Profit/Loss (%)': profit_loss_percent,
-                    'Profit/Loss ($)': profit_loss_dollar
-                })
-            profit_loss_data.extend(future_data)
+        try:
+            model.fit(X, y)
+            last_date = df['date'].iloc[-1]
+            if last_date.year == current_year:
+                start_idx = df[df['date'] == last_date].index[0]
+                if start_idx + compare_days - 1 < len(df):
+                    start_price = df['open'].iloc[start_idx]
+                    features_dict = {'Start Open': start_price}
+                    if mode == "Open/Close/High/Low":
+                        features_dict.update({
+                            'High': df['high'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
+                            'Low': df['low'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan
+                        })
+                    elif mode == "Technical Indicators":
+                        features_dict.update({
+                            'High': df['high'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
+                            'Low': df['low'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
+                            'MA20': df['ma20'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
+                            'MA50': df['ma50'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
+                            'MACD': df['macd'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
+                            'RSI': df['rsi'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
+                            'ATR': df['atr'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
+                            'VWAP': df['vwap'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan
+                        })
+                    X_predict = [v for k, v in features_dict.items() if k != 'Start Open']
+                    predicted_end_price = model.predict([X_predict])[0]
+                    end_date = last_date + timedelta(days=compare_days)
+                    profit_loss_percent = ((predicted_end_price - start_price) / start_price) * 100
+                    profit_loss_dollar = (predicted_end_price - start_price) * (initial_investment / start_price)
+                    future_data.append({
+                        'Year': current_year,
+                        'Start Date': last_date,
+                        'End Date': end_date,
+                        'Start Open Price': start_price,
+                        'End Close Price': predicted_end_price,
+                        'Profit/Loss (%)': profit_loss_percent,
+                        'Profit/Loss ($)': profit_loss_dollar,
+                        **features_dict
+                    })
+        except Exception as e:
+            st.warning(f"ML prediction failed: {str(e)}. Using last known value.")
+            predicted_end_price = start_price  # Fallback
+        profit_loss_data.extend(future_data)
     
     return profit_loss_data
 
 # Function to create interactive Plotly chart
-def create_chart(df, profit_loss_data):
+def create_chart(df, profit_loss_data, mode):
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                         vertical_spacing=0.1, 
                         subplot_titles=['Price Patterns', 'Profit/Loss'],
                         row_heights=[0.7, 0.3])
     
-    # Plot price patterns
     for year in set(d['Year'] for d in profit_loss_data):
         year_data = [d for d in profit_loss_data if d['Year'] == year]
         if year_data:
             dates = [d['Start Date'] for d in year_data] + [year_data[-1]['End Date']]
-            prices = [d['Start Price'] for d in year_data] + [year_data[-1]['End Price']]
+            prices = [d['Start Open Price'] for d in year_data] + [year_data[-1]['End Close Price']]
             fig.add_trace(go.Scatter(
                 x=dates, y=prices,
                 mode='lines+markers', name=f"Year {year}",
                 line=dict(width=1, dash='dash' if year == 2025 else 'solid')
             ), row=1, col=1)
     
-    # Plot profit/loss
     profits = [d['Profit/Loss ($)'] for d in profit_loss_data]
     dates = [d['End Date'] for d in profit_loss_data]
     fig.add_trace(go.Bar(
@@ -126,7 +170,7 @@ def create_chart(df, profit_loss_data):
     ), row=2, col=1)
     
     fig.update_layout(
-        title="Stock Price and Profit/Loss Analysis",
+        title=f"Stock Price and Profit/Loss Analysis ({mode})",
         xaxis_title="Date",
         yaxis_title="Price",
         yaxis2_title="Profit/Loss ($)",
@@ -151,10 +195,10 @@ if uploaded_file and run_analysis:
         st.stop()
     
     # Calculate rolling profit/loss
-    profit_loss_data = calculate_rolling_profit_loss(df, compare_days, initial_investment)
+    profit_loss_data = calculate_rolling_profit_loss(df, compare_days, initial_investment, analysis_mode)
     
     # Create and display chart
-    fig = create_chart(df, profit_loss_data)
+    fig = create_chart(df, profit_loss_data, analysis_mode)
     st.plotly_chart(fig, use_container_width=True)
     
     # Prediction summary in expandable section
