@@ -121,11 +121,16 @@ def generate_calendar_columns(compare_days):
     """Generate calendar-based column headers"""
     columns = []
     current_date = datetime(2024, 1, 1).date()  # Start from Jan 1st
-    while current_date.month <= 12:
+    max_iterations = 366  # Prevent infinite loop (max days in a year)
+    iteration_count = 0
+    while current_date.month <= 12 and iteration_count < max_iterations:
         end_date = current_date + timedelta(days=compare_days-1)
         if end_date.year == current_date.year:  # Stay within same year
             columns.append(format_date_range(current_date, end_date))
         current_date += timedelta(days=compare_days)  # Non-overlapping
+        iteration_count += 1
+    if iteration_count >= max_iterations:
+        st.warning("Reached maximum calendar iterations. Some periods may be truncated.")
     return columns
 
 # Function to calculate rolling profit/loss within each year
@@ -232,8 +237,8 @@ def create_chart(dframe, profit_loss_data, mode):
         x=dates,
         y=profits,
         name='Profit/Loss (%)',
-        marker_color=['#90EE90' if p >= 0 else '#FFB6C1' for p in profits],
-        opacity=0.7,
+        marker_color=['#006400' if p >= 0 else '#8B0000' for p in profits],  # Darker green and red
+        opacity=0.9,  # Increased opacity for better visibility
         hovertemplate='Date: %{x}<br>Profit/Loss: %{y}%<extra></extra>'
     ), row=2, col=1)
     
