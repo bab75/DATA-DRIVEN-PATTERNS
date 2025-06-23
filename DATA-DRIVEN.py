@@ -55,7 +55,7 @@ st.set_page_config(page_title="Stock Pattern Analyzer", layout="wide")
 with st.sidebar:
     st.header("Control Panel")
     uploaded_file = st.file_uploader("Upload CSV or Excel file", type=['csv', 'xlsx'], help="Upload a file with 'date', 'open', 'close' columns.")
-    compare_days = st.number_input("Compare Days (1-30)", min_value=1, max_value=30, value=2, help="Number of days to compare for profit/loss.")
+    compare_days = st.number_input("Compare Days (1-30)", min_value=1, max_value=30, value=2, help="Number of days to compare for profit/loss within each year.")
     analysis_mode = st.radio("Analysis Mode", ["Raw Data (Open vs. Close)", "Open/Close/High/Low", "Technical Indicators"],
                              help="Choose the data features for analysis.")
     run_analysis = st.button("Run Analysis")
@@ -108,14 +108,15 @@ def format_date_range(start_date, end_date):
         return f"{start_month} {start_day}{start_suffix} to {end_day}{end_suffix}"
     return f"{start_month} {start_day}{start_suffix} to {end_month} {end_day}{end_suffix}"
 
-# Function to get next available date
+# Function to get next available date within the same year
 def get_next_available_date(df, current_date):
+    year = current_date.year
     next_date = current_date + timedelta(days=1)
-    while next_date not in df['date'].values and (next_date - df['date'].iloc[-1]).days < 30:
+    while next_date.year == year and next_date not in df['date'].values and (next_date - df['date'].iloc[-1]).days < 365:
         next_date += timedelta(days=1)
-    return next_date if next_date in df['date'].values else None
+    return next_date if next_date.year == year and next_date in df['date'].values else None
 
-# Function to calculate rolling profit/loss with ML prediction
+# Function to calculate rolling profit/loss within each year
 def calculate_rolling_profit_loss(df, compare_days, mode):
     profit_loss_data = []
     current_year = datetime.now().year  # 2025
@@ -125,38 +126,33 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
         year_df = df[df['date'].apply(lambda x: x.year) == year].copy()
         if len(year_df) < compare_days:
             continue
-        current_date = min(year_df['date'])
-        while current_date:
-            start_date = current_date
-            end_date = start_date + timedelta(days=compare_days-1)
-            if start_date in year_df['date'].values:
-                end_date_idx = year_df.index[year_df['date'] >= end_date].min()
-                if pd.notna(end_date_idx) and end_date_idx < len(year_df):
-                    end_date = year_df['date'].iloc[end_date_idx]
-                    break
-            current_date = get_next_available_date(year_df, current_date)
-            if not current_date or current_date > max(year_df['date']):
-                break
-        if not current_date:
-            continue
+        # Start from Jan 2nd or the first available date in the year
+        start_date = min(year_df['date'])
+        if start_date.day != 2 or start_date.month != 1:
+            start_date = datetime(year, 1, 2).date()
+            start_date = year_df[year_df['date'] >= start_date]['date'].min() if start_date in year_df['date'].values else min(year_df['date'])
+        end_date = datetime(year, 12, 31).date()
+        current_date = start_date
 
-        while current_date and current_date <= max(year_df['date']):
+        while current_date and current_date <= end_date:
             start_date = current_date
             if start_date not in year_df['date'].values:
-                current_date = get_next_available_date(year_df, current_date)
+                current_date = get_next_available_date(year_df, start_date)
                 continue
-            end_date = start_date + timedelta(days=compare_days-1)
-            if end_date not in year_df['date'].values:
-                end_date_idx = year_df.index[year_df['date'] >= end_date].min()
+            end_date_calc = start_date + timedelta(days=compare_days-1)
+            if end_date_calc > datetime(year, 12, 31).date():
+                break
+            if end_date_calc not in year_df['date'].values:
+                end_date_idx = year_df.index[year_df['date'] >= end_date_calc].min()
                 if pd.isna(end_date_idx) or end_date_idx >= len(year_df):
                     current_date = get_next_available_date(year_df, start_date)
                     continue
-                end_date = year_df['date'].iloc[end_date_idx]
+                end_date_calc = year_df['date'].iloc[end_date_idx]
             start_idx = year_df.index[year_df['date'] == start_date][0]
-            end_idx = year_df.index[year_df['date'] == end_date][0]
+            end_idx = year_df.index[year_df['date'] == end_date_calc][0]
             if start_idx >= len(year_df) or end_idx >= len(year_df):
-                st.warning(f"Index out of bounds for year {year} at {format_date_range(start_date, end_date)}. Data length: {len(year_df)}, Last date: {format_date_range(min(year_df['date']), max(year_df['date']))}. Skipping this iteration.")
-                current_date = get_next_available_date(year_df, end_date)
+                st.warning(f"Index out of bounds for year {year} at {format_date_range(start_date, end_date_calc)}. Skipping this iteration.")
+                current_date = get_next_available_date(year_df, end_date_calc)
                 continue
             start_price = year_df['open'].iloc[start_idx]
             end_price = year_df['close'].iloc[end_idx]
@@ -164,26 +160,28 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
             profit_loss_data.append({
                 'Year': year,
                 'Start Date': start_date,
-                'End Date': end_date,
+                'End Date': end_date_calc,
                 'Profit/Loss (%)': profit_loss_percent
             })
-            current_date = get_next_available_date(year_df, end_date)
+            current_date = get_next_available_date(year_df, end_date_calc)
 
     # ML Prediction for 2025
     historical_data = pd.DataFrame([d for d in profit_loss_data if d['Year'] != current_year])
     future_data = []
     if len(historical_data) > compare_days and 'Profit/Loss (%)' in historical_data.columns:
         X = historical_data[['Profit/Loss (%)']].values
-        y = historical_data['Profit/Loss (%)'].values  # Using historical profit/loss for simplicity
+        y = historical_data['Profit/Loss (%)'].values
         model = LinearRegression()
         try:
             model.fit(X, y)
-            last_date = df['date'].iloc[-1]
+            last_date = df[df['date'].apply(lambda x: x.year) == current_year]['date'].iloc[-1]
             if last_date.year == current_year:
                 start_idx = df.index[df['date'] == last_date][0]
                 start_price = df['open'].iloc[start_idx]
                 end_date = last_date + timedelta(days=compare_days)
-                predicted_profit_loss = model.predict([[0]])[0]  # Simplified prediction
+                if end_date > datetime(current_year, 12, 31).date():
+                    end_date = datetime(current_year, 12, 31).date()
+                predicted_profit_loss = model.predict([[0]])[0]
                 future_data.append({
                     'Year': current_year,
                     'Start Date': last_date,
@@ -214,12 +212,12 @@ def create_chart(df, profit_loss_data, mode):
     for year in unique_years:
         year_data = [d for d in profit_loss_data if d['Year'] == year]
         if year_data:
-            dates = [d['Start Date'] for d in year_data]  # Use Start Date for x-axis
-            valid_dates = [d for d in dates if d in df['date'].values]  # Filter valid dates
+            dates = [d['Start Date'] for d in year_data]
+            valid_dates = [d for d in dates if d in df['date'].values]
             if valid_dates:
-                prices = [df[df['date'] == d]['open'].iloc[0] for d in valid_dates]  # Safe access
+                prices = [df[df['date'] == d]['open'].iloc[0] for d in valid_dates]
                 fig.add_trace(go.Scatter(
-                    x=valid_dates,  # Use actual dates on x-axis
+                    x=valid_dates,
                     y=prices,
                     mode='lines+markers', name=f"Year {year}",
                     line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
@@ -227,7 +225,7 @@ def create_chart(df, profit_loss_data, mode):
                 ), row=1, col=1)
     
     profits = [d['Profit/Loss (%)'] for d in profit_loss_data]
-    dates = [d['Start Date'] for d in profit_loss_data]  # Use Start Date for x-axis
+    dates = [d['Start Date'] for d in profit_loss_data]
     fig.add_trace(go.Bar(
         x=dates,
         y=profits,
@@ -241,7 +239,7 @@ def create_chart(df, profit_loss_data, mode):
         title=f"Stock Price and Profit/Loss Analysis ({mode})",
         yaxis_title="Price",
         yaxis2_title="Profit/Loss (%)",
-        xaxis_title="Date",  # Label x-axis as Date
+        xaxis_title="Date",
         hovermode="x unified",
         showlegend=True,
         height=900,
@@ -256,7 +254,7 @@ def create_chart(df, profit_loss_data, mode):
             x=1.1, y=1.1
         )]
     )
-    fig.update_xaxes(tickformat="%Y-%m-%d")  # Format dates on x-axis
+    fig.update_xaxes(tickformat="%Y-%m-%d")
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text="Profit/Loss (%)", row=2, col=1)
     
@@ -270,7 +268,7 @@ def create_chart(df, profit_loss_data, mode):
 def create_year_table(profit_loss_data, compare_days):
     if not profit_loss_data:
         return None
-    # Pivot data to create dynamic columns
+    # Pivot data to create dynamic columns within each year
     pivot_data = {}
     for d in profit_loss_data:
         date_range = format_date_range(d['Start Date'], d['End Date'])
@@ -373,7 +371,7 @@ if uploaded_file and run_analysis:
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
         - Check for missing columns based on the selected mode.
-        - If 'Index out of bounds' warnings appear, verify data continuity (e.g., no large gaps).
+        - If 'Index out of bounds' warnings appear, verify data continuity.
         - Install 'openpyxl' for Excel export: `pip install openpyxl`.
         """)
 
