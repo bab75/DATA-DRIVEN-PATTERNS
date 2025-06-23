@@ -126,11 +126,8 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
         year_df = df[df['date'].apply(lambda x: x.year) == year].copy()
         if len(year_df) < compare_days:
             continue
-        # Start from Jan 2nd or the first available date in the year
+        # Start from the first available date in the year
         start_date = min(year_df['date'])
-        if start_date.day != 2 or start_date.month != 1:
-            start_date = datetime(year, 1, 2).date()
-            start_date = year_df[year_df['date'] >= start_date]['date'].min() if start_date in year_df['date'].values else min(year_df['date'])
         end_date = datetime(year, 12, 31).date()
         current_date = start_date
 
@@ -139,20 +136,18 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
             if start_date not in year_df['date'].values:
                 current_date = get_next_available_date(year_df, start_date)
                 continue
-            end_date_calc = start_date + timedelta(days=compare_days-1)
+            # Find the next (compare_days-1) valid dates
+            valid_dates_after = year_df[year_df['date'] > start_date]['date'].sort_values().tolist()
+            if len(valid_dates_after) < compare_days - 1:
+                current_date = get_next_available_date(year_df, start_date)
+                continue
+            end_date_calc = valid_dates_after[compare_days - 2]  # (compare_days-1)th date after start
             if end_date_calc > end_date:
                 break
-            if end_date_calc not in year_df['date'].values:
-                # Find the closest available date within range
-                valid_end_dates = year_df[year_df['date'] >= start_date]['date']
-                end_date_calc = valid_end_dates[valid_end_dates <= end_date].iloc[compare_days-1] if len(valid_end_dates) >= compare_days else None
-                if end_date_calc is None:
-                    current_date = get_next_available_date(year_df, start_date)
-                    continue
             start_idx = year_df.index[year_df['date'] == start_date][0]
             end_idx = year_df.index[year_df['date'] == end_date_calc][0]
             if start_idx >= len(year_df) or end_idx >= len(year_df) or end_idx < start_idx:
-                st.warning(f"Index out of bounds for year {year} at {format_date_range(start_date, end_date_calc)}. Skipping this iteration.")
+                st.warning(f"Index out of bounds for year {year} at {format_date_range(start_date, end_date_calc)}. Skipping this iteration. Available dates: {year_df['date'].head(5).tolist()}")
                 current_date = get_next_available_date(year_df, end_date_calc)
                 continue
             start_price = year_df['open'].iloc[start_idx]
@@ -371,7 +366,7 @@ if uploaded_file and run_analysis:
         - Explore charts, tables, and download results.
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
-        - Check for missing days (e.g., gaps in 2021 data).
+        - Check for missing days (e.g., gaps in 2021 data like Jan 5th, 7th).
         - Install 'openpyxl' for Excel export: `pip install openpyxl`.
         """)
 
