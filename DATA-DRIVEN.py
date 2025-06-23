@@ -187,7 +187,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                         'Year': year,
                         'Start Date': start_date,
                         'End Date': end_date,
-                        'Profit/Loss (%)': profit_loss_percent,
+                        'Profit/Loss (Percentage)': profit_loss_percent,
                         'Profit/Loss (Value)': profit_loss_value
                     })
                 
@@ -200,7 +200,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
         # Use time-based features
         historical_data['period_index'] = range(len(historical_data))
         X = historical_data[['period_index']].values
-        y_percent = historical_data['Profit/Loss (%)'].values
+        y_percent = historical_data['Profit/Loss (Percentage)'].values
         y_value = historical_data['Profit/Loss (Value)'].values
         model_percent = LinearRegression()
         model_value = LinearRegression()
@@ -220,7 +220,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                     'Year': current_year,
                     'Start Date': last_date,
                     'End Date': end_date,
-                    'Profit/Loss (%)': predicted_pl_percent,
+                    'Profit/Loss (Percentage)': predicted_pl_percent,
                     'Profit/Loss (Value)': predicted_pl_value
                 })
         except Exception as e:
@@ -385,7 +385,7 @@ if uploaded_file and run_analysis:
 # Display results if data is available
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write("Analyze stock patterns and predict future trends. Current date: June 23, 2025")
+    st.write("Analyze stock patterns and predict future trends. Current date: June 23, 2025, 06:45 PM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -417,7 +417,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
             st.selectbox("Select Month", [month_name[i][:3] for i in range(1, 13)], index=[month_name[i][:3] for i in range(1, 13)].index(st.session_state.selected_month), key="month_select", on_change=update_month)
         
         if st.session_state.display_mode == "Show First 20":
-            limited_df = df.iloc[:, :21]  # First 20 periods + Year
+            limited_df = df.iloc[:, :21]  # First 20 columns + Year
             styled_limited_df = limited_df.style.applymap(color_profit, subset=[col for col in limited_df.columns if col != 'Year'])
             st.dataframe(styled_limited_df, use_container_width=True)
         elif st.session_state.display_mode == "Show by Month":
@@ -431,9 +431,9 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         else:
             st.dataframe(styled_df, use_container_width=True)
         
-        st.checkbox("Transpose Table (Years as columns)", value=st.session_state.transpose_table, key="transpose_table_check", on_change=update_transpose)
+        st.checkbox("Transpose Table (Years as columns)", value=st.session_state.transpose_table, key="transpose_check", on_change=update_transpose)
         if st.session_state.transpose_table:
-            df_transposed = df.set_index('Year').T
+            df_transposed = df.set_index('Year').transpose()
             styled_transposed = df_transposed.style.applymap(color_profit)
             st.dataframe(styled_transposed, use_container_width=True)
         
@@ -449,7 +449,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
             if styled_pred_df is not None:
                 st.dataframe(styled_pred_df, use_container_width=True)
                 csv = pd.DataFrame(current_year_data).to_csv(index=False)
-                st.download_button(label="Download 2025 Prediction", data=csv, file_name="2025_prediction.csv", mime="text/csv")
+                st.download_button("Download 2025 Prediction", data=csv, file_name="2025_prediction.csv", mime="text/csv")
                 if st.button("Predict Again", key="predict_again"):
                     # Recompute profit/loss
                     with st.spinner("Computing predictions..."):
@@ -465,11 +465,11 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         output = io.BytesIO()
         all_df.to_excel(output, index=False)
         excel_all = output.getvalue()
-        st.download_button(label="Download as Excel", data=excel_all, file_name="all_profit_loss_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("Download as Excel", data=excel_all, file_name="all_profit_loss_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     except ImportError:
         st.warning("Please install 'openpyxl' to enable Excel export: `pip install openpyxl`")
     with st.expander("Download All Data"):
-        st.download_button(label="Download as CSV", data=csv_all, file_name="all_profit_loss_data.csv", mime="text/csv")
+        st.download_button("Download as CSV", data=csv_all, file_name="all_profit_loss_data.csv", mime="text/csv")
 
     # Help section
     with st.expander("Help"):
@@ -487,9 +487,9 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.1 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.2 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
-    st.info("Please click 'Run Analysis' to process the uploaded data.")
+    st.info("Click 'Run Analysis' to process the uploaded data.")
 else:
     st.info("Please upload a CSV or Excel file to begin analysis.")
