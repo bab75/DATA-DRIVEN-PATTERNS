@@ -7,25 +7,75 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import io
 from calendar import month_name
+import time
+
+# Custom CSS for beautiful design
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Lora&display=swap');
+    .stApp {
+        background: linear-gradient(to right, #FFFFFF, #F0F8FF);
+        font-family: 'Lora', serif;
+    }
+    .sidebar .sidebar-content {
+        background-color: #F5F5F5;
+        padding: 20px;
+        border-radius: 10px;
+    }
+    .stButton>button {
+        background-color: #4CAF50;
+        color: white;
+        border-radius: 5px;
+    }
+    .stButton>button:hover {
+        background-color: #45a049;
+    }
+    .card {
+        background-color: white;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        margin-bottom: 15px;
+    }
+    .stDataFrame tr:hover {
+        background-color: #F0F8FF;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # Set Streamlit page config
 st.set_page_config(page_title="Stock Pattern Analyzer", layout="wide")
 
 # Sidebar: Control Panel
-st.sidebar.header("Control Panel")
-uploaded_file = st.sidebar.file_uploader("Upload CSV or Excel file", type=['csv', 'xlsx'])
-compare_days = st.sidebar.number_input("Compare Days (1-30)", min_value=1, max_value=30, value=2)
-analysis_mode = st.sidebar.radio("Analysis Mode", ["Raw Data (Open vs. Close)", "Open/Close/High/Low", "Technical Indicators"])
-run_analysis = st.sidebar.button("Run Analysis")
+with st.sidebar:
+    st.header("Control Panel")
+    uploaded_file = st.file_uploader("Upload CSV or Excel file", type=['csv', 'xlsx'], help="Upload a file with 'date', 'open', 'close' columns.")
+    compare_days = st.number_input("Compare Days (1-30)", min_value=1, max_value=30, value=2, help="Number of days to compare for profit/loss.")
+    analysis_mode = st.radio("Analysis Mode", ["Raw Data (Open vs. Close)", "Open/Close/High/Low", "Technical Indicators"],
+                             help="Choose the data features for analysis.")
+    run_analysis = st.button("Run Analysis")
+    if st.button("Reset", key="reset"):
+        st.session_state.clear()
+    if st.button("Mode Description"):
+        st.write("""
+        - **Raw Data (Open vs. Close)**: Uses only 'open' and 'close' prices.
+        - **Open/Close/High/Low**: Includes 'high' and 'low' prices.
+        - **Technical Indicators**: Uses 'high', 'low', 'ma20', 'ma50', 'macd', 'rsi', 'atr', 'vwap'.
+        """)
 
 # Function to load and preprocess data
 def load_data(file):
+    with st.spinner("Loading data..."):
+        time.sleep(1)  # Simulate loading
     try:
         if file.name.endswith('.csv'):
             df = pd.read_csv(file)
         else:
             df = pd.read_excel(file)
-        df['date'] = pd.to_datetime(df['date']).dt.date  # Remove time component
+        df['date'] = pd.to_datetime(df['date']).dt.date
         df = df.sort_values('date').reset_index(drop=True)
         required_columns = ['date', 'open', 'close']
         if analysis_mode == "Open/Close/High/Low":
@@ -58,7 +108,7 @@ def format_date(date):
 # Function to get next available date
 def get_next_available_date(df, current_date):
     next_date = current_date + timedelta(days=1)
-    while next_date not in df['date'].values and (next_date - df['date'].iloc[-1]).days < 30:  # Limit to 30 days
+    while next_date not in df['date'].values and (next_date - df['date'].iloc[-1]).days < 30:
         next_date += timedelta(days=1)
     return next_date if next_date in df['date'].values else None
 
@@ -117,7 +167,7 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
     historical_data = pd.DataFrame([d for d in profit_loss_data if d['Year'] != current_year])
     future_data = []
     if len(historical_data) > compare_days and 'Profit/Loss (%)' in historical_data.columns:
-        X = historical_data[['Start Open Price'] + [k for k in historical_data.columns if k not in ['Year', 'Start Date', 'End Date', 'Start Open Price', 'End Close Price', 'Profit/Loss (%)']]].values
+        X = historical_data[['Start Open Price']].values  # Raw Data mode uses only Start Open
         y = historical_data['End Close Price'].values
         model = LinearRegression()
         try:
@@ -126,28 +176,8 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
             if last_date.year == current_year:
                 start_idx = df.index[df['date'] == last_date][0]
                 start_price = df['open'].iloc[start_idx]
-                features_dict = {'Start Open': start_price}
-                if mode == "Open/Close/High/Low":
-                    features_dict.update({
-                        'High': df['high'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
-                        'Low': df['low'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan
-                    })
-                elif mode == "Technical Indicators":
-                    features_dict.update({
-                        'High': df['high'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
-                        'Low': df['low'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
-                        'MA20': df['ma20'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
-                        'MA50': df['ma50'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
-                        'MACD': df['macd'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
-                        'RSI': df['rsi'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
-                        'ATR': df['atr'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan,
-                        'VWAP': df['vwap'].iloc[start_idx + compare_days - 1] if start_idx + compare_days - 1 < len(df) else np.nan
-                    })
-                X_predict = [v for k, v in features_dict.items() if k != 'Start Open' and k in historical_data.columns]
-                if X_predict and len(X_predict) == X.shape[1]:
-                    predicted_end_price = model.predict([X_predict])[0]
-                else:
-                    predicted_end_price = start_price
+                X_predict = [[start_price]]
+                predicted_end_price = model.predict(X_predict)[0]
                 end_date = last_date + timedelta(days=compare_days)
                 profit_loss_percent = ((predicted_end_price - start_price) / start_price) * 100 if not np.isnan(predicted_end_price - start_price) else 0.0
                 future_data.append({
@@ -156,8 +186,7 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
                     'End Date': end_date,
                     'Start Open Price': start_price,
                     'End Close Price': predicted_end_price,
-                    'Profit/Loss (%)': profit_loss_percent,
-                    **{k: v for k, v in features_dict.items() if v is not np.nan and k in historical_data.columns}
+                    'Profit/Loss (%)': profit_loss_percent
                 })
         except Exception as e:
             st.warning(f"ML prediction failed: {str(e)}. Using last known value.")
@@ -184,7 +213,8 @@ def create_chart(df, profit_loss_data, mode):
             fig.add_trace(go.Scatter(
                 x=formatted_dates, y=prices,
                 mode='lines+markers', name=f"Year {year}",
-                line=dict(width=1, dash='dash' if year == 2025 else 'solid')
+                line=dict(width=2, dash='dash' if year == 2025 else 'solid'),
+                hovertemplate='Date: %{x}<br>Price: %{y}<extra></extra>'
             ), row=1, col=1)
     
     profits = [d['Profit/Loss (%)'] for d in profit_loss_data if 'Profit/Loss (%)' in d]
@@ -193,7 +223,8 @@ def create_chart(df, profit_loss_data, mode):
         x=dates, y=profits,
         name='Profit/Loss (%)',
         marker_color=['#90EE90' if p >= 0 else '#FFB6C1' for p in profits],
-        opacity=0.7
+        opacity=0.7,
+        hovertemplate='Date: %{x}<br>Profit/Loss: %{y}%<extra></extra>'
     ), row=2, col=1)
     
     fig.update_layout(
@@ -204,11 +235,24 @@ def create_chart(df, profit_loss_data, mode):
         hovermode="x unified",
         showlegend=True,
         height=800,
-        template="plotly_white"
+        template="plotly_white",
+        updatemenus=[dict(
+            type="dropdown",
+            direction="down",
+            buttons=list([
+                dict(label="All Years", method="update", args=[{"visible": [True] * len(unique_years)}]),
+                *[dict(label=f"Year {year}", method="update", args=[{"visible": [year == y for y in unique_years]}]) for year in unique_years]
+            ]),
+            x=1.1, y=1.1
+        )]
     )
-    fig.update_xaxes(rangeslider_visible=False)
+    fig.update_xaxes(rangeslider_visible=True)
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text="Profit/Loss (%)", row=2, col=1)
+    
+    # Download chart button
+    chart_div = fig.to_html(include_plotlyjs='cdn', full_html=False)
+    st.download_button(label="Download Chart", data=chart_div, file_name="stock_chart.html", mime="text/html")
     
     return fig
 
@@ -224,69 +268,97 @@ def create_year_table(year_data):
         lambda x: ['background-color: #90EE90' if v >= 0 else 'background-color: #FFB6C1' for v in x[1:]],
         subset=[col for col in df.columns if col != 'Year'],
         axis=1
-    ).set_properties(**{'text-align': 'center'})
+    ).set_properties(**{'text-align': 'center', 'border': '1px solid #ddd', 'padding': '8px'})
+    return styled_df
+
+# Function to create prediction card
+def create_prediction_card(pred_data):
+    if not pred_data:
+        return None
+    pred_df = pd.DataFrame(pred_data).fillna(0)
+    styled_df = pred_df.style.apply(
+        lambda x: ['background-color: #90EE90' if v >= 0 else 'background-color: #FFB6C1' for v in x['Profit/Loss (%)']],
+        subset=['Profit/Loss (%)'],
+        axis=1
+    ).set_properties(**{'text-align': 'center', 'border': '1px solid #ddd', 'padding': '8px'})
     return styled_df
 
 # Main app logic
 if uploaded_file and run_analysis:
-    st.header("Stock Pattern Analysis Results")
-    
-    # Load data
+    st.header("Stock Pattern Analyzer")
+    st.write("Analyze stock patterns and predict future trends. Current date: June 23, 2025.")
+
+    # Load data with progress
+    progress = st.progress(0)
     df = load_data(uploaded_file)
     if df is None:
         st.stop()
-    
+    progress.progress(50)
+
     # Calculate rolling profit/loss
-    profit_loss_data = calculate_rolling_profit_loss(df, compare_days, analysis_mode)
-    
+    with st.spinner("Calculating profit/loss..."):
+        profit_loss_data = calculate_rolling_profit_loss(df, compare_days, analysis_mode)
+    progress.progress(100)
+
     # Create and display chart
+    st.subheader("Price and Profit/Loss Visualization")
     fig = create_chart(df, profit_loss_data, analysis_mode)
     st.plotly_chart(fig, use_container_width=True)
-    
+
+    # Search bar for tables
+    search_term = st.text_input("Search by Year or Date Range", key="search")
+
     # Group data by year and display separate tables
-    years = sorted(set(d['Year'] for d in profit_loss_data) - {2025})  # Exclude 2025 from historical tables
+    st.subheader("Historical Profit/Loss by Year")
+    years = sorted(set(d['Year'] for d in profit_loss_data) - {2025})
     for year in years:
-        year_data = [d for d in profit_loss_data if d['Year'] == year]
+        year_data = [d for d in profit_loss_data if d['Year'] == year and (str(year) in search_term or any(search_term.lower() in format_date(d['Start Date']).lower() for d in year_data))]
         if year_data:
-            st.subheader(f"Profit/Loss for Year {year}")
-            styled_df = create_year_table(year_data)
-            if styled_df is not None:
-                st.dataframe(styled_df, use_container_width=True)
-    
+            with st.expander(f"Year {year}"):
+                styled_df = create_year_table(year_data)
+                if styled_df is not None:
+                    st.dataframe(styled_df, use_container_width=True)
+                    st.button("Copy to Clipboard", key=f"copy_{year}", on_click=lambda: st.write(styled_df.to_html(), unsafe_allow_html=True))
+
     # Display 2025 prediction
+    st.subheader("2025 Prediction")
     current_year_data = [d for d in profit_loss_data if d['Year'] == 2025]
     if current_year_data:
-        st.subheader("2025 Prediction")
-        pred_df = pd.DataFrame(current_year_data).fillna(0)
-        styled_pred_df = pred_df.style.apply(
-            lambda x: ['background-color: #90EE90' if v >= 0 else 'background-color: #FFB6C1' for v in x['Profit/Loss (%)']],
-            subset=['Profit/Loss (%)'],
-            axis=1
-        ).set_properties(**{'text-align': 'center'})
-        st.dataframe(styled_pred_df, use_container_width=True)
-        csv = pred_df.to_csv(index=False)
-        st.download_button(
-            label="Download 2025 Prediction",
-            data=csv,
-            file_name="2025_prediction.csv",
-            mime="text/csv"
-        )
-    
+        with st.container():
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            styled_pred_df = create_prediction_card(current_year_data)
+            if styled_pred_df is not None:
+                st.dataframe(styled_pred_df, use_container_width=True)
+                csv = pd.DataFrame(current_year_data).to_csv(index=False)
+                st.download_button(label="Download 2025 Prediction", data=csv, file_name="2025_prediction.csv", mime="text/csv")
+                if st.button("Predict Again", key="predict_again"):
+                    st.experimental_rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+
     # Download all data
     all_df = pd.DataFrame(profit_loss_data).fillna(0)
     csv_all = all_df.to_csv(index=False)
-    st.download_button(
-        label="Download All Data",
-        data=csv_all,
-        file_name="all_profit_loss_data.csv",
-        mime="text/csv"
-    )
-    
-    if not profit_loss_data:
-        st.error("No profit/loss data calculated. Suggestions:\n"
-                 "- Ensure your dataset spans multiple years (at least 2010–2025).\n"
-                 "- Verify the date column is in a valid format (e.g., YYYY-MM-DD).\n"
-                 "- Check for sufficient data points (at least {compare_days} rows per year).")
+    excel_all = all_df.to_excel("all_profit_loss_data.xlsx", index=False)
+    with st.expander("Download All Data"):
+        st.download_button(label="Download as CSV", data=csv_all, file_name="all_profit_loss_data.csv", mime="text/csv")
+        st.download_button(label="Download as Excel", data=excel_all, file_name="all_profit_loss_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    # Help section
+    with st.expander("Help"):
+        st.write("""
+        **Usage Guide**:
+        - Upload a CSV/Excel file with stock data.
+        - Set 'Compare Days' and select an 'Analysis Mode'.
+        - Click 'Run Analysis' to process data.
+        - Explore charts, tables, and download results.
+        **Troubleshooting**:
+        - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
+        - Check for missing columns based on the selected mode.
+        """)
+
+    # Footer
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 1.0 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
 else:
