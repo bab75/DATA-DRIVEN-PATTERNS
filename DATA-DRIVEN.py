@@ -7,6 +7,10 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import io
+import warnings
+
+# Suppress warnings for cleaner output
+warnings.filterwarnings('ignore')
 
 # Set Streamlit page config
 st.set_page_config(page_title="Stock Pattern Analyzer", layout="wide")
@@ -38,6 +42,9 @@ def load_data(file):
         if not all(col in df.columns for col in required_columns):
             missing = [col for col in required_columns if col not in df.columns]
             st.error(f"Missing required columns: {', '.join(missing)}")
+            return None
+        if len(df) < days_to_analyze:
+            st.error(f"Dataset has {len(df)} rows, but at least {days_to_analyze} are required for analysis.")
             return None
         return df
     except Exception as e:
@@ -102,11 +109,9 @@ def find_similar_patterns(df, days_analyze, days_predict, mode):
                                     'forward_data': forward_data
                                 })
     
-    # Sort and select top matches
+    # Sort matches by similarity
     matches = sorted(matches, key=lambda x: x['similarity'], reverse=True)
-    if not matches:
-        return [], recent_pattern
-    return matches[:3], recent_pattern
+    return matches, recent_pattern
 
 # Function to create interactive Plotly chart
 def create_chart(df, recent_pattern, matches, show_indicators, show_candlestick):
@@ -116,7 +121,7 @@ def create_chart(df, recent_pattern, matches, show_indicators, show_candlestick)
                         row_heights=[0.5, 0.2, 0.3])
     
     # Plot recent pattern
-    if show_candlestick:
+    if show_candlestick and all(col in recent_pattern.columns for col in ['open', 'high', 'low', 'close']):
         fig.add_trace(go.Candlestick(
             x=recent_pattern['date'],
             open=recent_pattern['open'],
@@ -132,10 +137,10 @@ def create_chart(df, recent_pattern, matches, show_indicators, show_candlestick)
         ), row=1, col=1)
     
     # Plot historical matches
-    colors = ['red', 'green', 'purple']
-    for i, match in enumerate(matches):
+    colors = ['red', 'green', 'purple', 'orange', 'pink', 'cyan']
+    for i, match in enumerate(matches[:6]):  # Limit to 6 for chart clarity
         hist = match['historical_pattern']
-        if show_candlestick:
+        if show_candlestick and all(col in hist.columns for col in ['open', 'high', 'low', 'close']):
             fig.add_trace(go.Candlestick(
                 x=hist['date'],
                 open=hist['open'],
@@ -143,24 +148,27 @@ def create_chart(df, recent_pattern, matches, show_indicators, show_candlestick)
                 low=hist['low'],
                 close=hist['close'],
                 name=f"Match {match['year']} (Sim: {match['similarity']:.2f})",
-                increasing_line_color=colors[i], decreasing_line_color=colors[i], opacity=0.5
+                increasing_line_color=colors[i % len(colors)], 
+                decreasing_line_color=colors[i % len(colors)], 
+                opacity=0.5
             ), row=1, col=1)
         else:
             fig.add_trace(go.Scatter(
                 x=hist['date'], y=hist['close'],
                 mode='lines', name=f"Match {match['year']} (Sim: {match['similarity']:.2f})",
-                line=dict(color=colors[i], width=1, dash='dash')
+                line=dict(color=colors[i % len(colors)], width=1, dash='dash')
             ), row=1, col=1)
         fig.add_trace(go.Bar(
             x=hist['date'], y=hist['volume'], name=f"Vol {match['year']}",
-            marker_color=colors[i], opacity=0.3, showlegend=False
+            marker_color=colors[i % len(colors)], opacity=0.3, showlegend=False
         ), row=2, col=1)
     
     # Add volume for recent pattern
-    fig.add_trace(go.Bar(
-        x=recent_pattern['date'], y=recent_pattern['volume'],
-        name='Current Volume', marker_color='blue', opacity=0.5
-    ), row=2, col=1)
+    if 'volume' in recent_pattern.columns:
+        fig.add_trace(go.Bar(
+            x=recent_pattern['date'], y=recent_pattern['volume'],
+            name='Current Volume', marker_color='blue', opacity=0.5
+        ), row=2, col=1)
     
     # Add technical indicators if selected
     if show_indicators:
@@ -211,8 +219,8 @@ if uploaded_file and run_analysis:
         fig = create_chart(df, recent_pattern, matches, show_indicators, show_candlestick)
         st.plotly_chart(fig, use_container_width=True)
         
-        # Prediction summary
-        st.subheader("Prediction Summary")
+        # Prediction summary for all matches
+        st.subheader("Prediction Summary (All Matches)")
         summary_data = [{
             'Year': m['year'],
             'Target Date': m['target_date'].strftime('%Y-%m-%d'),
@@ -238,20 +246,26 @@ if uploaded_file and run_analysis:
             mime="text/csv"
         )
         
-        # Download chart
-        img_bytes = fig.to_image(format="png")
-        st.download_button(
-            label="Download Chart",
-            data=img_bytes,
-            file_name="stock_pattern_chart.png",
-            mime="image/png"
-        )
+        # Download chart with error handling
+        try:
+            img_bytes = fig.to_image(format="png")
+            st.download_button(
+                label="Download Chart",
+                data=img_bytes,
+                file_name="stock_pattern_chart.png",
+                mime="image/png"
+            )
+        except Exception as e:
+            st.warning("Unable to export chart as PNG. Please ensure 'kaleido' is installed (`pip install kaleido`) "
+                       "and your environment supports image rendering. Error: " + str(e))
+        
     else:
         st.error("No matching patterns found. Suggestions:\n"
-                 "- Ensure your dataset spans multiple years.\n"
-                 "- Adjust 'Days to Analyze' to a smaller or larger window.\n"
+                 "- Ensure your dataset spans multiple years (at least 2 years recommended).\n"
+                 "- Adjust 'Days to Analyze' to a smaller or larger window (e.g., 30 or 90 days).\n"
                  "- Verify the date column is in a valid format (e.g., YYYY-MM-DD).\n"
-                 "- Check for sufficient data points in the uploaded file.")
+                 "- Check for sufficient data points (at least {days_to_analyze} rows).\n"
+                 "- Ensure required columns are present: 'date', 'close', and for indicator mode: 'macd', 'rsi', 'atr', 'vwap'.")
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
 else:
