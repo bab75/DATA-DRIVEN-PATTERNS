@@ -74,30 +74,30 @@ def load_data(file):
         time.sleep(1)  # Simulate loading
     try:
         if file.name.endswith('.csv'):
-            df = pd.read_csv(file)
+            dframe = pd.read_csv(file)
         else:
-            df = pd.read_excel(file)
-        df['date'] = pd.to_datetime(df['date']).dt.date
-        df = df.sort_values('date').reset_index(drop=True)
+            dframe = pd.read_excel(file)
+        dframe['date'] = pd.to_datetime(dframe['date']).dt.date
+        dframe = dframe.sort_values('date').reset_index(drop=True)
         required_columns = ['date', 'open', 'close']
         if analysis_mode == "Open/Close/High/Low":
             required_columns.extend(['high', 'low'])
         elif analysis_mode == "Technical Indicators":
             required_columns.extend(['high', 'low', 'ma20', 'ma50', 'macd', 'rsi', 'atr', 'vwap'])
-        if not all(col in df.columns for col in required_columns):
-            missing = [col for col in required_columns if col not in df.columns]
+        if not all(col in dframe.columns for col in required_columns):
+            missing = [col for col in required_columns if col not in dframe.columns]
             st.error(f"Missing required columns for {analysis_mode}: {', '.join(missing)}")
             return None
-        if len(df) < compare_days:
-            st.error(f"Dataset has {len(df)} rows, but at least {compare_days} are required.")
+        if len(dframe) < compare_days:
+            st.error(f"Dataset has {len(dframe)} rows, but at least {compare_days} are required.")
             return None
         # Validate data coverage
-        years = set(df['date'].apply(lambda x: x.year))
+        years = set(dframe['date'].apply(lambda x: x.year))
         for year in years:
-            year_data = df[df['date'].apply(lambda x: x.year) == year]
+            year_data = dframe[dframe['date'].apply(lambda x: x.year) == year]
             if len(year_data) < compare_days:
                 st.warning(f"Year {year} has only {len(year_data)} days, less than required {compare_days}. Results may be incomplete.")
-        return df
+        return dframe
     except Exception as e:
         st.error(f"Error loading file: {str(e)}")
         return None
@@ -123,13 +123,13 @@ def get_next_available_date(df, current_date):
     return next_date if next_date.year == year and next_date in df['date'].values else None
 
 # Function to calculate rolling profit/loss within each year
-def calculate_rolling_profit_loss(df, compare_days, mode):
+def calculate_rolling_profit_loss(dframe, compare_days, mode):
     profit_loss_data = []
     current_year = datetime.now().year  # 2025
-    years = sorted(set(df['date'].apply(lambda x: x.year)))
+    years = sorted(set(dframe['date'].apply(lambda x: x.year)))
 
     for year in years:
-        year_df = df[df['date'].apply(lambda x: x.year) == year].copy()
+        year_df = dframe[dframe['date'].apply(lambda x: x.year) == year].copy()
         if len(year_df) < compare_days:
             st.warning(f"Skipping year {year} due to insufficient data ({len(year_df)} days < {compare_days}).")
             continue
@@ -177,10 +177,10 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
         model = LinearRegression()
         try:
             model.fit(X, y)
-            last_date = df[df['date'].apply(lambda x: x.year) == current_year]['date'].iloc[-1]
+            last_date = dframe[dframe['date'].apply(lambda x: x.year) == current_year]['date'].iloc[-1]
             if last_date.year == current_year:
-                start_idx = df.index[df['date'] == last_date][0]
-                start_price = df['open'].iloc[start_idx]
+                start_idx = dframe.index[dframe['date'] == last_date][0]
+                start_price = dframe['open'].iloc[start_idx]
                 end_date = last_date + timedelta(days=compare_days)
                 if end_date > datetime(current_year, 12, 31).date():
                     end_date = datetime(current_year, 12, 31).date()
@@ -199,7 +199,7 @@ def calculate_rolling_profit_loss(df, compare_days, mode):
     return profit_loss_data
 
 # Function to create interactive Plotly chart
-def create_chart(df, profit_loss_data, mode):
+def create_chart(dframe, profit_loss_data, mode):
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                         vertical_spacing=0.1, 
                         subplot_titles=['Price Patterns', 'Profit/Loss'],
@@ -216,9 +216,9 @@ def create_chart(df, profit_loss_data, mode):
         year_data = [d for d in profit_loss_data if d['Year'] == year]
         if year_data:
             dates = [d['Start Date'] for d in year_data]
-            valid_dates = [d for d in dates if d in df['date'].values]
+            valid_dates = [d for d in dates if d in dframe['date'].values]
             if valid_dates:
-                prices = [df[df['date'] == d]['open'].iloc[0] for d in valid_dates]
+                prices = [dframe[dframe['date'] == d]['open'].iloc[0] for d in valid_dates]
                 fig.add_trace(go.Scatter(
                     x=valid_dates,
                     y=prices,
@@ -271,7 +271,7 @@ def create_chart(df, profit_loss_data, mode):
 def create_year_table(profit_loss_data, compare_days):
     if not profit_loss_data:
         return None
-    # Pivot data to create dynamic columns within each year
+    # Pivot data to create dynamic columns based on compare_days
     pivot_data = {}
     for d in profit_loss_data:
         date_range = format_date_range(d['Start Date'], d['End Date'])
@@ -312,19 +312,19 @@ if uploaded_file and run_analysis:
 
     # Load data with progress
     progress = st.progress(0)
-    df = load_data(uploaded_file)
-    if df is None:
+    dframe = load_data(uploaded_file)
+    if dframe is None:
         st.stop()
     progress.progress(50)
 
     # Calculate rolling profit/loss
     with st.spinner("Calculating profit/loss..."):
-        profit_loss_data = calculate_rolling_profit_loss(df, compare_days, analysis_mode)
+        profit_loss_data = calculate_rolling_profit_loss(dframe, compare_days, analysis_mode)
     progress.progress(100)
 
     # Create and display chart
     st.subheader("Price and Profit/Loss Visualization")
-    fig = create_chart(df, profit_loss_data, analysis_mode)
+    fig = create_chart(dframe, profit_loss_data, analysis_mode)
     st.plotly_chart(fig, use_container_width=True)
 
     # Display table for all years
@@ -373,7 +373,7 @@ if uploaded_file and run_analysis:
         - Explore charts, tables, and download results.
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
-        - Check for missing days (e.g., 2021 data stops at Jan 8th).
+        - Check for data gaps or formatting issues.
         - Install 'openpyxl' for Excel export: `pip install openpyxl`.
         """)
 
