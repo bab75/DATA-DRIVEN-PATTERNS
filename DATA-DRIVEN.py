@@ -235,7 +235,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                     start_price = period_data.iloc[0]['open']
                     end_price = period_data.iloc[-1]['close']
                     # Debug output with validation
-                    st.write(f"Debug - {year} {format_date_range(start_date, end_date)}: Open={start_price}, Close={end_price}, Data Points={len(period_data)}, In dframe={start_date in year_df['date'].values and end_date in year_df['date'].values}")
+                    #st.write(f"Debug - {year} {format_date_range(start_date, end_date)}: Open={start_price}, Close={end_price}, Data Points={len(period_data)}, In dframe={start_date in year_df['date'].values and end_date in year_df['date'].values}")
                     
                     # Mode-specific profit/loss calculation
                     if mode == "Raw Data (Open vs. Close)":
