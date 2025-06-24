@@ -553,10 +553,19 @@ fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical
 
 # Candlestick chart
 def add_candlestick_trace(fig, df, row):
+    # Ensure date column is datetime
+    if not pd.api.types.is_datetime64_any_dtype(df['date']):
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+    
+    # Handle any NaT values and convert to string for safety
+    df['date'] = df['date'].fillna(pd.Timestamp('1900-01-01')).astype(str).replace('1900-01-01', 'N/A')
+    
     hover_texts = [
         "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}".format(
-            date=r['date'].strftime('%m-%d-%Y'), month=r['date'].strftime('%B'), open=r['open'], high=r['high'], low=r['low'], 
-            close=r['close'], volume=r['volume'], rsi=r['rsi'], rvol=r['rvol']
+            date=getattr(r, 'date') if pd.notna(pd.to_datetime(getattr(r, 'date'), errors='coerce')) else 'N/A',
+            month=datetime.strptime(getattr(r, 'date'), '%Y-%m-%d').strftime('%B') if pd.notna(pd.to_datetime(getattr(r, 'date'), errors='coerce')) else 'N/A',
+            open=getattr(r, 'open'), high=getattr(r, 'high'), low=getattr(r, 'low'),
+            close=getattr(r, 'close'), volume=getattr(r, 'volume'), rsi=getattr(r, 'rsi'), rvol=getattr(r, 'rvol')
         )
         for r in df.itertuples()
     ]
