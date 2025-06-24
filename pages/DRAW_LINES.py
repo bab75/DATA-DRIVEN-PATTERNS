@@ -47,6 +47,8 @@ st.session_state.setdefault('start_date', pd.to_datetime('2025-01-01'))
 st.session_state.setdefault('end_date', pd.to_datetime('2025-06-13'))
 if 'aapl_df' not in st.session_state:
     st.session_state.aapl_df = pd.DataFrame()
+if 'pl_df' not in st.session_state:
+    st.session_state.pl_df = pd.DataFrame()
 
 # Title
 st.title("📊 Stock Analysis: Consolidation & Breakout")
@@ -147,6 +149,7 @@ if clear:
     st.session_state.end_date = pd.to_datetime('2025-06-13')
     st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
     st.session_state.aapl_df = pd.DataFrame()
+    st.session_state.pl_df = pd.DataFrame()
     st.rerun()
 
 # Validate symbol format
@@ -330,6 +333,7 @@ if submit and not st.session_state.data_processed:
     st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
     aapl_df, pl_df = load_data(primary_file, data_source, st.session_state.symbol, st.session_state.start_date, st.session_state.end_date)
     st.session_state.aapl_df = aapl_df
+    st.session_state.pl_df = pl_df
     st.session_state.data_processed = True
 elif not st.session_state.data_loaded:
     st.info("Please enter a symbol, select a data source, select a date range, and click 'Submit' to load data.")
@@ -371,25 +375,6 @@ def calculate_metrics(df):
         'Largest Gain': largest_gain,
         'Largest Gain Date': largest_gain_date
     }
-
-# Load data only if Submit is pressed and not already processed
-if submit and not st.session_state.data_processed:
-    st.session_state.data_loaded = True
-    st.session_state.symbol = st.session_state.symbol_input
-    st.session_state.start_date = pd.to_datetime(st.session_state[date_range_key][0])
-    st.session_state.end_date = pd.to_datetime(st.session_state[date_range_key][1])
-    st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
-    aapl_df, pl_df = load_data(primary_file, data_source, st.session_state.symbol, st.session_state.start_date, st.session_state.end_date)
-    st.session_state.aapl_df = aapl_df
-    st.session_state.pl_df = pl_df  # Store pl_df in session state
-    st.session_state.data_processed = True
-elif not st.session_state.data_loaded:
-    st.info("Please enter a symbol, select a data source, select a date range, and click 'Submit' to load data.")
-    st.stop()
-
-if st.session_state.aapl_df.empty:
-    st.error(f"Failed to load valid data for {st.session_state.symbol}. Please check the file, symbol, or date range.")
-    st.stop()
 
 if 'aapl_metrics' not in st.session_state or submit:
     st.session_state.aapl_metrics = calculate_metrics(st.session_state.aapl_df)
@@ -760,14 +745,14 @@ st.plotly_chart(fig, use_container_width=True)
 
 # Benchmark comparison
 fig_bench = None
-if secondary_file and not pl_df.empty:
+if secondary_file and not st.session_state.pl_df.empty:
     st.header("Benchmark Comparison")
     try:
-        pl_cum_return = (1 + pl_df['Profit/Loss (Percentage)']).cumprod() - 1
+        pl_cum_return = (1 + st.session_state.pl_df['Profit/Loss (Percentage)']).cumprod() - 1
         fig_bench = go.Figure()
         fig_bench.add_trace(go.Scatter(x=st.session_state.aapl_df['date'], y=st.session_state.aapl_df['cumulative_return'], name=st.session_state.symbol, line=dict(color="#0288d1"),
                                        hovertext=[f"{st.session_state.symbol} Return: {x:.2%}" for x in st.session_state.aapl_df['cumulative_return']], hoverinfo='text+x'))
-        fig_bench.add_trace(go.Scatter(x=pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800"),
+        fig_bench.add_trace(go.Scatter(x=st.session_state.pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800"),
                                        hovertext=[f"Benchmark Return: {x:.2%}" for x in pl_cum_return], hoverinfo='text+x'))
         fig_bench.update_layout(title=f"{st.session_state.symbol} vs. Benchmark Cumulative Returns", height=400, template="plotly_white",
                                 hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
@@ -1039,9 +1024,6 @@ with st.expander("📚 Help: How the Analysis Works"):
     - **Breakout Detection**: Detects when the stock price breaks out of a consolidation range, signaling a potential buying opportunity. Triggered when the close exceeds the 20-day high, volume is above 80% of its 20-day mean, RSI is 30-80, MACD is above its signal, and Stochastic %K exceeds %D.
     - **Trade Execution Setup**: Defines entry price, stop-loss, and take-profit levels. Entry is the close price, stop-loss is entry minus 1.5 * ATR, and take-profit is entry plus 3 * ATR for a 1:2 risk-reward ratio.
     - **Latest Trade Setup**: Displays the most recent trade opportunity based on the latest buy signal. Extracts the date, entry price, stop-loss, and take-profit from the last row with a buy signal.
-
-    **Troubleshooting Tips**:
-    [Existing troubleshooting tips remain unchanged]
 
     **Troubleshooting Tips**:
     - **Real-Time Data Errors**: Ensure a single valid symbol (e.g., AAPL, not AAPL,MSFT) and date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-13). Check internet connectivity.
