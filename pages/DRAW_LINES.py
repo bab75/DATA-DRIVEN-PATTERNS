@@ -16,13 +16,6 @@ import openpyxl
 import re
 import calendar  # Added to resolve NameError
 
-
-# Initialize session state for data persistence
-if 'aapl_df' not in st.session_state:
-    st.session_state.aapl_df = pd.DataFrame()
-if 'analysis_results' not in st.session_state:
-    st.session_state.analysis_results = {}
-
 # Check Plotly version
 if plotly.__version__ < '5.0.0':
     st.warning(f"Plotly version {plotly.__version__} detected. Please upgrade to Plotly 5.x or higher with: `pip install plotly --upgrade`")
