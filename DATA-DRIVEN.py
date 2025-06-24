@@ -186,6 +186,7 @@ def generate_monthly_periods(compare_days, year=2024, exchange='NYSE'):
 def calculate_rolling_profit_loss(dframe, compare_days, mode):
     profit_loss_data = []
     current_year = datetime.now().year  # 2025
+    current_date = datetime.now().date()  # June 23, 2025
     years = sorted(set(dframe['date'].apply(lambda x: x.year)))
     
     for year in years:
@@ -196,7 +197,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
         
         # Get trading days for the year
         start_date = datetime(year, 1, 1).date()
-        end_date = datetime(year, 12, 31).date()
+        end_date = datetime(year, 12, 31).date() if year < current_year else current_date
         trading_days = get_trading_days(start_date, end_date)
         
         for month in range(1, 13):
@@ -205,6 +206,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
             if year % 4 == 0 and month == 2:
                 days_in_month = 29
             month_end = datetime(year, month, days_in_month).date()
+            month_end = min(month_end, current_date) if year == current_year else month_end
             month_trading_days = trading_days[(trading_days >= month_start) & (trading_days <= month_end)]
             
             if not month_trading_days.size:
@@ -218,7 +220,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                     i += 1
                     continue
                 end_date = get_nth_trading_day(start_date, compare_days, year)
-                if not end_date:
+                if not end_date or (year == current_year and end_date > current_date):
                     break
                 
                 # Find actual data for this period
@@ -275,7 +277,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
     # ML Prediction for 2025
     historical_data = pd.DataFrame([d for d in profit_loss_data if d['Year'] != current_year])
     future_data = []
-    if len(historical_data) > 5:
+    if len(historical_data) > 5 and current_year in years:
         historical_data['period_index'] = range(len(historical_data))
         X = historical_data[['period_index']].values
         y_percent = historical_data['Profit/Loss (Percentage)'].values
@@ -285,7 +287,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
         try:
             model_percent.fit(X, y_percent)
             model_value.fit(X, y_value)
-            last_date = dframe[dframe['date'].apply(lambda x: x.year) == current_year]['date'].iloc[-1]
+            last_date = dframe[dframe['date'].apply(lambda x: x.year) == current_year]['date'].iloc[-1] if not dframe[dframe['date'].apply(lambda x: x.year) == current_year].empty else current_date
             if last_date.year == current_year:
                 trading_days = get_trading_days(last_date, datetime(current_year, 12, 31).date())
                 next_period_idx = len(historical_data)
@@ -303,13 +305,14 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                     'Start Date': last_date,
                     'End Date': end_date,
                     'Profit/Loss (Percentage)': predicted_pl_percent,
-                    'Profit/Loss (Value)': predicted_pl_value
+                    'Profit/Loss (Value)': predicted_pl_value,
+                    'Prediction': True
                 })
         except Exception as e:
             st.warning(f"ML prediction failed: {str(e)}. Using last known value.")
             predicted_pl_percent = 0.0
             predicted_pl_value = 0.0
-        profit_loss_data.extend(future_data)
+    profit_loss_data.extend(future_data)
 
     return profit_loss_data
 
@@ -327,7 +330,7 @@ def create_chart(dframe, profit_loss_data, mode, unit):
     
     unique_years = set(d['Year'] for d in profit_loss_data)
     for year in unique_years:
-        year_data = [d for d in profit_loss_data if d['Year'] == year]
+        year_data = [d for d in profit_loss_data if d['Year'] == year and (not 'Prediction' in d or not d['Prediction'])]
         if year_data:
             dates = [d['Start Date'] for d in year_data]
             valid_dates = [d for d in dates if d in dframe['date'].values]
@@ -399,7 +402,7 @@ def create_chart(dframe, profit_loss_data, mode, unit):
             x=1.1, y=1.1
         )]
     )
-    fig.update_xaxes(tickformat="%b %d, %Y")  # "Jan 10, 2020" format
+    fig.update_xaxes(tickformat="%b %d, %Y", tickangle=45)  # "Jan 10, 2020" with angle to avoid overlap
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text=f"Profit/Loss ({unit_symbol})", row=2, col=1)
     
@@ -418,7 +421,7 @@ def create_year_table(profit_loss_data, compare_days, unit):
     calendar_columns = generate_monthly_periods(compare_days, year=2024)
     
     # Create pivot table
-    years = sorted(set(d['Year'] for d in profit_loss_data))
+    years = sorted(set(d['Year'] for d in profit_loss_data if d['Year'] < datetime.now().year or (d['Year'] == datetime.now().year and not 'Prediction' in d)))
     table_data = {'Year': years}
     
     for col in calendar_columns:
@@ -426,29 +429,13 @@ def create_year_table(profit_loss_data, compare_days, unit):
     
     # Fill with actual data
     for d in profit_loss_data:
-        year_idx = years.index(d['Year'])
-        date_range = format_date_range(d['Start Date'], d['End Date'])
-        if date_range in table_data:
-            table_data[date_range][year_idx] = d[f'Profit/Loss ({unit})']
+        if d['Year'] < datetime.now().year or (d['Year'] == datetime.now().year and not 'Prediction' in d):
+            year_idx = years.index(d['Year'])
+            date_range = format_date_range(d['Start Date'], d['End Date'])
+            if date_range in table_data:
+                table_data[date_range][year_idx] = d[f'Profit/Loss ({unit})']
     
     df = pd.DataFrame(table_data)
-    
-    # Integrate 2025 predictions
-    historical_data = pd.DataFrame([d for d in profit_loss_data if d['Year'] != 2025])
-    if len(historical_data) > 5:
-        historical_data['period_index'] = range(len(historical_data))
-        X = historical_data[['period_index']].values
-        y = historical_data[f'Profit/Loss ({unit})'].values
-        model = LinearRegression()
-        try:
-            model.fit(X, y)
-            predicted_pl = model.predict([[len(historical_data)]])[0]
-            pred_row = {'Year': '2025 (Predicted)'}
-            for col in calendar_columns:
-                pred_row[col] = predicted_pl
-            df = pd.concat([df, pd.DataFrame([pred_row])], ignore_index=True)
-        except Exception as e:
-            st.warning(f"Failed to integrate predictions: {str(e)}")
     
     # Apply color styling
     numeric_cols = [col for col in df.columns if col != 'Year']
@@ -491,7 +478,7 @@ if uploaded_file and run_analysis:
 # Display results
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 08:44 PM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 09:43 PM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -508,30 +495,34 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
     st.subheader("Historical Profit/Loss by Year")
     years = sorted(set(st.session_state.profit_loss_data['Year'].unique()))
     for year in years:
-        year_data = st.session_state.profit_loss_data[st.session_state.profit_loss_data['Year'] == year].to_dict('records')
-        df, styled_df = create_year_table(year_data, compare_days, unit)
-        if df is not None and not df.empty:
-            st.write(f"📊 **Table Summary for Year {year}**: {len(df.columns)-1} periods")
-            st.dataframe(styled_df, use_container_width=True)
+        if year < datetime.now().year:
+            year_data = st.session_state.profit_loss_data[st.session_state.profit_loss_data['Year'] == year].to_dict('records')
+        elif year == datetime.now().year:
+            year_data = [d for d in st.session_state.profit_loss_data.to_dict('records') if d['Year'] == year and not 'Prediction' in d]
         else:
-            st.warning(f"No table data available for year {year}.")
+            continue
+        if year_data:
+            df, styled_df = create_year_table(year_data, compare_days, unit)
+            if df is not None and not df.empty:
+                st.write(f"📊 **Table Summary for Year {year}**: {len(df.columns)-1} periods")
+                st.dataframe(styled_df, use_container_width=True)
+            else:
+                st.warning(f"No table data available for year {year}.")
 
     # Display 2025 prediction
-    st.subheader("2025 Prediction")
-    current_year_data = [d for d in st.session_state.profit_loss_data.to_dict('records') if d['Year'] == 2025]
-    if current_year_data:
-        with st.container():
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            styled_pred_df = create_prediction_card(current_year_data, unit)
-            if styled_pred_df is not None:
-                st.dataframe(styled_pred_df, use_container_width=True)
-                csv = pd.DataFrame(current_year_data).to_csv(index=False)
-                st.download_button(label="Download 2025 Prediction", data=csv, file_name="2025_prediction.csv", mime="text/csv")
-                if st.button("Predict Again", key="predict_again"):
-                    with st.spinner("Computing predictions..."):
-                        st.session_state.profit_loss_data = pd.DataFrame(calculate_rolling_profit_loss(st.session_state.dframe, compare_days, analysis_mode))
-                    st.experimental_rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+    current_year = datetime.now().year
+    if current_year in years:
+        st.subheader("2025 Prediction")
+        pred_data = [d for d in st.session_state.profit_loss_data.to_dict('records') if d['Year'] == current_year and 'Prediction' in d]
+        if pred_data:
+            with st.container():
+                st.markdown('<div class="card">', unsafe_allow_html=True)
+                styled_pred_df = create_prediction_card(pred_data, unit)
+                if styled_pred_df is not None:
+                    st.dataframe(styled_pred_df, use_container_width=True)
+                    csv = pd.DataFrame(pred_data).to_csv(index=False)
+                    st.download_button(label="Download 2025 Prediction", data=csv, file_name="2025_prediction.csv", mime="text/csv")
+                st.markdown('</div>', unsafe_allow_html=True)
 
     # Download all data
     all_df = st.session_state.profit_loss_data.fillna(0)
@@ -563,6 +554,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         **Table Display**:
         - Profit/loss values are color-coded: green for positive, red for negative.
         - Each year has its own table, with periods based on trading days, excluding weekends and holidays (e.g., Jan 1st).
+        - 2025 shows historical data up to current date, with predictions in a separate section.
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
         - Verify required columns for the selected mode.
@@ -572,7 +564,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 3.0 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 3.1 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
