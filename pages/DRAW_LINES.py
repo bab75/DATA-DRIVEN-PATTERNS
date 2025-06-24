@@ -12,16 +12,16 @@ import uuid
 # Streamlit page config
 st.set_page_config(page_title="Stock Investment Analysis", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS for styling
+# Custom CSS for white background and readable text
 st.markdown("""
     <style>
-    .main { background-color: #1e1e1e; color: #ffffff; }
-    .sidebar .sidebar-content { background-color: #2c2c2c; }
-    .stButton>button { background-color: #4CAF50; color: white; border-radius: 5px; }
-    .stFileUploader label { color: #ffffff; }
-    h1, h2, h3 { color: #00d4ff; font-family: 'Arial', sans-serif; }
-    .stExpander { background-color: #2c2c2c; border-radius: 5px; }
-    .metric-box { background-color: #333333; padding: 10px; border-radius: 5px; }
+    .main { background-color: #ffffff; color: #000000; }
+    .sidebar .sidebar-content { background-color: #f0f0f0; color: #000000; }
+    .stButton>button { background-color: #4CAF50; color: #ffffff; border-radius: 5px; }
+    .stFileUploader label { color: #000000; }
+    h1, h2, h3 { color: #0288d1; font-family: 'Arial', sans-serif; }
+    .stExpander { background-color: #f5f5f5; border-radius: 5px; }
+    .metric-box { background-color: #e0e0e0; padding: 10px; border-radius: 5px; color: #000000; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -37,26 +37,50 @@ st.sidebar.header("Chart Settings")
 date_range = st.sidebar.date_input("Select Date Range", value=(pd.to_datetime("2025-01-01"), pd.to_datetime("2025-06-13")))
 show_indicators = st.sidebar.multiselect("Select Indicators", ["Bollinger Bands", "Ichimoku Cloud", "RSI", "MACD", "Stochastic", "ADX"], default=["Bollinger Bands", "RSI"])
 
-# Load data
+# Load and validate data
 @st.cache_data
 def load_data(primary_file, secondary_file):
     aapl_df = pd.DataFrame()
     pl_df = pd.DataFrame()
     
     if primary_file:
-        if primary_file.name.endswith('.csv'):
-            aapl_df = pd.read_csv(primary_file)
-        elif primary_file.name.endswith('.xlsx'):
-            aapl_df = pd.read_excel(primary_file)
-        aapl_df['date'] = pd.to_datetime(aapl_df['date'])
+        try:
+            if primary_file.name.endswith('.csv'):
+                aapl_df = pd.read_csv(primary_file)
+            elif primary_file.name.endswith('.xlsx'):
+                aapl_df = pd.read_excel(primary_file)
+            
+            # Validate required columns
+            required_cols = ['date', 'open', 'high', 'low', 'close', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr', 'senkou_span_a', 'senkou_span_b']
+            missing_cols = [col for col in required_cols if col not in aapl_df.columns]
+            if missing_cols:
+                st.error(f"Missing columns in AAPL data: {', '.join(missing_cols)}")
+                return pd.DataFrame(), pd.DataFrame()
+            
+            # Convert data types
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
+            for col in ['open', 'high', 'low', 'close', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr', 'senkou_span_a', 'senkou_span_b']:
+                aapl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
+            
+            # Check for null values
+            if aapl_df[['open', 'high', 'low', 'close', 'volume']].isnull().any().any():
+                st.error("AAPL data contains null values in OHLC or volume columns.")
+                return pd.DataFrame(), pd.DataFrame()
+                
+        except Exception as e:
+            st.error(f"Error loading AAPL data: {str(e)}")
+            return pd.DataFrame(), pd.DataFrame()
     
     if secondary_file:
-        if secondary_file.name.endswith('.csv'):
-            pl_df = pd.read_csv(secondary_file)
-        elif secondary_file.name.endswith('.xlsx'):
-            pl_df = pd.read_excel(secondary_file)
-        pl_df['Start Date'] = pd.to_datetime(pl_df['Start Date'])
-        pl_df['End Date'] = pd.to_datetime(pl_df['End Date'])
+        try:
+            if secondary_file.name.endswith('.csv'):
+                pl_df = pd.read_csv(secondary_file)
+            elif secondary_file.name.endswith('.xlsx'):
+                pl_df = pd.read_excel(secondary_file)
+            pl_df['Start Date'] = pd.to_datetime(pl_df['Start Date'], errors='coerce')
+            pl_df['End Date'] = pd.to_datetime(pl_df['End Date'], errors='coerce')
+        except Exception as e:
+            st.warning(f"Error loading benchmark data: {str(e)}. Proceeding without benchmark.")
     
     return aapl_df, pl_df
 
@@ -64,6 +88,10 @@ if primary_file:
     aapl_df, pl_df = load_data(primary_file, secondary_file)
 else:
     st.warning("Please upload the AAPL data file to proceed.")
+    st.stop()
+
+if aapl_df.empty:
+    st.error("Failed to load valid AAPL data. Please check the file and try again.")
     st.stop()
 
 # Filter by date range
@@ -78,7 +106,7 @@ def calculate_metrics(df):
     sharpe_ratio = (annualized_return - 0.03) / volatility if volatility > 0 else 0
     downside_returns = df['daily_return'][df['daily_return'] < 0]
     sortino_ratio = (annualized_return - 0.03) / (downside_returns.std() * np.sqrt(252)) if len(downside_returns) > 0 else 0
-    drawdowns = (df['portfolio_value'] / df['portfolio_value'].cummax()) - 1
+    drawdowns = (df['portfolio_value'] / df['portfolio_value'].cummax()) - 1 if 'portfolio_value' in df.columns else df['close'] / df['close'].cummax() - 1
     max_drawdown = drawdowns.min() if len(drawdowns) > 0 else 0
     return {
         'CAGR': annualized_return,
@@ -93,7 +121,7 @@ aapl_metrics = calculate_metrics(aapl_df)
 # Detect consolidation and breakout
 def detect_consolidation_breakout(df):
     # Consolidation: low ATR, low ADX, or consolidation=True
-    df['is_consolidation'] = (df['consolidation'] == True) | (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
+    df['is_consolidation'] = (df.get('consolidation', False) == True) | (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
     # Breakout: price above resistance, volume spike, bullish indicators
     df['resistance'] = df['high'].rolling(20).max()
     df['support'] = df['low'].rolling(20).min()
@@ -164,11 +192,12 @@ fig = make_subplots(rows=5, cols=1, shared_xaxes=True, vertical_spacing=0.05,
 fig.add_trace(go.Candlestick(x=aapl_df['date'],
                              open=aapl_df['open'], high=aapl_df['high'], low=aapl_df['low'], close=aapl_df['close'],
                              name="Candlestick",
+                             increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
                              hovertemplate="Date: %{x|%m-%d-%Y}<br>Open: $%{open:.2f}<br>High: $%{high:.2f}<br>Low: $%{low:.2f}<br>Close: $%{close:.2f}<br>Volume: %{customdata:,}<extra></extra>",
                              customdata=aapl_df['volume']), row=1, col=1)
 if "Bollinger Bands" in show_indicators:
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['ma20'] + 2*aapl_df['std_dev'], name="Bollinger Upper", line=dict(color="#ffeb3b")), row=1, col=1)
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['ma20'] - 2*aapl_df['std_dev'], name="Bollinger Lower", line=dict(color="#ffeb3b"), fill='tonexty', fillcolor='rgba(255,235,59,0.1)'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['ma20'] + 2*aapl_df['std_dev'], name="Bollinger Upper", line=dict(color="#0288d1")), row=1, col=1)
+    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['ma20'] - 2*aapl_df['std_dev'], name="Bollinger Lower", line=dict(color="#0288d1"), fill='tonexty', fillcolor='rgba(2,136,209,0.1)'), row=1, col=1)
 if "Ichimoku Cloud" in show_indicators:
     fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['senkou_span_a'], name="Senkou Span A", line=dict(color="#4CAF50"), fill='tonexty', fillcolor='rgba(76,175,80,0.2)'), row=1, col=1)
     fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['senkou_span_b'], name="Senkou Span B", line=dict(color="#f44336"), fill='tonexty', fillcolor='rgba(244,67,54,0.2)'), row=1, col=1)
@@ -193,7 +222,7 @@ if "RSI" in show_indicators:
 
 # MACD & Stochastic chart
 if "MACD" in show_indicators:
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['macd'], name="MACD", line=dict(color="#2196f3")), row=3, col=1)
+    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['macd'], name="MACD", line=dict(color="#0288d1")), row=3, col=1)
     fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['signal'], name="Signal Line", line=dict(color="#ff9800")), row=3, col=1)
 if "Stochastic" in show_indicators:
     fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2"), row=3, col=1)
@@ -204,18 +233,18 @@ if "Stochastic" in show_indicators:
 if "ADX" in show_indicators:
     fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['adx'], name="ADX", line=dict(color="#3f51b5"),
                              hovertemplate="Date: %{x|%m-%d-%Y}<br>ADX: %{y:.2f}<extra></extra>"), row=4, col=1)
-    fig.add_hline(y=25, line_dash="dash", line_color="#ffeb3b", row=4, col=1)
+    fig.add_hline(y=25, line_dash="dash", line_color="#0288d1", row=4, col=1)
 fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['daily_return'].rolling(20).std() * np.sqrt(252), name="Volatility",
                          line=dict(color="#795548"), hovertemplate="Date: %{x|%m-%d-%Y}<br>Volatility: %{y:.2f}<extra></extra>"), row=4, col=1)
 
 # Volume chart
 fig.add_trace(go.Bar(x=aapl_df['date'], y=aapl_df['volume'], name="Volume", marker_color="#607d8b",
                      hovertemplate="Date: %{x|%m-%d-%Y}<br>Volume: %{y:,}<extra></extra>"), row=5, col=1)
-fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['vwap'], name="VWAP", line=dict(color="#ffeb3b"),
+fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df.get('vwap', pd.Series()), name="VWAP", line=dict(color="#0288d1"),
                          hovertemplate="Date: %{x|%m-%d-%Y}<br>VWAP: $%{y:.2f}<extra></extra>"), row=5, col=1)
 
-fig.update_layout(height=1000, showlegend=True, template="plotly_dark", title_text="AAPL Candlestick Analysis",
-                  hovermode="x unified", font=dict(family="Arial", size=12, color="#ffffff"))
+fig.update_layout(height=1000, showlegend=True, template="plotly_white", title_text="AAPL Candlestick Analysis",
+                  hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
 fig.update_xaxes(rangeslider_visible=True, row=5, col=1, tickformat="%m-%d-%Y")
 st.plotly_chart(fig, use_container_width=True)
 
@@ -224,10 +253,10 @@ if not pl_df.empty:
     st.header("Benchmark Comparison")
     pl_cum_return = (1 + pl_df['Profit/Loss (Percentage)']).cumprod() - 1
     fig_bench = go.Figure()
-    fig_bench.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['cumulative_return'], name="AAPL", line=dict(color="#00d4ff")))
-    fig_bench.add_trace(go.Scatter(x=pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ffeb3b")))
-    fig_bench.update_layout(title="AAPL vs. Benchmark Cumulative Returns", height=400, template="plotly_dark",
-                            hovermode="x unified", font=dict(family="Arial", size=12, color="#ffffff"), xaxis_tickformat="%m-%d-%Y")
+    fig_bench.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['cumulative_return'], name="AAPL", line=dict(color="#0288d1")))
+    fig_bench.add_trace(go.Scatter(x=pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800")))
+    fig_bench.update_layout(title="AAPL vs. Benchmark Cumulative Returns", height=400, template="plotly_white",
+                            hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
     st.plotly_chart(fig_bench, use_container_width=True)
 
 # Seasonality heatmap
@@ -237,8 +266,8 @@ aapl_df['year'] = aapl_df['date'].dt.year
 monthly_returns = aapl_df.groupby(['year', 'month'])['daily_return'].mean().unstack() * 100
 fig_heatmap = go.Figure(data=go.Heatmap(z=monthly_returns.values, x=monthly_returns.columns, y=monthly_returns.index,
                                         colorscale="RdYlGn", hovertemplate="Year: %{y}<br>Month: %{x}<br>Return: %{z:.2f}%<extra></extra>"))
-fig_heatmap.update_layout(title="Monthly Average Returns Heatmap", height=400, template="plotly_dark",
-                          font=dict(family="Arial", size=12, color="#ffffff"))
+fig_heatmap.update_layout(title="Monthly Average Returns Heatmap", height=400, template="plotly_white",
+                          font=dict(family="Arial", size=12, color="#000000"))
 st.plotly_chart(fig_heatmap, use_container_width=True)
 
 # Download report
