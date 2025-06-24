@@ -9,6 +9,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from datetime import datetime
 import uuid
+import base64
+import os
 
 # Check Plotly version
 if plotly.__version__ < '5.0.0':
@@ -55,7 +57,7 @@ def load_data(primary_file, secondary_file):
             elif primary_file.name.endswith('.xlsx'):
                 aapl_df = pd.read_excel(primary_file)
             
-            # Normalize column names (lowercase, strip whitespace)
+            # Normalize column names
             aapl_df.columns = aapl_df.columns.str.lower().str.strip()
             
             # Validate required columns
@@ -71,10 +73,14 @@ def load_data(primary_file, secondary_file):
             
             # Convert data types
             aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
-            for col in ['open', 'high', 'low', 'close', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr', 'senkou_span_a', 'senkou_span_b']:
+            numeric_cols = ['open', 'high', 'low', 'close', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr', 'senkou_span_a', 'senkou_span_b']
+            for col in numeric_cols:
                 aapl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
+                if aapl_df[col].isna().any() or np.isinf(aapl_df[col]).any():
+                    st.warning(f"Non-finite values in '{col}'. Replacing with 0 for calculations.")
+                    aapl_df[col] = aapl_df[col].replace([np.inf, -np.inf], np.nan).fillna(0)
             
-            # Drop rows with null values in critical columns
+            # Drop rows with null dates or critical columns
             critical_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
             initial_len = len(aapl_df)
             aapl_df = aapl_df.dropna(subset=critical_cols)
@@ -93,7 +99,7 @@ def load_data(primary_file, secondary_file):
             # Verify numeric columns
             for col in ['open', 'high', 'low', 'close', 'volume']:
                 if not pd.api.types.is_numeric_dtype(aapl_df[col]):
-                    st.error(f"Column '{col}' contains non-numeric data. Please ensure all values are numbers (e.g., 196.45, not '$196.45').")
+                    st.error(f"Column '{col}' contains non-numeric data. Please ensure all values are numbers (e.g., 196.45).")
                     st.write("Sample data (first 5 rows):", aapl_df[[col]].head())
                     return pd.DataFrame(), pd.DataFrame()
             
@@ -250,36 +256,6 @@ def calculate_score(metrics, signals):
 
 score = calculate_score(aapl_metrics, signals)
 
-# Profit/Loss Analysis Section
-st.header("Profit/Loss Analysis")
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.markdown(f"<div class='metric-box'><b>Average Return</b><br>{aapl_metrics['Average Return']:.2f}%</div>", unsafe_allow_html=True)
-with col2:
-    st.markdown(f"<div class='metric-box'><b>Volatility</b><br>{aapl_metrics['Volatility']:.2f}%</div>", unsafe_allow_html=True)
-with col3:
-    st.markdown(f"<div class='metric-box'><b>Win Ratio</b><br>{aapl_metrics['Win Ratio']:.2f}%</div>", unsafe_allow_html=True)
-with col4:
-    st.markdown(f"<div class='metric-box'><b>Max Drawdown</b><br>{aapl_metrics['Max Drawdown']:.2f}%</div>", unsafe_allow_html=True)
-st.markdown(f"<div class='metric-box'><b>Significant Events</b><br>Largest single-period loss was {aapl_metrics['Largest Loss']:.2f}% on {aapl_metrics['Largest Loss Date']}, indicating a significant market correction.<br>Largest single-period gain was {aapl_metrics['Largest Gain']:.2f}% on {aapl_metrics['Largest Gain Date']}.</div>", unsafe_allow_html=True)
-
-# Decision Dashboard
-st.header("Decision Dashboard")
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.markdown(f"<div class='metric-box'><b>Recommendation</b><br>{score['Recommendation']}</div>", unsafe_allow_html=True)
-with col2:
-    st.markdown(f"<div class='metric-box'><b>Total Score</b><br>{score['Total']:.1f}/100</div>", unsafe_allow_html=True)
-with col3:
-    st.markdown(f"<div class='metric-box'><b>Breakout Timeframe</b><br>{breakout_timeframe}</div>", unsafe_allow_html=True)
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.markdown(f"<div class='metric-box'><b>CAGR</b><br>{aapl_metrics['CAGR']:.2f}%</div>", unsafe_allow_html=True)
-with col2:
-    st.markdown(f"<div class='metric-box'><b>Sharpe Ratio</b><br>{aapl_metrics['Sharpe Ratio']:.2f}</div>", unsafe_allow_html=True)
-with col3:
-    st.markdown(f"<div class='metric-box'><b>RSI</b><br>{aapl_df['rsi'].iloc[-1]:.2f} ({signals['RSI']})</div>", unsafe_allow_html=True)
-
 # Plotly candlestick chart with consolidation and breakout
 fig = make_subplots(rows=6, cols=1, shared_xaxes=True, vertical_spacing=0.05,
                     subplot_titles=("Candlestick & Breakout", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume", "Win/Loss Distribution"),
@@ -377,9 +353,46 @@ except Exception as e:
 fig.update_layout(height=1200, showlegend=True, template="plotly_white", title_text="AAPL Candlestick Analysis",
                   hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
 fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=6, col=1)
+
+# Save candlestick chart as image
+candlestick_img = fig.to_image(format="png")
+candlestick_img_b64 = base64.b64encode(candlestick_img).decode()
+
+# Profit/Loss Analysis Section
+st.header("Profit/Loss Analysis")
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.markdown(f"<div class='metric-box'><b>Average Return</b><br>{aapl_metrics['Average Return']:.2f}%</div>", unsafe_allow_html=True)
+with col2:
+    st.markdown(f"<div class='metric-box'><b>Volatility</b><br>{aapl_metrics['Volatility']:.2f}%</div>", unsafe_allow_html=True)
+with col3:
+    st.markdown(f"<div class='metric-box'><b>Win Ratio</b><br>{aapl_metrics['Win Ratio']:.2f}%</div>", unsafe_allow_html=True)
+with col4:
+    st.markdown(f"<div class='metric-box'><b>Max Drawdown</b><br>{aapl_metrics['Max Drawdown']:.2f}%</div>", unsafe_allow_html=True)
+st.markdown(f"<div class='metric-box'><b>Significant Events</b><br>Largest single-period loss was {aapl_metrics['Largest Loss']:.2f}% on {aapl_metrics['Largest Loss Date']}, indicating a significant market correction.<br>Largest single-period gain was {aapl_metrics['Largest Gain']:.2f}% on {aapl_metrics['Largest Gain Date']}.</div>", unsafe_allow_html=True)
+
+# Decision Dashboard
+st.header("Decision Dashboard")
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.markdown(f"<div class='metric-box'><b>Recommendation</b><br>{score['Recommendation']}</div>", unsafe_allow_html=True)
+with col2:
+    st.markdown(f"<div class='metric-box'><b>Total Score</b><br>{score['Total']:.1f}/100</div>", unsafe_allow_html=True)
+with col3:
+    st.markdown(f"<div class='metric-box'><b>Breakout Timeframe</b><br>{breakout_timeframe}</div>", unsafe_allow_html=True)
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.markdown(f"<div class='metric-box'><b>CAGR</b><br>{aapl_metrics['CAGR']:.2f}%</div>", unsafe_allow_html=True)
+with col2:
+    st.markdown(f"<div class='metric-box'><b>Sharpe Ratio</b><br>{aapl_metrics['Sharpe Ratio']:.2f}</div>", unsafe_allow_html=True)
+with col3:
+    st.markdown(f"<div class='metric-box'><b>RSI</b><br>{aapl_df['rsi'].iloc[-1]:.2f} ({signals['RSI']})</div>", unsafe_allow_html=True)
+
+# Display candlestick chart
 st.plotly_chart(fig, use_container_width=True)
 
 # Benchmark comparison
+fig_bench = None
 if not pl_df.empty:
     st.header("Benchmark Comparison")
     try:
@@ -394,6 +407,9 @@ if not pl_df.empty:
         st.plotly_chart(fig_bench, use_container_width=True)
     except Exception as e:
         st.warning(f"Error plotting benchmark comparison: {str(e)}. Skipping benchmark chart.")
+    else:
+        bench_img = fig_bench.to_image(format="png")
+        bench_img_b64 = base64.b64encode(bench_img).decode()
 
 # Seasonality heatmap
 st.header("Seasonality Analysis")
@@ -405,11 +421,19 @@ fig_heatmap = go.Figure(data=go.Heatmap(z=monthly_returns.values, x=monthly_retu
 fig_heatmap.update_layout(title="Monthly Average Returns Heatmap", height=400, template="plotly_white",
                           font=dict(family="Arial", size=12, color="#000000"), xaxis_title="Month", yaxis_title="Year")
 st.plotly_chart(fig_heatmap, use_container_width=True)
+heatmap_img = fig_heatmap.to_image(format="png")
+heatmap_img_b64 = base64.b64encode(heatmap_img).decode()
 
-# Download report
-st.header("Export Report")
-buffer = io.BytesIO()
-c = canvas.Canvas(buffer, pagesize=letter)
+# Export data as CSV
+st.header("Export Data and Reports")
+csv_buffer = io.StringIO()
+aapl_df.to_csv(csv_buffer, index=False)
+csv_buffer.seek(0)
+st.download_button("Download AAPL Data (CSV)", csv_buffer.getvalue(), file_name="aapl_analysis_data.csv", mime="text/csv")
+
+# Export PDF report
+pdf_buffer = io.BytesIO()
+c = canvas.Canvas(pdf_buffer, pagesize=letter)
 c.setFont("Helvetica", 12)
 c.drawString(50, 750, "Stock Investment Analysis Report")
 c.drawString(50, 730, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
@@ -433,8 +457,81 @@ c.drawString(70, 390, f"- Stop-Loss: ${aapl_df['stop_loss'].iloc[-1]:.2f}")
 c.drawString(70, 370, f"- Take-Profit: ${aapl_df['take_profit'].iloc[-1]:.2f}")
 c.showPage()
 c.save()
-buffer.seek(0)
-st.download_button("Download PDF Report", buffer, file_name="investment_report.pdf", mime="application/pdf")
+pdf_buffer.seek(0)
+st.download_button("Download PDF Report", pdf_buffer, file_name="investment_report.pdf", mime="application/pdf")
+
+# Export HTML report
+html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AAPL Stock Analysis Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; background-color: #ffffff; color: #000000; margin: 20px; }}
+        h1, h2 {{ color: #0288d1; }}
+        .metric-box {{ background-color: #e0e0e0; padding: 10px; margin: 10px 0; border-radius: 5px; }}
+        img {{ max-width: 100%; height: auto; }}
+        .section {{ margin-bottom: 20px; }}
+    </style>
+</head>
+<body>
+    <h1>AAPL Stock Analysis Report</h1>
+    <p><b>Date:</b> {datetime.now().strftime('%Y-%m-%d')}</p>
+    
+    <div class="section">
+        <h2>Recommendation</h2>
+        <div class="metric-box">
+            <p><b>Recommendation:</b> {score['Recommendation']}</p>
+            <p><b>Total Score:</b> {score['Total']:.1f}/100</p>
+            <p><b>Breakout Timeframe:</b> {breakout_timeframe}</p>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Key Metrics</h2>
+        <div class="metric-box">
+            <p><b>Average Return:</b> {aapl_metrics['Average Return']:.2f}%</p>
+            <p><b>Volatility:</b> {aapl_metrics['Volatility']:.2f}%</p>
+            <p><b>Win Ratio:</b> {aapl_metrics['Win Ratio']:.2f}%</p>
+            <p><b>Max Drawdown:</b> {aapl_metrics['Max Drawdown']:.2f}%</p>
+            <p><b>Largest Loss:</b> {aapl_metrics['Largest Loss']:.2f}% on {aapl_metrics['Largest Loss Date']}</p>
+            <p><b>Largest Gain:</b> {aapl_metrics['Largest Gain']:.2f}% on {aapl_metrics['Largest Gain Date']}</p>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Latest Trade Setup</h2>
+        <div class="metric-box">
+            <p><b>Entry:</b> ${aapl_df['close'].iloc[-1]:.2f}</p>
+            <p><b>Stop-Loss:</b> ${aapl_df['stop_loss'].iloc[-1]:.2f}</p>
+            <p><b>Take-Profit:</b> ${aapl_df['take_profit'].iloc[-1]:.2f}</p>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Candlestick & Technical Analysis</h2>
+        <img src="data:image/png;base64,{candlestick_img_b64}" alt="Candlestick Chart">
+    </div>
+"""
+if fig_bench:
+    html_content += f"""
+    <div class="section">
+        <h2>Benchmark Comparison</h2>
+        <img src="data:image/png;base64,{bench_img_b64}" alt="Benchmark Chart">
+    </div>
+"""
+html_content += f"""
+    <div class="section">
+        <h2>Seasonality Analysis</h2>
+        <img src="data:image/png;base64,{heatmap_img_b64}" alt="Seasonality Heatmap">
+    </div>
+</body>
+</html>
+"""
+html_buffer = io.StringIO()
+html_buffer.write(html_content)
+html_buffer.seek(0)
+st.download_button("Download HTML Report", html_buffer.getvalue(), file_name="aapl_analysis_report.html", mime="text/html")
 
 # Help section
 with st.expander("📚 Help: How the Analysis Works"):
