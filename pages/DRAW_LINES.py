@@ -4,11 +4,15 @@ import numpy as np
 import plotly
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import yfinance as yf
 import io
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-from datetime import datetime
+from datetime import datetime, timedelta
+import base64
+import ta
 import uuid
+import openpyxl
 
 # Check Plotly version
 if plotly.__version__ < '5.0.0':
@@ -27,39 +31,49 @@ st.markdown("""
     h1, h2, h3 { color: #0288d1; font-family: 'Arial', sans-serif; }
     .stExpander { background-color: #f5f5f5; border-radius: 5px; }
     .metric-box { background-color: #e0e0e0; padding: 10px; border-radius: 5px; color: #000000; }
+    .trade-details { background-color: #f0f0f0; padding: 10px; border-radius: 5px; color: #000000; }
     </style>
 """, unsafe_allow_html=True)
 
 # Title
 st.title("📊 AAPL Stock Analysis: Consolidation & Breakout")
 
-# Sidebar for file upload and settings
-st.sidebar.header("Upload Data")
-primary_file = st.sidebar.file_uploader("Upload AAPL Data (CSV or XLSX)", type=["csv", "xlsx"])
+# Sidebar for data source and settings
+st.sidebar.header("Data Source")
+data_source = st.sidebar.radio("Select Data Source", ["Upload CSV/XLSX", "Fetch Real-Time (Yahoo Finance)"])
+primary_file = None
+if data_source == "Upload CSV/XLSX":
+    primary_file = st.sidebar.file_uploader("Upload AAPL Data (CSV or XLSX)", type=["csv", "xlsx"])
 secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV or XLSX, Optional)", type=["csv", "xlsx"])
 
 st.sidebar.header("Chart Settings")
 date_range = st.sidebar.date_input("Select Date Range", value=(pd.to_datetime("2025-01-01"), pd.to_datetime("2025-06-13")))
-show_indicators = st.sidebar.multiselect("Select Indicators", ["Bollinger Bands", "Ichimoku Cloud", "RSI", "MACD", "Stochastic", "ADX"], default=["Bollinger Bands", "RSI"])
+show_indicators = st.sidebar.multiselect("Select Indicators", ["Bollinger Bands", "Ichimoku Cloud", "RSI", "MACD", "Stochastic", "ADX", "Fibonacci", "RVOL"], default=["Bollinger Bands", "RSI"])
+subplot_order = st.sidebar.multiselect("Customize Subplot Order", ["Candlestick", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume", "Win/Loss Distribution"], default=["Candlestick", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume", "Win/Loss Distribution"])
+html_report_type = st.sidebar.radio("HTML Report Type", ["Interactive (with Hover)", "Static Images"])
+
+# Initialize session state for trade details
+if 'trade_details' not in st.session_state:
+    st.session_state.trade_details = None
 
 # Load and validate data
 @st.cache_data
-def load_data(primary_file, secondary_file):
+def load_data(primary_file, data_source, start_date, end_date):
     aapl_df = pd.DataFrame()
     pl_df = pd.DataFrame()
     
-    if primary_file:
+    if data_source == "Upload CSV/XLSX" and primary_file:
         try:
             if primary_file.name.endswith('.csv'):
                 aapl_df = pd.read_csv(primary_file)
             elif primary_file.name.endswith('.xlsx'):
                 aapl_df = pd.read_excel(primary_file)
             
-            # Normalize column names (lowercase, strip whitespace)
+            # Normalize column names
             aapl_df.columns = aapl_df.columns.str.lower().str.strip()
             
             # Validate required columns
-            required_cols = ['date', 'open', 'high', 'low', 'close', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr', 'senkou_span_a', 'senkou_span_b']
+            required_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
             actual_cols = aapl_df.columns.tolist()
             missing_cols = [col for col in required_cols if col not in actual_cols]
             if missing_cols:
@@ -71,8 +85,25 @@ def load_data(primary_file, secondary_file):
             
             # Convert data types
             aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
-            for col in ['open', 'high', 'low', 'close', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr', 'senkou_span_a', 'senkou_span_b']:
+            numeric_cols = ['open', 'high', 'low', 'close', 'volume']
+            for col in numeric_cols:
                 aapl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
+            
+            # Detailed validation for non-finite values
+            validation_issues = []
+            for col in numeric_cols:
+                nulls = aapl_df[col].isnull().sum()
+                infs = np.isinf(aapl_df[col]).sum()
+                if nulls > 0 or infs > 0:
+                    null_rows = aapl_df[aapl_df[col].isnull()].index.tolist()
+                    inf_rows = aapl_df[np.isinf(aapl_df[col])].index.tolist()
+                    validation_issues.append(f"Column '{col}': {nulls} null values (rows: {null_rows[:5] + ['...'] if null_rows else []}), {infs} inf values (rows: {inf_rows[:5] + ['...'] if inf_rows else []})")
+            
+            if validation_issues:
+                st.error("Data validation issues detected:\n" + "\n".join(validation_issues))
+                st.write("Sample data (first 5 rows):", aapl_df[numeric_cols].head())
+                st.write("Data types:", aapl_df[numeric_cols].dtypes)
+                return pd.DataFrame(), pd.DataFrame()
             
             # Drop rows with null values in critical columns
             critical_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
@@ -80,30 +111,73 @@ def load_data(primary_file, secondary_file):
             aapl_df = aapl_df.dropna(subset=critical_cols)
             if aapl_df.empty:
                 st.error(f"AAPL data is empty after removing {initial_len} rows with null values in critical columns: {', '.join(critical_cols)}")
-                st.write("Sample data (first 5 rows):", aapl_df.head())
-                st.write("Data types:", aapl_df.dtypes)
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Ensure no null dates
-            if aapl_df['date'].isnull().any():
-                st.error("Invalid or missing dates in AAPL data. Please check the 'date' column format (e.g., YYYY-MM-DD).")
-                st.write("Sample data (first 5 rows):", aapl_df.head())
-                return pd.DataFrame(), pd.DataFrame()
-            
-            # Verify numeric columns
-            for col in ['open', 'high', 'low', 'close', 'volume']:
-                if not pd.api.types.is_numeric_dtype(aapl_df[col]):
-                    st.error(f"Column '{col}' contains non-numeric data. Please ensure all values are numbers (e.g., 196.45, not '$196.45').")
-                    st.write("Sample data (first 5 rows):", aapl_df[[col]].head())
-                    return pd.DataFrame(), pd.DataFrame()
-            
-            # Check for VWAP and warn if missing
+            # Check for VWAP
             if 'vwap' not in aapl_df.columns:
-                st.warning("VWAP column is missing in AAPL data. VWAP plot will be skipped (this is optional).")
-                
+                st.warning("VWAP column is missing. VWAP plot will be skipped (optional).")
+        
         except Exception as e:
             st.error(f"Error loading AAPL data: {str(e)}. Please check the file format and content.")
             st.write("Sample data (first 5 rows):", aapl_df.head() if not aapl_df.empty else "No data loaded")
+            return pd.DataFrame(), pd.DataFrame()
+    
+    elif data_source == "Fetch Real-Time (Yahoo Finance)":
+        try:
+            aapl_df = yf.download('AAPL', start=start_date, end=end_date + timedelta(days=1), progress=False)
+            if aapl_df.empty:
+                st.error("Failed to fetch AAPL data from Yahoo Finance. Please check your internet connection or try uploading a file.")
+                return pd.DataFrame(), pd.DataFrame()
+            
+            # Normalize column names
+            aapl_df = aapl_df.reset_index().rename(columns={
+                'Date': 'date', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'
+            })
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'])
+        
+        except Exception as e:
+            st.error(f"Error fetching AAPL data from Yahoo Finance: {str(e)}. Please try uploading a file.")
+            return pd.DataFrame(), pd.DataFrame()
+    
+    # Compute technical indicators
+    if not aapl_df.empty:
+        try:
+            aapl_df['rsi'] = ta.momentum.RSIIndicator(aapl_df['close'], window=14).rsi()
+            aapl_df['macd'] = ta.trend.MACD(aapl_df['close']).macd()
+            aapl_df['signal'] = ta.trend.MACD(aapl_df['close']).macd_signal()
+            aapl_df['stochastic_k'] = ta.momentum.StochasticOscillator(aapl_df['high'], aapl_df['low'], aapl_df['close'], window=14, smooth_window=3).stoch()
+            aapl_df['stochastic_d'] = ta.momentum.StochasticOscillator(aapl_df['high'], aapl_df['low'], aapl_df['close'], window=14, smooth_window=3).stoch_signal()
+            aapl_df['adx'] = ta.trend.ADXIndicator(aapl_df['high'], aapl_df['low'], aapl_df['close'], window=14).adx()
+            aapl_df['atr'] = ta.volatility.AverageTrueRange(aapl_df['high'], aapl_df['low'], aapl_df['close'], window=14).average_true_range()
+            ichimoku = ta.trend.IchimokuIndicator(aapl_df['high'], aapl_df['low'], window1=9, window2=26, window3=52)
+            aapl_df['senkou_span_a'] = ichimoku.ichimoku_a()
+            aapl_df['senkou_span_b'] = ichimoku.ichimoku_b()
+            aapl_df['ma20'] = aapl_df['close'].rolling(window=20).mean()
+            aapl_df['std_dev'] = aapl_df['close'].rolling(window=20).std()
+            aapl_df['rvol'] = aapl_df['volume'] / aapl_df['volume'].rolling(window=20).mean()
+            
+            # Fibonacci retracement levels
+            recent_high = aapl_df['high'].rolling(window=20).max()
+            recent_low = aapl_df['low'].rolling(window=20).min()
+            diff = recent_high - recent_low
+            aapl_df['fib_236'] = recent_high - diff * 0.236
+            aapl_df['fib_382'] = recent_high - diff * 0.382
+            aapl_df['fib_50'] = recent_high - diff * 0.5
+            aapl_df['fib_618'] = recent_high - diff * 0.618
+            
+            # Drop rows with any NaN in computed indicators
+            indicator_cols = ['rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr', 'senkou_span_a', 'senkou_span_b', 'ma20', 'std_dev', 'rvol', 'fib_236', 'fib_382', 'fib_50', 'fib_618']
+            initial_len = len(aapl_df)
+            aapl_df = aapl_df.dropna(subset=indicator_cols)
+            if len(aapl_df) < initial_len:
+                st.warning(f"Dropped {initial_len - len(aapl_df)} rows due to missing values in computed indicators.")
+            
+            if aapl_df.empty:
+                st.error("No valid data after computing indicators. Please check the input data or date range.")
+                return pd.DataFrame(), pd.DataFrame()
+        
+        except Exception as e:
+            st.error(f"Error computing technical indicators: {str(e)}. Please ensure sufficient data points.")
             return pd.DataFrame(), pd.DataFrame()
     
     if secondary_file:
@@ -122,14 +196,10 @@ def load_data(primary_file, secondary_file):
     
     return aapl_df, pl_df
 
-if primary_file:
-    aapl_df, pl_df = load_data(primary_file, secondary_file)
-else:
-    st.warning("Please upload the AAPL data file to proceed.")
-    st.stop()
+aapl_df, pl_df = load_data(primary_file, data_source, date_range[0], date_range[1])
 
 if aapl_df.empty:
-    st.error("Failed to load valid AAPL data. Please check the file and try again.")
+    st.error("Failed to load valid AAPL data. Please check the file or try real-time data.")
     st.stop()
 
 # Filter by date range
@@ -139,40 +209,25 @@ if aapl_df.empty:
     st.stop()
 
 # Calculate returns and metrics
+@st.cache_data
 def calculate_metrics(df):
     df['daily_return'] = df['close'].pct_change()
-    # Handle non-finite daily returns
-    if df['daily_return'].isna().any() or np.isinf(df['daily_return']).any():
-        st.warning("Non-finite values (NaN or inf) detected in daily returns. Replacing with 0 for calculations.")
-        df['daily_return'] = df['daily_return'].replace([np.inf, -np.inf], np.nan).fillna(0)
+    df['daily_return'] = df['daily_return'].replace([np.inf, -np.inf], np.nan).fillna(0)
     
     df['cumulative_return'] = (1 + df['daily_return']).cumprod() - 1
     
-    # Average Return (mean daily return)
-    average_return = df['daily_return'].mean() * 100  # in percentage
-    
-    # Volatility (annualized standard deviation of daily returns)
-    volatility = df['daily_return'].std() * np.sqrt(252) * 100  # in percentage
-    
-    # Win Ratio (percentage of days with positive returns)
-    win_ratio = (df['daily_return'] > 0).mean() * 100  # in percentage
-    
-    # Annualized Return (CAGR)
+    average_return = df['daily_return'].mean() * 100
+    volatility = df['daily_return'].std() * np.sqrt(252) * 100
+    win_ratio = (df['daily_return'] > 0).mean() * 100
     annualized_return = ((1 + df['cumulative_return'].iloc[-1]) ** (252 / len(df))) - 1 if len(df) > 0 else 0
-    
-    # Sharpe and Sortino Ratios
     sharpe_ratio = (annualized_return - 0.03) / (volatility / 100) if volatility > 0 else 0
     downside_returns = df['daily_return'][df['daily_return'] < 0]
     sortino_ratio = (annualized_return - 0.03) / (downside_returns.std() * np.sqrt(252)) if len(downside_returns) > 0 else 0
-    
-    # Max Drawdown
-    drawdowns = (df['portfolio_value'] / df['portfolio_value'].cummax()) - 1 if 'portfolio_value' in df.columns else df['close'] / df['close'].cummax() - 1
-    max_drawdown = drawdowns.min() * 100  # in percentage
-    
-    # Largest Single-Period Loss and Gain
-    largest_loss = df['daily_return'].min() * 100  # in percentage
+    drawdowns = df['close'] / df['close'].cummax() - 1
+    max_drawdown = drawdowns.min() * 100
+    largest_loss = df['daily_return'].min() * 100
     largest_loss_date = df.loc[df['daily_return'].idxmin(), 'date'].strftime('%d %B %Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].min()) else "N/A"
-    largest_gain = df['daily_return'].max() * 100  # in percentage
+    largest_gain = df['daily_return'].max() * 100
     largest_gain_date = df.loc[df['daily_return'].idxmax(), 'date'].strftime('%d %B %Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].max()) else "N/A"
     
     return {
@@ -191,9 +246,61 @@ def calculate_metrics(df):
 
 aapl_metrics = calculate_metrics(aapl_df)
 
+# Backtesting framework
+@st.cache_data
+def backtest_strategy(df):
+    trades = []
+    position = None
+    for i in range(1, len(df)):
+        if df['buy_signal'].iloc[i-1]:
+            if position is None:
+                position = {
+                    'entry_date': df['date'].iloc[i],
+                    'entry_price': df['close'].iloc[i],
+                    'stop_loss': df['stop_loss'].iloc[i],
+                    'take_profit': df['take_profit'].iloc[i]
+                }
+        elif position:
+            if df['low'].iloc[i] <= position['stop_loss']:
+                trades.append({
+                    'entry_date': position['entry_date'],
+                    'exit_date': df['date'].iloc[i],
+                    'entry_price': position['entry_price'],
+                    'exit_price': position['stop_loss'],
+                    'return': (position['stop_loss'] - position['entry_price']) / position['entry_price'] * 100
+                })
+                position = None
+            elif df['high'].iloc[i] >= position['take_profit']:
+                trades.append({
+                    'entry_date': position['entry_date'],
+                    'exit_date': df['date'].iloc[i],
+                    'entry_price': position['entry_price'],
+                    'exit_price': position['take_profit'],
+                    'return': (position['take_profit'] - position['entry_price']) / position['entry_price'] * 100
+                })
+                position = None
+    
+    if not trades:
+        return {'Win Rate': 0, 'Profit Factor': 0, 'Total Return': 0, 'Trades': 0}
+    
+    trades_df = pd.DataFrame(trades)
+    win_rate = (trades_df['return'] > 0).mean() * 100
+    gross_profit = trades_df[trades_df['return'] > 0]['return'].sum()
+    gross_loss = -trades_df[trades_df['return'] < 0]['return'].sum()
+    profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
+    total_return = trades_df['return'].sum()
+    
+    return {
+        'Win Rate': win_rate,
+        'Profit Factor': profit_factor,
+        'Total Return': total_return,
+        'Trades': len(trades)
+    }
+
 # Detect consolidation and breakout
+@st.cache_data
 def detect_consolidation_breakout(df):
-    df['is_consolidation'] = (df.get('consolidation', pd.Series(dtype=bool)) == True) | (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
+    df['is_consolidation'] = (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
     df['resistance'] = df['high'].rolling(20).max()
     df['support'] = df['low'].rolling(20).min()
     df['buy_signal'] = (df['close'] > df['resistance'].shift(1)) & \
@@ -202,12 +309,14 @@ def detect_consolidation_breakout(df):
                        (df['macd'] > df['signal']) & \
                        (df['stochastic_k'] < 20) & (df['stochastic_k'] > df['stochastic_d'])
     df['stop_loss'] = df['close'] - 1.5 * df['atr']
-    df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']  # 1:2 risk-reward
+    df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']
     return df
 
 aapl_df = detect_consolidation_breakout(aapl_df)
+backtest_results = backtest_strategy(aapl_df)
 
 # Technical signals
+@st.cache_data
 def get_signals(df):
     signals = {
         'RSI': 'Buy' if df['rsi'].iloc[-1] < 40 else 'Sell' if df['rsi'].iloc[-1] > 70 else 'Neutral',
@@ -221,6 +330,7 @@ def get_signals(df):
 signals = get_signals(aapl_df)
 
 # Breakout timeframe prediction
+@st.cache_data
 def get_breakout_timeframe(df):
     if df['is_consolidation'].iloc[-1]:
         return "Breakout expected within 1-5 days"
@@ -232,6 +342,7 @@ def get_breakout_timeframe(df):
 breakout_timeframe = get_breakout_timeframe(aapl_df)
 
 # Scoring system
+@st.cache_data
 def calculate_score(metrics, signals):
     performance_score = min(metrics['CAGR'], 30)
     risk_score = min((metrics['Sharpe Ratio'] * 5 + metrics['Sortino Ratio'] * 5), 20)
@@ -250,6 +361,138 @@ def calculate_score(metrics, signals):
 
 score = calculate_score(aapl_metrics, signals)
 
+# Plotly candlestick chart with customizable subplots
+subplot_titles = [s for s in subplot_order]
+row_heights = [0.35 if s == "Candlestick" else 0.15 if s == "Win/Loss Distribution" else 0.1 for s in subplot_order]
+fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical_spacing=0.05,
+                    subplot_titles=subplot_titles, row_heights=row_heights)
+
+# Candlestick chart
+def add_candlestick_trace(fig, df, row):
+    hover_texts = [
+        f"Date: {row['date'].strftime('%m-%d-%Y')}<br>Open: ${row['open']:.2f}<br>High: ${row['high']:.2f}<br>Low: ${row['low']:.2f}<br>Close: ${row['close']:.2f}<br>Volume: {row['volume']:,.0f}<br>RSI: {row['rsi']:.2f}<br>RVOL: {row['rvol']:.2f}"
+        for _, row in df.iterrows()
+    ]
+    fig.add_trace(go.Candlestick(
+        x=df['date'],
+        open=df['open'], high=df['high'], low=df['low'], close=df['close'],
+        name="Candlestick",
+        increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
+        hovertext=hover_texts,
+        hoverinfo='text',
+        customdata=df.index
+    ), row=row, col=1)
+    if "Bollinger Bands" in show_indicators and 'ma20' in df.columns and 'std_dev' in df.columns:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] + 2*df['std_dev'], name="Bollinger Upper", line=dict(color="#0288d1")), row=row, col=1)
+        fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] - 2*df['std_dev'], name="Bollinger Lower", line=dict(color="#0288d1"), fill='tonexty', fillcolor='rgba(2,136,209,0.1)'), row=row, col=1)
+    if "Ichimoku Cloud" in show_indicators:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['senkou_span_a'], name="Senkou Span A", line=dict(color="#4CAF50"), fill='tonexty', fillcolor='rgba(76,175,80,0.2)'), row=row, col=1)
+        fig.add_trace(go.Scatter(x=df['date'], y=df['senkou_span_b'], name="Senkou Span B", line=dict(color="#f44336"), fill='tonexty', fillcolor='rgba(244,67,54,0.2)'), row=row, col=1)
+    if "Fibonacci" in show_indicators:
+        for level, color in [('fib_236', '#ff9800'), ('fib_382', '#e91e63'), ('fib_50', '#9c27b0'), ('fib_618', '#3f51b5')]:
+            fig.add_trace(go.Scatter(x=df['date'], y=df[level], name=f"Fib {level[-3:]}%", line=dict(color=color, dash='dash'),
+                                     hovertext=[f"Fib {level[-3:]}%: ${x:.2f}" for x in df[level]], hoverinfo='text+x'), row=row, col=1)
+    buy_signals = df[df['buy_signal'] == True]
+    for _, row in buy_signals.iterrows():
+        fig.add_annotation(x=row['date'], y=row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=row, col=1)
+    if not buy_signals.empty:
+        latest_buy = buy_signals.iloc[-1]
+        risk = latest_buy['close'] - latest_buy['stop_loss']
+        reward = latest_buy['take_profit'] - latest_buy['close']
+        rr_ratio = reward / risk if risk > 0 else 'N/A'
+        fig.add_hline(y=latest_buy['stop_loss'], line_dash="dash", line_color="#f44336", annotation_text="Stop-Loss", annotation_font_color="#000000", row=row, col=1)
+        fig.add_hline(y=latest_buy['take_profit'], line_dash="dash", line_color="#4CAF50", annotation_text="Take-Profit", annotation_font_color="#000000", row=row, col=1)
+        fig.add_trace(go.Scatter(x=[latest_buy['date'], latest_buy['date']], y=[latest_buy['stop_loss'], latest_buy['take_profit']],
+                                 mode='lines', line=dict(color='rgba(76,175,80,0.2)'), fill='toself', fillcolor='rgba(76,175,80,0.2)',
+                                 hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"], hoverinfo='text', showlegend=False), row=row, col=1)
+
+# RSI chart
+def add_rsi_trace(fig, df, row):
+    fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"),
+                             hovertext=[f"RSI: {x:.2f}" for x in df['rsi']], hoverinfo='text+x'), row=row, col=1)
+    fig.add_hline(y=70, line_dash="dash", line_color="#f44336", row=row, col=1)
+    fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=row, col=1)
+
+# MACD & Stochastic chart
+def add_macd_stochastic_trace(fig, df, row):
+    if "MACD" in show_indicators:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['macd'], name="MACD", line=dict(color="#0288d1"),
+                                 hovertext=[f"MACD: {x:.2f}" for x in df['macd']], hoverinfo='text+x'), row=row, col=1)
+        fig.add_trace(go.Scatter(x=df['date'], y=df['signal'], name="Signal Line", line=dict(color="#ff9800"),
+                                 hovertext=[f"Signal: {x:.2f}" for x in df['signal']], hoverinfo='text+x'), row=row, col=1)
+    if "Stochastic" in show_indicators:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2",
+                                 hovertext=[f"Stochastic %K: {x:.2f}" for x in df['stochastic_k']], hoverinfo='text+x'), row=row, col=1)
+        fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_d'], name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y2",
+                                 hovertext=[f"Stochastic %D: {x:.2f}" for x in df['stochastic_d']], hoverinfo='text+x'), row=row, col=1)
+        fig.update_layout(yaxis2=dict(overlaying='y', side='right', range=[0, 100]))
+
+# ADX & Volatility chart
+def add_adx_volatility_trace(fig, df, row):
+    if "ADX" in show_indicators:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['adx'], name="ADX", line=dict(color="#3f51b5"),
+                                 hovertext=[f"ADX: {x:.2f}" for x in df['adx']], hoverinfo='text+x'), row=row, col=1)
+        fig.add_hline(y=25, line_dash="dash", line_color="#0288d1", row=row, col=1)
+    if "RVOL" in show_indicators:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['rvol'], name="RVOL", line=dict(color="#795548"), yaxis="y3",
+                                 hovertext=[f"RVOL: {x:.2f}" for x in df['rvol']], hoverinfo='text+x'), row=row, col=1)
+        fig.update_layout(yaxis3=dict(overlaying='y', side='right'))
+
+# Volume chart
+def add_volume_trace(fig, df, row):
+    fig.add_trace(go.Bar(x=df['date'], y=df['volume'], name="Volume", marker_color="#607d8b",
+                         hovertext=[f"Volume: {x:,.0f}" for x in df['volume']], hoverinfo='text+x'), row=row, col=1)
+    if 'vwap' in df.columns:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['vwap'], name="VWAP", line=dict(color="#0288d1"),
+                                 hovertext=[f"VWAP: ${x:.2f}" for x in df['vwap']], hoverinfo='text+x'), row=row, col=1)
+
+# Win/Loss Distribution chart
+def add_win_loss_trace(fig, df, row):
+    valid_returns = df['daily_return'][df['daily_return'].notna() & ~df['daily_return'].isin([np.inf, -np.inf])]
+    if not valid_returns.empty:
+        bins = np.histogram_bin_edges(valid_returns * 100, bins=20)
+        hist_data = np.histogram(valid_returns * 100, bins=bins)
+        fig.add_trace(go.Bar(x=bins[:-1], y=hist_data[0], name="Win/Loss Distribution", marker_color="#607d8b",
+                             hovertext=[f"Return: {x:.2f}% Count: {y}" for x, y in zip(bins[:-1], hist_data[0])], hoverinfo='text'), row=row, col=1)
+    else:
+        st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available.")
+
+# Add traces based on subplot order
+for i, subplot in enumerate(subplot_order, 1):
+    if subplot == "Candlestick":
+        add_candlestick_trace(fig, aapl_df, i)
+    elif subplot == "RSI":
+        add_rsi_trace(fig, aapl_df, i)
+    elif subplot == "MACD & Stochastic":
+        add_macd_stochastic_trace(fig, aapl_df, i)
+    elif subplot == "ADX & Volatility":
+        add_adx_volatility_trace(fig, aapl_df, i)
+    elif subplot == "Volume":
+        add_volume_trace(fig, aapl_df, i)
+    elif subplot == "Win/Loss Distribution":
+        add_win_loss_trace(fig, aapl_df, i)
+
+fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white", title_text="AAPL Candlestick Analysis",
+                  hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
+fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=len(subplot_order), col=1)
+
+# Interactive trade annotations
+def on_click(trace, points, state):
+    if points.point_inds:
+        idx = points.point_inds[0]
+        row = aapl_df.iloc[idx]
+        st.session_state.trade_details = {
+            'Date': row['date'].strftime('%Y-%m-%d'),
+            'Close': row['close'],
+            'Stop-Loss': row['stop_loss'],
+            'Take-Profit': row['take_profit'],
+            'Buy Signal': 'Yes' if row['buy_signal'] else 'No'
+        }
+
+for trace in fig.data:
+    if trace.name == "Candlestick":
+        trace.on_click(on_click)
+
 # Profit/Loss Analysis Section
 st.header("Profit/Loss Analysis")
 col1, col2, col3, col4 = st.columns(4)
@@ -262,6 +505,18 @@ with col3:
 with col4:
     st.markdown(f"<div class='metric-box'><b>Max Drawdown</b><br>{aapl_metrics['Max Drawdown']:.2f}%</div>", unsafe_allow_html=True)
 st.markdown(f"<div class='metric-box'><b>Significant Events</b><br>Largest single-period loss was {aapl_metrics['Largest Loss']:.2f}% on {aapl_metrics['Largest Loss Date']}, indicating a significant market correction.<br>Largest single-period gain was {aapl_metrics['Largest Gain']:.2f}% on {aapl_metrics['Largest Gain Date']}.</div>", unsafe_allow_html=True)
+
+# Backtesting Results
+st.header("Backtesting Results")
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.markdown(f"<div class='metric-box'><b>Win Rate</b><br>{backtest_results['Win Rate']:.2f}%</div>", unsafe_allow_html=True)
+with col2:
+    st.markdown(f"<div class='metric-box'><b>Profit Factor</b><br>{backtest_results['Profit Factor']:.2f}</div>", unsafe_allow_html=True)
+with col3:
+    st.markdown(f"<div class='metric-box'><b>Total Return</b><br>{backtest_results['Total Return']:.2f}%</div>", unsafe_allow_html=True)
+with col4:
+    st.markdown(f"<div class='metric-box'><b>Trades</b><br>{backtest_results['Trades']}</div>", unsafe_allow_html=True)
 
 # Decision Dashboard
 st.header("Decision Dashboard")
@@ -280,106 +535,26 @@ with col2:
 with col3:
     st.markdown(f"<div class='metric-box'><b>RSI</b><br>{aapl_df['rsi'].iloc[-1]:.2f} ({signals['RSI']})</div>", unsafe_allow_html=True)
 
-# Plotly candlestick chart with consolidation and breakout
-fig = make_subplots(rows=6, cols=1, shared_xaxes=True, vertical_spacing=0.05,
-                    subplot_titles=("Candlestick & Breakout", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume", "Win/Loss Distribution"),
-                    row_heights=[0.35, 0.1, 0.1, 0.1, 0.1, 0.15])
+# Display trade details
+if st.session_state.trade_details:
+    st.header("Selected Trade Details")
+    details = st.session_state.trade_details
+    st.markdown(f"""
+    <div class='trade-details'>
+        <b>Date:</b> {details['Date']}<br>
+        <b>Close:</b> ${details['Close']:.2f}<br>
+        <b>Stop-Loss:</b> ${details['Stop-Loss']:.2f}<br>
+        <b>Take-Profit:</b> ${details['Take-Profit']:.2f}<br>
+        <b>Buy Signal:</b> {details['Buy Signal']}<br>
+        <b>Risk-Reward Ratio:</b> {(details['Take-Profit'] - details['Close']) / (details['Close'] - details['Stop-Loss']):.2f}
+    </div>
+    """, unsafe_allow_html=True)
 
-# Candlestick chart
-try:
-    hover_texts = [
-        f"Date: {row['date'].strftime('%m-%d-%Y')}<br>Open: ${row['open']:.2f}<br>High: ${row['high']:.2f}<br>Low: ${row['low']:.2f}<br>Close: ${row['close']:.2f}<br>Volume: {row['volume']:,.0f}"
-        for _, row in aapl_df.iterrows()
-    ]
-    fig.add_trace(go.Candlestick(
-        x=aapl_df['date'],
-        open=aapl_df['open'], high=aapl_df['high'], low=aapl_df['low'], close=aapl_df['close'],
-        name="Candlestick",
-        increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
-        hovertext=hover_texts,
-        hoverinfo='text',
-        customdata=aapl_df['volume']
-    ), row=1, col=1)
-    fig.update_traces(xhoverformat="%m-%d-%Y", row=1, col=1)
-except Exception as e:
-    st.error(f"Error plotting candlestick chart: {str(e)}.")
-    st.write("Available columns:", aapl_df.columns.tolist())
-    st.write("Sample data (first 5 rows):", aapl_df[['date', 'open', 'high', 'low', 'close', 'volume']].head())
-    st.write("Data types:", aapl_df[['date', 'open', 'high', 'low', 'close', 'volume']].dtypes)
-    st.stop()
-
-if "Bollinger Bands" in show_indicators and 'std_dev' in aapl_df.columns and 'ma20' in aapl_df.columns:
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['ma20'] + 2*aapl_df['std_dev'], name="Bollinger Upper", line=dict(color="#0288d1")), row=1, col=1)
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['ma20'] - 2*aapl_df['std_dev'], name="Bollinger Lower", line=dict(color="#0288d1"), fill='tonexty', fillcolor='rgba(2,136,209,0.1)'), row=1, col=1)
-if "Ichimoku Cloud" in show_indicators:
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['senkou_span_a'], name="Senkou Span A", line=dict(color="#4CAF50"), fill='tonexty', fillcolor='rgba(76,175,80,0.2)'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['senkou_span_b'], name="Senkou Span B", line=dict(color="#f44336"), fill='tonexty', fillcolor='rgba(244,67,54,0.2)'), row=1, col=1)
-
-# Add breakout signals
-buy_signals = aapl_df[aapl_df['buy_signal'] == True]
-for _, row in buy_signals.iterrows():
-    fig.add_annotation(x=row['date'], y=row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=1, col=1)
-
-# Add stop-loss and take-profit
-if not buy_signals.empty:
-    latest_buy = buy_signals.iloc[-1]
-    fig.add_hline(y=latest_buy['stop_loss'], line_dash="dash", line_color="#f44336", annotation_text="Stop-Loss", annotation_font_color="#000000", row=1, col=1)
-    fig.add_hline(y=latest_buy['take_profit'], line_dash="dash", line_color="#4CAF50", annotation_text="Take-Profit", annotation_font_color="#000000", row=1, col=1)
-
-# RSI chart
-if "RSI" in show_indicators:
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['rsi'], name="RSI", line=dict(color="#9c27b0"),
-                             hovertext=[f"RSI: {x:.2f}" for x in aapl_df['rsi']], hoverinfo='text+x'), row=2, col=1)
-    fig.add_hline(y=70, line_dash="dash", line_color="#f44336", row=2, col=1)
-    fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=2, col=1)
-
-# MACD & Stochastic chart
-if "MACD" in show_indicators:
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['macd'], name="MACD", line=dict(color="#0288d1"),
-                             hovertext=[f"MACD: {x:.2f}" for x in aapl_df['macd']], hoverinfo='text+x'), row=3, col=1)
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['signal'], name="Signal Line", line=dict(color="#ff9800"),
-                             hovertext=[f"Signal: {x:.2f}" for x in aapl_df['signal']], hoverinfo='text+x'), row=3, col=1)
-if "Stochastic" in show_indicators:
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2",
-                             hovertext=[f"Stochastic %K: {x:.2f}" for x in aapl_df['stochastic_k']], hoverinfo='text+x'), row=3, col=1)
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['stochastic_d'], name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y2",
-                             hovertext=[f"Stochastic %D: {x:.2f}" for x in aapl_df['stochastic_d']], hoverinfo='text+x'), row=3, col=1)
-    fig.update_layout(yaxis2=dict(overlaying='y', side='right', range=[0, 100]))
-
-# ADX & Volatility chart
-if "ADX" in show_indicators:
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['adx'], name="ADX", line=dict(color="#3f51b5"),
-                             hovertext=[f"ADX: {x:.2f}" for x in aapl_df['adx']], hoverinfo='text+x'), row=4, col=1)
-    fig.add_hline(y=25, line_dash="dash", line_color="#0288d1", row=4, col=1)
-fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['atr'], name="ATR", line=dict(color="#795548"),
-                         hovertext=[f"ATR: ${x:.2f}" for x in aapl_df['atr']], hoverinfo='text+x'), row=4, col=1)
-
-# Volume chart
-fig.add_trace(go.Bar(x=aapl_df['date'], y=aapl_df['volume'], name="Volume", marker_color="#607d8b",
-                     hovertext=[f"Volume: {x:,.0f}" for x in aapl_df['volume']], hoverinfo='text+x'), row=5, col=1)
-if 'vwap' in aapl_df.columns:
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['vwap'], name="VWAP", line=dict(color="#0288d1"),
-                             hovertext=[f"VWAP: ${x:.2f}" for x in aapl_df['vwap']], hoverinfo='text+x'), row=5, col=1)
-
-# Win/Loss Distribution chart
-try:
-    valid_returns = aapl_df['daily_return'][aapl_df['daily_return'].notna() & ~aapl_df['daily_return'].isin([np.inf, -np.inf])]
-    if not valid_returns.empty:
-        bins = np.histogram_bin_edges(valid_returns * 100, bins=20)
-        hist_data = np.histogram(valid_returns * 100, bins=bins)
-        fig.add_trace(go.Bar(x=bins[:-1], y=hist_data[0], name="Win/Loss Distribution", marker_color="#607d8b",
-                             hovertext=[f"Return: {x:.2f}% Count: {y}" for x, y in zip(bins[:-1], hist_data[0])], hoverinfo='text'), row=6, col=1)
-    else:
-        st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available (all NaN or inf).")
-except Exception as e:
-    st.warning(f"Error plotting Win/Loss Distribution: {str(e)}. Skipping this chart.")
-
-fig.update_layout(height=1200, showlegend=True, template="plotly_white", title_text="AAPL Candlestick Analysis",
-                  hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
-fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=6, col=1)
+# Display candlestick chart
 st.plotly_chart(fig, use_container_width=True)
 
 # Benchmark comparison
+fig_bench = None
 if not pl_df.empty:
     st.header("Benchmark Comparison")
     try:
@@ -406,10 +581,21 @@ fig_heatmap.update_layout(title="Monthly Average Returns Heatmap", height=400, t
                           font=dict(family="Arial", size=12, color="#000000"), xaxis_title="Month", yaxis_title="Year")
 st.plotly_chart(fig_heatmap, use_container_width=True)
 
-# Download report
-st.header("Export Report")
-buffer = io.BytesIO()
-c = canvas.Canvas(buffer, pagesize=letter)
+# Export data as CSV and Excel
+st.header("Export Data and Reports")
+csv_buffer = io.StringIO()
+aapl_df.to_csv(csv_buffer, index=False)
+csv_buffer.seek(0)
+st.download_button("Download AAPL Data (CSV)", csv_buffer.getvalue(), file_name="aapl_analysis_data.csv", mime="text/csv")
+
+excel_buffer = io.BytesIO()
+aapl_df.to_excel(excel_buffer, index=False, engine='openpyxl')
+excel_buffer.seek(0)
+st.download_button("Download AAPL Data (Excel)", excel_buffer, file_name="aapl_analysis_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+# Export PDF report
+pdf_buffer = io.BytesIO()
+c = canvas.Canvas(pdf_buffer, pagesize=letter)
 c.setFont("Helvetica", 12)
 c.drawString(50, 750, "Stock Investment Analysis Report")
 c.drawString(50, 730, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
@@ -431,63 +617,169 @@ c.drawString(50, 430, "Latest Trade Setup:")
 c.drawString(70, 410, f"- Entry: ${aapl_df['close'].iloc[-1]:.2f}")
 c.drawString(70, 390, f"- Stop-Loss: ${aapl_df['stop_loss'].iloc[-1]:.2f}")
 c.drawString(70, 370, f"- Take-Profit: ${aapl_df['take_profit'].iloc[-1]:.2f}")
+c.drawString(50, 350, "Backtesting Results:")
+c.drawString(70, 330, f"- Win Rate: {backtest_results['Win Rate']:.2f}%")
+c.drawString(70, 310, f"- Profit Factor: {backtest_results['Profit Factor']:.2f}")
+c.drawString(70, 290, f"- Total Return: {backtest_results['Total Return']:.2f}%")
+c.drawString(70, 270, f"- Trades: {backtest_results['Trades']}")
 c.showPage()
 c.save()
-buffer.seek(0)
-st.download_button("Download PDF Report", buffer, file_name="investment_report.pdf", mime="application/pdf")
+pdf_buffer.seek(0)
+st.download_button("Download PDF Report", pdf_buffer, file_name="investment_report.pdf", mime="application/pdf")
+
+# Export HTML report
+if html_report_type == "Interactive (with Hover)":
+    candlestick_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
+    bench_html = fig_bench.to_html(include_plotlyjs='cdn', full_html=False) if fig_bench else ""
+    heatmap_html = fig_heatmap.to_html(include_plotlyjs='cdn', full_html=False)
+else:
+    candlestick_img = fig.to_image(format="png")
+    candlestick_img_b64 = base64.b64encode(candlestick_img).decode()
+    bench_img_b64 = fig_bench.to_image(format="png") if fig_bench else None
+    bench_img_b64 = base64.b64encode(bench_img_b64).decode() if bench_img_b64 else ""
+    heatmap_img = fig_heatmap.to_image(format="png")
+    heatmap_img_b64 = base64.b64encode(heatmap_img).decode()
+    candlestick_html = f'<img src="data:image/png;base64,{candlestick_img_b64}" alt="Candlestick Chart">'
+    bench_html = f'<img src="data:image/png;base64,{bench_img_b64}" alt="Benchmark Chart">' if bench_img_b64 else ""
+    heatmap_html = f'<img src="data:image/png;base64,{heatmap_img_b64}" alt="Seasonality Heatmap">'
+
+html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AAPL Stock Analysis Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; background-color: #ffffff; color: #000000; margin: 20px; }}
+        h1, h2 {{ color: #0288d1; }}
+        .metric-box {{ background-color: #e0e0e0; padding: 10px; margin: 10px 0; border-radius: 5px; }}
+        .section {{ margin-bottom: 20px; }}
+        .plotly-graph-div {{ max-width: 100%; }}
+    </style>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <h1>AAPL Stock Analysis Report</h1>
+    <p><b>Date:</b> {datetime.now().strftime('%Y-%m-%d')}</p>
+    
+    <div class="section">
+        <h2>Recommendation</h2>
+        <div class="metric-box">
+            <p><b>Recommendation:</b> {score['Recommendation']}</p>
+            <p><b>Total Score:</b> {score['Total']:.1f}/100</p>
+            <p><b>Breakout Timeframe:</b> {breakout_timeframe}</p>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Key Metrics</h2>
+        <div class="metric-box">
+            <p><b>Average Return:</b> {aapl_metrics['Average Return']:.2f}%</p>
+            <p><b>Volatility:</b> {aapl_metrics['Volatility']:.2f}%</p>
+            <p><b>Win Ratio:</b> {aapl_metrics['Win Ratio']:.2f}%</p>
+            <p><b>Max Drawdown:</b> {aapl_metrics['Max Drawdown']:.2f}%</p>
+            <p><b>Largest Loss:</b> {aapl_metrics['Largest Loss']:.2f}% on {aapl_metrics['Largest Loss Date']}</p>
+            <p><b>Largest Gain:</b> {aapl_metrics['Largest Gain']:.2f}% on {aapl_metrics['Largest Gain Date']}</p>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Backtesting Results</h2>
+        <div class="metric-box">
+            <p><b>Win Rate:</b> {backtest_results['Win Rate']:.2f}%</p>
+            <p><b>Profit Factor:</b> {backtest_results['Profit Factor']:.2f}</p>
+            <p><b>Total Return:</b> {backtest_results['Total Return']:.2f}%</p>
+            <p><b>Trades:</b> {backtest_results['Trades']}</p>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Latest Trade Setup</h2>
+        <div class="metric-box">
+            <p><b>Entry:</b> ${aapl_df['close'].iloc[-1]:.2f}</p>
+            <p><b>Stop-Loss:</b> ${aapl_df['stop_loss'].iloc[-1]:.2f}</p>
+            <p><b>Take-Profit:</b> ${aapl_df['take_profit'].iloc[-1]:.2f}</p>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Candlestick & Technical Analysis</h2>
+        {candlestick_html}
+    </div>
+    <div class="section">
+        <h2>Benchmark Comparison</h2>
+        {bench_html}
+    </div>
+    <div class="section">
+        <h2>Seasonality Analysis</h2>
+        {heatmap_html}
+    </div>
+</body>
+</html>
+"""
+html_buffer = io.StringIO()
+html_buffer.write(html_content)
+html_buffer.seek(0)
+st.download_button("Download HTML Report", html_buffer.getvalue(), file_name="aapl_analysis_report.html", mime="text/html")
 
 # Help section
 with st.expander("📚 Help: How the Analysis Works"):
     st.markdown("""
     ### Step-by-Step Analysis Explanation
-    This app analyzes AAPL stock data to identify consolidation, breakouts, and trading setups, mimicking how analysts draw charts. Below is the process with a real-time example based on June 13, 2025.
+    This app analyzes AAPL stock data to identify consolidation, breakouts, and trading setups. Below is the process with a real-time example based on June 13, 2025.
 
     #### 1. Data Collection
-    - **What**: Use OHLC, volume, and technical indicators (RSI, MACD, Stochastic, Ichimoku, ADX, ATR) from `AAPL_raw_data.csv`.
-    - **Example**: Latest data (June 13, 2025) shows Close: $196.45, RSI: 52.30, Stochastic %K: 7.12, %D: 8.00, ADX: 31.79, Volume: 51.4M, ATR: $4.30.
+    - **What**: Use OHLC, volume, and technical indicators (RSI, MACD, Stochastic, Ichimoku, ADX, ATR, Fibonacci, RVOL) from uploaded file or Yahoo Finance.
+    - **Example**: Close: $196.45, RSI: 52.30, Stochastic %K: 7.12, %D: 8.00, ADX: 31.79, Volume: 51.4M, ATR: $4.30, RVOL: 1.2.
 
     #### 2. Candlestick Analysis & Breakout Detection
-    - **What**: Visualize price movements to identify consolidation (tight range) and breakouts (price above resistance).
+    - **What**: Visualize price movements to identify consolidation and breakouts.
     - **How**:
-      - **Candlesticks**: Plot OHLC as green (bullish) or red (bearish) candles.
-      - **Consolidation**: Low ATR (< mean * 0.8), ADX < 20, or `consolidation` = True. Narrow Bollinger Bands or price in Ichimoku Cloud.
-      - **Breakout**: Close > 20-day high (resistance), volume > 1.2 * average, RSI 40-70, MACD > signal, Stochastic %K < 20 and > %D.
+      - **Candlesticks**: Green (#4CAF50) for bullish, red (#f44336) for bearish.
+      - **Consolidation**: Low ATR (< mean * 0.8), ADX < 20.
+      - **Breakout**: Close > 20-day high, volume > 1.2 * average, RSI 40-70, MACD > signal, Stochastic %K < 20 and > %D.
       - **Stop-Loss/Take-Profit**: Stop-loss = close - 1.5 * ATR; take-profit = close + 3 * ATR (1:2 risk-reward).
-    - **Example**: Price ($196.45) below resistance (~$200). If breaks $200 with volume > 60M, RSI 40-70, Stochastic %K (7.12) < 20 and > %D (8.00), a buy signal triggers. Stop-loss: $193.55, take-profit: $212.90.
+      - **Fibonacci**: Levels (23.6%, 38.2%, 50%, 61.8%) based on 20-day high/low.
+      - **RVOL**: Volume / 20-day average volume.
+    - **Example**: Price ($196.45) below resistance (~$200). Buy if breaks $200 with volume > 60M, RSI 40-70, Stochastic %K (7.12) > %D (8.00). Stop-loss: $193.55, take-profit: $212.90.
 
     #### 3. Profit/Loss Analysis
-    - **What**: Calculate performance metrics to assess risk and return.
+    - **What**: Calculate performance metrics.
     - **How**:
       - **Average Return**: Mean daily return (%).
-      - **Volatility**: Annualized standard deviation of daily returns (%).
-      - **Win Ratio**: Percentage of days with positive returns.
+      - **Volatility**: Annualized standard deviation (%).
+      - **Win Ratio**: Percentage of positive return days.
       - **Max Drawdown**: Maximum peak-to-trough decline (%).
       - **Significant Events**: Largest loss/gain and dates.
-    - **Example**: Average Return: -0.08%, Volatility: 4.57%, Win Ratio: 51.52%, Max Drawdown: 21.27%, Largest Loss: -9.25% on 10 April 2025, Largest Gain: 8.50% on 15 March 2025.
+    - **Example**: Average Return: -0.08%, Volatility: 4.57%, Win Ratio: 51.52%, Max Drawdown: 21.27%, Largest Loss: -9.25% on 10 April 2025.
 
-    #### 4. Breakout Timeframe Prediction
-    - **What**: Estimate when a breakout may occur.
-    - **How**: If in consolidation, expect breakout within 1-5 days; if breakout detected, confirm within 1-3 days.
-    - **Example**: If consolidation on June 13, breakout expected by June 18, 2025.
+    #### 4. Backtesting
+    - **What**: Simulate trades based on buy signals, stop-loss, and take-profit.
+    - **How**: Enter on buy signal, exit at stop-loss or take-profit, calculate win rate and profit factor.
+    - **Example**: Win Rate: 60%, Profit Factor: 1.5, Total Return: 10%, Trades: 5.
 
-    #### 5. Scoring System
-    - **What**: Combine performance, risk, technical signals, and volume for a recommendation.
+    #### 5. Breakout Timeframe Prediction
+    - **What**: Estimate breakout timing.
+    - **How**: Consolidation → 1-5 days; breakout → confirm in 1-3 days.
+    - **Example**: Consolidation on June 13, breakout expected by June 18, 2025.
+
+    #### 6. Scoring System
+    - **What**: Combine performance, risk, technical signals, and volume.
     - **How**: Total = Performance (30) + Risk (20) + Technical (30) + Volume (20). Buy if >70.
-    - **Example**: Performance (25, CAGR ~20%) + Risk (15, Sharpe ~0.68) + Technical (20, Stochastic/ADX) + Volume (15, high volume) = 75. Recommendation: Buy.
+    - **Example**: Total: 75/100, Recommendation: Buy.
 
-    #### 6. Visualization
-    - **What**: Candlestick chart with Bollinger Bands, Ichimoku, RSI, MACD, Stochastic, ADX, ATR, volume, and win/loss distribution.
-    - **How**: Plotly charts with hover text (e.g., date, OHLC, indicators). Breakout signals annotated with arrows.
-    - **Example**: Hover over June 13 shows Close: $196.45, RSI: 52.30, Volume: 51.4M. Buy signal at $200.
+    #### 7. Visualization
+    - **What**: Candlestick chart with Bollinger Bands, Ichimoku, RSI, MACD, Stochastic, ADX, RVOL, volume, and win/loss distribution.
+    - **How**: Plotly charts with hover text and clickable trade details.
+    - **Example**: Hover shows Close: $196.45, RSI: 52.30, Volume: 51.4M. Click candlestick for trade setup.
 
-    #### 7. Benchmark Comparison
-    - **What**: Compare AAPL to a benchmark (if uploaded).
-    - **Example**: If benchmark returns 10% in 2025, AAPL’s 20% outperforms, supporting a buy.
+    #### 8. Benchmark Comparison
+    - **What**: Compare AAPL to benchmark (if uploaded).
+    - **Example**: AAPL’s 20% outperforms benchmark’s 10%.
 
-    #### 8. Seasonality Analysis
+    #### 9. Seasonality Analysis
     - **What**: Identify monthly performance trends.
-    - **How**: Heatmap of average monthly returns.
-    - **Example**: April 2025 shows -9.25% loss, indicating a correction.
+    - **How**: Heatmap of monthly returns.
+    - **Example**: April 2025: -9.25% loss.
 
-    This analysis provides a data-driven trading setup, balancing technical signals and risk management. Use the charts to monitor for breakouts.
+    Use the interactive charts, HTML report, and backtesting results to monitor breakouts and validate strategies.
     """)
