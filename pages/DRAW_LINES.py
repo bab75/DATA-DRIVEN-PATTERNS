@@ -141,7 +141,7 @@ if clear:
     st.session_state.start_date = pd.to_datetime('2025-01-01')
     st.session_state.end_date = pd.to_datetime('2025-06-13')
     st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
-    st.experimental_rerun()
+    st.rerun()
 
 # Validate symbol format
 def validate_symbol(symbol):
