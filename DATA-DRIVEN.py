@@ -68,6 +68,9 @@ def initialize_session_state():
     if 'profit_loss_unit' not in st.session_state:
         st.session_state.profit_loss_unit = "Percentage"
 
+# Call initialize_session_state at app startup
+initialize_session_state()
+
 # Sidebar: Control Panel
 with st.sidebar:
     st.header("Control Panel")
@@ -492,7 +495,7 @@ if uploaded_file and run_analysis:
 # Display results if data is available
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 08:57 AM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 09:00 AM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -614,7 +617,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.7 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.8 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
