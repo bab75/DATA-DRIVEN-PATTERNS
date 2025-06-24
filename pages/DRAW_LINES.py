@@ -95,7 +95,7 @@ if clear:
     st.session_state.data_loaded = False
     st.session_state.data_processed = False
     st.session_state.symbol = 'AAPL'
-    st.session_state.start_date = pd.to_datetime('01-01-2010', format='%m-%d-%Y')
+    st.session_state.start_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
     st.session_state.end_date = pd.to_datetime('06-24-2025', format='%m-%d-%Y')
     st.session_state.aapl_df = pd.DataFrame()
     st.session_state.pl_df = pd.DataFrame()
