@@ -335,6 +335,52 @@ if data_file:
 else:
     st.info("Please upload AAPL_raw_data.csv or .xlsx to start analysis.")
 
+# Check Plotly version
+if float(plotly.__version__.split('.')[0]) < 5:
+    st.error("Plotly version >= 5.0.0 is required. Please update with `pip install plotly>=5.0.0`.")
+    st.stop()
+
+# Streamlit page configuration
+st.set_page_config(page_title="Stock Analysis Dashboard", layout="wide")
+st.markdown(
+    """
+    <style>
+    .sidebar .sidebar-content { background-color: #f0f0f0; }
+    .css-1d391kg { background-color: #ffffff; }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# Sidebar for file upload and settings
+st.sidebar.title("Settings")
+data_file = st.sidebar.file_uploader("Upload AAPL_raw_data.csv or .xlsx", type=["csv", "xlsx"])
+benchmark_file = st.sidebar.file_uploader("Upload all_profit_loss_data.xlsx", type=["xlsx"])
+indicators = st.sidebar.multiselect(
+    "Select Indicators", ["RSI", "MACD", "Stochastic", "ADX", "Ichimoku", "Bollinger Bands"], default=["RSI", "MACD"]
+)
+date_range = st.sidebar.date_input("Select Date Range", [datetime(2025, 1, 1), datetime(2025, 6, 13)])
+year_filter = st.sidebar.multiselect("Select Years for Seasonality", [2020, 2021, 2022, 2023, 2024, 2025], default=[2025])
+
+# Data loading and validation
+def load_data(file):
+    try:
+        if file.name.endswith('.csv'):
+            df = pd.read_csv(file)
+        else:
+            df = pd.read_excel(file)
+        return df
+    except Exception as e:
+        st.error(f"Error loading file: {e}")
+        return None
+
+def validate_data(df):
+    required_columns = ['date', 'open', 'high', 'low', 'close', 'volume']
+    missing_cols = [col for col in required_columns if col not in df.columns]
+    if missing_cols:
+        st.error(f"Missing columns: {missing_cols}")
+        return False
+    df['date'] = pd.to_datetime(df['date'],，轻
 
      #Help section
 with st.expander("📚 Help: How the Analysis Works"):
