@@ -215,6 +215,8 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                 if len(period_data) >= max(1, compare_days // 2):
                     start_price = period_data.iloc[0]['open']
                     end_price = period_data.iloc[-1]['close']
+                    # Debug output for verification
+                    st.write(f"Debug - {year} {format_date_range(start_date, end_date)}: Open={start_price}, Close={end_price}")
                     
                     # Mode-specific profit/loss calculation
                     if mode == "Raw Data (Open vs. Close)":
@@ -473,7 +475,7 @@ if uploaded_file and run_analysis:
 # Display results
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 07:35 PM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 07:47 PM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -488,56 +490,15 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
 
     # Display table for all years
     st.subheader("Historical Profit/Loss by Year")
-    df, styled_df = create_year_table(st.session_state.profit_loss_data.to_dict('records'), compare_days, unit)
-    if df is not None and not df.empty:
-        st.write(f"📊 **Table Summary**: {len(df.columns)-1} periods across {len(df)} years")
-        
-        # Display options
-        def update_display_mode():
-            st.session_state.display_mode = st.session_state.display_mode_select
-        def update_month():
-            st.session_state.selected_month = st.session_state.month_select
-        def update_transpose():
-            st.session_state.transpose_table = st.session_state.get('transpose_table_check', False)
-
-        st.selectbox("Display Mode", ["Show All Columns", "Show First 20", "Show by Month"], key="display_mode_select", on_change=update_display_mode)
-        if st.session_state.display_mode == "Show by Month":
-            st.selectbox("Select Month", [month_name[i][:3] for i in range(1, 13)], index=[month_name[i][:3] for i in range(1, 13)].index(st.session_state.selected_month), key="month_select", on_change=update_month)
-        
-        if st.session_state.display_mode == "Show First 20":
-            columns_to_show = ['Year'] + [col for col in df.columns if col != 'Year'][:20]
-            limited_df = df[columns_to_show]
-            numeric_cols = [col for col in limited_df.columns if col != 'Year']
-            if numeric_cols:
-                styled_limited_df = limited_df.style.applymap(color_profit, subset=numeric_cols)
-                st.dataframe(styled_limited_df, use_container_width=True)
-            else:
-                st.dataframe(limited_df, use_container_width=True)
-        elif st.session_state.display_mode == "Show by Month":
-            month_cols = ['Year'] + [col for col in df.columns if col != 'Year' and col.startswith(st.session_state.selected_month)]
-            if len(month_cols) > 1:
-                month_df = df[month_cols]
-                numeric_cols = [col for col in month_df.columns if col != 'Year']
-                if numeric_cols:
-                    styled_month_df = month_df.style.applymap(color_profit, subset=numeric_cols)
-                    st.dataframe(styled_month_df, use_container_width=True)
-                else:
-                    st.dataframe(month_df, use_container_width=True)
-            else:
-                st.warning(f"No data found for {st.session_state.selected_month}")
-        else:
+    years = sorted(set(st.session_state.profit_loss_data['Year'].unique()))
+    for year in years:
+        year_data = st.session_state.profit_loss_data[st.session_state.profit_loss_data['Year'] == year].to_dict('records')
+        df, styled_df = create_year_table(year_data, compare_days, unit)
+        if df is not None and not df.empty:
+            st.write(f"📊 **Table Summary for Year {year}**: {len(df.columns)-1} periods")
             st.dataframe(styled_df, use_container_width=True)
-        
-        st.checkbox("Transpose Table (Years as columns)", value=st.session_state.transpose_table, key="transpose_table_check", on_change=update_transpose)
-        if st.session_state.transpose_table:
-            df_transposed = df.set_index('Year').T
-            styled_transposed = df_transposed.style.applymap(color_profit)
-            st.dataframe(styled_transposed, use_container_width=True)
-        
-        st.button("Copy to Clipboard", key="copy_all", on_click=lambda: st.write_clipboard(df.to_csv()))
-
-    else:
-        st.warning("No table data available. Ensure your dataset has sufficient trading days for the selected 'Compare Days' and analysis mode.")
+        else:
+            st.warning(f"No table data available for year {year}.")
 
     # Display 2025 prediction
     st.subheader("2025 Prediction")
@@ -585,9 +546,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         - **Technical Indicators**: Adjusts profit/loss based on RSI and MACD signals.
         **Table Display**:
         - Profit/loss values are color-coded: green for positive, red for negative.
-        - Periods are based on trading days, excluding weekends and holidays (e.g., Jan 1st).
-        - Use 'Show First 20', 'Show by Month', or 'Show All Columns' to filter data.
-        - Transpose table to view years as columns.
+        - Each year has its own table, with periods based on trading days, excluding weekends and holidays (e.g., Jan 1st).
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
         - Verify required columns for the selected mode.
@@ -597,7 +556,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.7 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.8 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
