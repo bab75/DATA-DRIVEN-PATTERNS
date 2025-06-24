@@ -16,7 +16,7 @@ st.set_page_config(page_title="Stock Investment Analysis", layout="wide", initia
 st.markdown("""
     <style>
     .main { background-color: #1e1e1e; color: #ffffff; }
-    .sidebar .sidebar-content { background-color: #1a1a1a; color: #f5f5f5; }
+    .sidebar .sidebar-content { background-color: #1a1a1a; color: #E6E6FA; }
     .stButton>button { background-color: #4CAF50; color: white; border-radius: 5px; }
     .stFileUploader label, .stFileUploader span { color: #ffffff; }
     h1, h2, h3, h4, h5, h6 { color: #00d4ff; font-family: 'Arial', sans-serif; }
