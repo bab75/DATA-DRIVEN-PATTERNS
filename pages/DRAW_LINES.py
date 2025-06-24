@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import io
@@ -8,6 +9,10 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from datetime import datetime
 import uuid
+
+# Check Plotly version
+if plotly.__version__ < '4.8.0':
+    st.warning(f"Plotly version {plotly.__version__} detected. Some features may not work correctly. Please upgrade to Plotly 5.x with: `pip install plotly --upgrade`")
 
 # Streamlit page config
 st.set_page_config(page_title="Stock Investment Analysis", layout="wide", initial_sidebar_state="expanded")
@@ -217,14 +222,23 @@ fig = make_subplots(rows=5, cols=1, shared_xaxes=True, vertical_spacing=0.05,
                     subplot_titles=("Candlestick & Breakout", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume"),
                     row_heights=[0.4, 0.15, 0.15, 0.15, 0.15])
 
-# Candlestick chart
+# Candlestick chart with fixed hover text
 try:
-    fig.add_trace(go.Candlestick(x=aapl_df['date'],
-                                 open=aapl_df['open'], high=aapl_df['high'], low=aapl_df['low'], close=aapl_df['close'],
-                                 name="Candlestick",
-                                 increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
-                                 hovertemplate="Date: %{x|%m-%d-%Y}<br>Open: $%{open:.2f}<br>High: $%{high:.2f}<br>Low: $%{low:.2f}<br>Close: $%{close:.2f}<br>Volume: %{customdata:,}<extra></extra>",
-                                 customdata=aapl_df['volume']), row=1, col=1)
+    # Create hover text for each candlestick
+    hover_texts = [
+        f"Date: {row['date'].strftime('%m-%d-%Y')}<br>Open: ${row['open']:.2f}<br>High: ${row['high']:.2f}<br>Low: ${row['low']:.2f}<br>Close: ${row['close']:.2f}<br>Volume: {row['volume']:,.0f}"
+        for _, row in aapl_df.iterrows()
+    ]
+    fig.add_trace(go.Candlestick(
+        x=aapl_df['date'],
+        open=aapl_df['open'], high=aapl_df['high'], low=aapl_df['low'], close=aapl_df['close'],
+        name="Candlestick",
+        increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
+        hovertext=hover_texts,
+        hoverinfo='text',
+        customdata=aapl_df['volume']
+    ), row=1, col=1)
+    fig.update_traces(xhoverformat="%m-%d-%Y", row=1, col=1)
 except Exception as e:
     st.error(f"Error plotting candlestick chart: {str(e)}.")
     st.write("Available columns:", aapl_df.columns.tolist())
@@ -253,36 +267,40 @@ if not buy_signals.empty:
 # RSI chart
 if "RSI" in show_indicators:
     fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['rsi'], name="RSI", line=dict(color="#9c27b0"),
-                             hovertemplate="Date: %{x|%m-%d-%Y}<br>RSI: %{y:.2f}<extra></extra>"), row=2, col=1)
+                             hovertext=[f"RSI: {x:.2f}" for x in aapl_df['rsi']], hoverinfo='text+x'), row=2, col=1)
     fig.add_hline(y=70, line_dash="dash", line_color="#f44336", row=2, col=1)
     fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=2, col=1)
 
 # MACD & Stochastic chart
 if "MACD" in show_indicators:
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['macd'], name="MACD", line=dict(color="#0288d1")), row=3, col=1)
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['signal'], name="Signal Line", line=dict(color="#ff9800")), row=3, col=1)
+    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['macd'], name="MACD", line=dict(color="#0288d1"),
+                             hovertext=[f"MACD: {x:.2f}" for x in aapl_df['macd']], hoverinfo='text+x'), row=3, col=1)
+    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['signal'], name="Signal Line", line=dict(color="#ff9800"),
+                             hovertext=[f"Signal: {x:.2f}" for x in aapl_df['signal']], hoverinfo='text+x'), row=3, col=1)
 if "Stochastic" in show_indicators:
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2"), row=3, col=1)
-    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['stochastic_d'], name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y2"), row=3, col=1)
+    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2",
+                             hovertext=[f"Stochastic %K: {x:.2f}" for x in aapl_df['stochastic_k']], hoverinfo='text+x'), row=3, col=1)
+    fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['stochastic_d'], name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y2",
+                             hovertext=[f"Stochastic %D: {x:.2f}" for x in aapl_df['stochastic_d']], hoverinfo='text+x'), row=3, col=1)
     fig.update_layout(yaxis2=dict(overlaying='y', side='right', range=[0, 100]))
 
 # ADX & Volatility chart
 if "ADX" in show_indicators:
     fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['adx'], name="ADX", line=dict(color="#3f51b5"),
-                             hovertemplate="Date: %{x|%m-%d-%Y}<br>ADX: %{y:.2f}<extra></extra>"), row=4, col=1)
+                             hovertext=[f"ADX: {x:.2f}" for x in aapl_df['adx']], hoverinfo='text+x'), row=4, col=1)
     fig.add_hline(y=25, line_dash="dash", line_color="#0288d1", row=4, col=1)
 fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['daily_return'].rolling(20).std() * np.sqrt(252), name="Volatility",
-                         line=dict(color="#795548"), hovertemplate="Date: %{x|%m-%d-%Y}<br>Volatility: %{y:.2f}<extra></extra>"), row=4, col=1)
+                         line=dict(color="#795548"), hovertext=[f"Volatility: {x:.2f}" for x in aapl_df['daily_return'].rolling(20).std() * np.sqrt(252)], hoverinfo='text+x'), row=4, col=1)
 
 # Volume chart
 fig.add_trace(go.Bar(x=aapl_df['date'], y=aapl_df['volume'], name="Volume", marker_color="#607d8b",
-                     hovertemplate="Date: %{x|%m-%d-%Y}<br>Volume: %{y:,}<extra></extra>"), row=5, col=1)
+                     hovertext=[f"Volume: {x:,.0f}" for x in aapl_df['volume']], hoverinfo='text+x'), row=5, col=1)
 fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df.get('vwap', pd.Series()), name="VWAP", line=dict(color="#0288d1"),
-                         hovertemplate="Date: %{x|%m-%d-%Y}<br>VWAP: $%{y:.2f}<extra></extra>"), row=5, col=1)
+                         hovertext=[f"VWAP: ${x:.2f}" for x in aapl_df.get('vwap', pd.Series())], hoverinfo='text+x'), row=5, col=1)
 
 fig.update_layout(height=1000, showlegend=True, template="plotly_white", title_text="AAPL Candlestick Analysis",
                   hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
-fig.update_xaxes(rangeslider_visible=True, row=5, col=1, tickformat="%m-%d-%Y")
+fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=5, col=1)
 st.plotly_chart(fig, use_container_width=True)
 
 # Benchmark comparison
@@ -291,8 +309,10 @@ if not pl_df.empty:
     try:
         pl_cum_return = (1 + pl_df['Profit/Loss (Percentage)']).cumprod() - 1
         fig_bench = go.Figure()
-        fig_bench.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['cumulative_return'], name="AAPL", line=dict(color="#0288d1")))
-        fig_bench.add_trace(go.Scatter(x=pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800")))
+        fig_bench.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['cumulative_return'], name="AAPL", line=dict(color="#0288d1"),
+                                       hovertext=[f"AAPL Return: {x:.2%}" for x in aapl_df['cumulative_return']], hoverinfo='text+x'))
+        fig_bench.add_trace(go.Scatter(x=pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800"),
+                                       hovertext=[f"Benchmark Return: {x:.2%}" for x in pl_cum_return], hoverinfo='text+x'))
         fig_bench.update_layout(title="AAPL vs. Benchmark Cumulative Returns", height=400, template="plotly_white",
                                 hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
         st.plotly_chart(fig_bench, use_container_width=True)
@@ -305,9 +325,9 @@ aapl_df['month'] = aapl_df['date'].dt.month
 aapl_df['year'] = aapl_df['date'].dt.year
 monthly_returns = aapl_df.groupby(['year', 'month'])['daily_return'].mean().unstack() * 100
 fig_heatmap = go.Figure(data=go.Heatmap(z=monthly_returns.values, x=monthly_returns.columns, y=monthly_returns.index,
-                                        colorscale="RdYlGn", hovertemplate="Year: %{y}<br>Month: %{x}<br>Return: %{z:.2f}%<extra></extra>"))
+                                        colorscale="RdYlGn", hovertext=[[f"Return: {x:.2f}%" for x in row] for row in monthly_returns.values], hoverinfo='text'))
 fig_heatmap.update_layout(title="Monthly Average Returns Heatmap", height=400, template="plotly_white",
-                          font=dict(family="Arial", size=12, color="#000000"))
+                          font=dict(family="Arial", size=12, color="#000000"), xaxis_title="Month", yaxis_title="Year")
 st.plotly_chart(fig_heatmap, use_container_width=True)
 
 # Download report
