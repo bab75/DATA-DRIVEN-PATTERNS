@@ -190,33 +190,8 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             for col in numeric_cols:
                 aapl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
             
-            # Detailed validation for non-finite values
-            validation_issues = []
-            for col in numeric_cols:
-                nulls = aapl_df[col].isnull().sum()
-                infs = np.isinf(aapl_df[col]).sum()
-                if nulls > 0 or infs > 0:
-                    null_rows = aapl_df[aapl_df[col].isnull()].index.tolist()
-                    inf_rows = aapl_df[np.isinf(aapl_df[col])].index.tolist()
-                    validation_issues.append(
-                        f"Column '{col}': {nulls} null values (rows: {null_rows[:5] + ['...'] if null_rows else []}), {infs} inf values (rows: {inf_rows[:5] + ['...'] if inf_rows else []})"
-                    )
-            
-            if validation_issues:
-                st.error("Data validation issues detected:\n" + "\n".join(validation_issues))
-                st.write("Sample data (first 5 rows):", aapl_df[numeric_cols].head())
-                st.write("Data types:", aapl_df[numeric_cols].dtypes)
-                return pd.DataFrame(), pd.DataFrame()
-            
-            # Drop rows with null values in critical columns
-            critical_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
-            initial_len = len(aapl_df)
-            aapl_df = aapl_df.dropna(subset=critical_cols)
-            if aapl_df.empty:
-                st.error(
-                    f"Stock data is empty after removing {initial_len} rows with null values in critical columns: {', '.join(critical_cols)}. Please check the file."
-                )
-                return pd.DataFrame(), pd.DataFrame()
+            # Interpolate missing values instead of dropping rows
+            aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
             
             # Get file's date range
             if not aapl_df['date'].empty:
@@ -281,9 +256,12 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             })
             aapl_df['date'] = pd.to_datetime(aapl_df['date'])
             
+            # Interpolate missing values
+            aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
+            
             # Ensure sufficient data points
             if len(aapl_df) < 52:
-                st.error(f"Insufficient data points ({len(aapl_df)}) for {symbol}. Please select a wider date range (at least 52 trading days, e.g., 3 months).")
+                st.error(f"Insufficient data points ({len(aapl_df)}) for {symbol}. Please select a wider date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-13).")
                 return pd.DataFrame(), pd.DataFrame()
         
         except Exception as e:
@@ -325,26 +303,19 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             aapl_df['fib_50'] = recent_high - diff * 0.5
             aapl_df['fib_618'] = recent_high - diff * 0.618
             
-            # Validate indicator data
+            # Interpolate missing indicator values
             indicator_cols = [
                 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr',
                 'senkou_span_a', 'senkou_span_b', 'ma20', 'std_dev', 'rvol',
                 'fib_236', 'fib_382', 'fib_50', 'fib_618'
             ]
+            aapl_df[indicator_cols] = aapl_df[indicator_cols].interpolate(method='linear', limit_direction='both')
+            
+            # Validate indicator data
             null_counts = aapl_df[indicator_cols].isnull().sum()
             if null_counts.any():
-                st.warning(f"Missing values in indicators:\n{null_counts[null_counts > 0]}")
+                st.warning(f"Remaining missing values in indicators after interpolation:\n{null_counts[null_counts > 0]}")
             
-            # Drop rows with any NaN in computed indicators
-            initial_len = len(aapl_df)
-            aapl_df = aapl_df.dropna(subset=indicator_cols)
-            if len(aapl_df) < initial_len:
-                st.warning(f"Dropped {initial_len - len(aapl_df)} rows due to missing values in computed indicators.")
-            
-            if aapl_df.empty:
-                st.error("No valid data after computing indicators. Please check the input data or date range.")
-                return pd.DataFrame(), pd.DataFrame()
-        
         except Exception as e:
             st.error(f"Error computing technical indicators: {str(e)}. Please ensure sufficient data points (at least 52 trading days) and valid data.")
             return pd.DataFrame(), pd.DataFrame()
@@ -422,15 +393,22 @@ def detect_consolidation_breakout(df):
     df['is_consolidation'] = (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
     df['resistance'] = df['high'].rolling(20).max()
     df['support'] = df['low'].rolling(20).min()
-    # Relaxed buy_signal conditions: Wider RSI range (30-80) and lower volume threshold (0.8 * mean)
-    df['buy_signal'] = (df['close'] > df['resistance'].shift(1)) & \
-                       (df['volume'] > df['volume'].mean() * 0.8) & \
-                       ((df['rsi'] > 30) & (df['rsi'] < 80)) & \
-                       (df['macd'] > df['signal']) & \
-                       (df['stochastic_k'] > df['stochastic_d'])
-    df['stop_loss'] = df['close'] - 1.5 * df['atr']  # Compute stop_loss for all rows, not just buy signals
-    df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']  # Compute take_profit for all rows
-    # Debug: Log buy signals
+    # Detailed debug for buy_signal conditions
+    close_exceeds_resistance = df['close'] > df['resistance'].shift(1)
+    volume_condition = df['volume'] > df['volume'].mean() * 0.8
+    rsi_condition = (df['rsi'] > 30) & (df['rsi'] < 80)
+    macd_condition = df['macd'] > df['signal']
+    stochastic_condition = df['stochastic_k'] > df['stochastic_d']
+    df['buy_signal'] = close_exceeds_resistance & volume_condition & rsi_condition & macd_condition & stochastic_condition
+    df['stop_loss'] = df['close'] - 1.5 * df['atr']
+    df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']
+    # Debug: Log detailed buy signal conditions
+    st.write("Debug: Buy signal condition checks:")
+    st.write(f"- Close > Resistance.shift(1): {close_exceeds_resistance.sum()} True")
+    st.write(f"- Volume > Mean * 0.8: {volume_condition.sum()} True")
+    st.write(f"- 30 < RSI < 80: {rsi_condition.sum()} True")
+    st.write(f"- MACD > Signal: {macd_condition.sum()} True")
+    st.write(f"- Stochastic K > D: {stochastic_condition.sum()} True")
     num_buy_signals = df['buy_signal'].sum()
     st.write(f"Debug: Number of buy signals detected: {num_buy_signals}")
     if num_buy_signals == 0:
@@ -448,15 +426,16 @@ def backtest_strategy(df):
     for i in range(1, len(df)):
         if df['buy_signal'].iloc[i-1]:
             if position is None:
-                if pd.notna(df['stop_loss'].iloc[i]) and pd.notna(df['take_profit'].iloc[i]):
-                    position = {
-                        'entry_date': df['date'].iloc[i],
-                        'entry_price': df['close'].iloc[i],
-                        'stop_loss': df['stop_loss'].iloc[i],
-                        'take_profit': df['take_profit'].iloc[i]
-                    }
-                else:
-                    st.write(f"Debug: Skipping trade at index {i} due to invalid stop-loss or take-profit.")
+                # Use fallback values if stop_loss or take_profit is NaN
+                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.95  # 5% below close
+                take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1.10  # 10% above close
+                position = {
+                    'entry_date': df['date'].iloc[i],
+                    'entry_price': df['close'].iloc[i],
+                    'stop_loss': stop_loss,
+                    'take_profit': take_profit
+                }
+                st.write(f"Debug: Entering trade at {df['date'].iloc[i]}, Entry: {df['close'].iloc[i]}, Stop: {stop_loss}, Take: {take_profit}")
         elif position:
             if pd.notna(df['low'].iloc[i]) and pd.notna(df['high'].iloc[i]):
                 if df['low'].iloc[i] <= position['stop_loss']:
@@ -467,6 +446,7 @@ def backtest_strategy(df):
                         'exit_price': position['stop_loss'],
                         'return': (position['stop_loss'] - position['entry_price']) / position['entry_price'] * 100
                     })
+                    st.write(f"Debug: Exiting trade at {df['date'].iloc[i]} due to stop-loss")
                     position = None
                 elif df['high'].iloc[i] >= position['take_profit']:
                     trades.append({
@@ -476,6 +456,7 @@ def backtest_strategy(df):
                         'exit_price': position['take_profit'],
                         'return': (position['take_profit'] - position['entry_price']) / position['entry_price'] * 100
                     })
+                    st.write(f"Debug: Exiting trade at {df['date'].iloc[i]} due to take-profit")
                     position = None
     
     if not trades:
