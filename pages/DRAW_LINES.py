@@ -16,6 +16,12 @@ import openpyxl
 import re
 import calendar  # Added to resolve NameError
 
+# Initialize session state for data persistence
+if 'aapl_df' not in st.session_state:
+    st.session_state.aapl_df = pd.DataFrame()
+if 'analysis_results' not in st.session_state:
+    st.session_state.analysis_results = {}
+
 # Check Plotly version
 if plotly.__version__ < '5.0.0':
     st.warning(f"Plotly version {plotly.__version__} detected. Please upgrade to Plotly 5.x or higher with: `pip install plotly --upgrade`")
@@ -160,6 +166,13 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
                 aapl_df = pd.read_csv(primary_file)
             elif primary_file.name.endswith('.xlsx'):
                 aapl_df = pd.read_excel(primary_file)
+         if not aapl_df.empty:
+            st.session_state.aapl_df = aapl_df  # Store in session state
+     elif data_source == "Fetch Real-Time (Yahoo Finance)":
+       
+         if not aapl_df.empty:
+            st.session_state.aapl_df = aapl_df  # Store in session state
+     return aapl_df, pl_df
             
             # Normalize column names
             aapl_df.columns = aapl_df.columns.str.lower().str.strip()
@@ -394,24 +407,24 @@ def detect_consolidation_breakout(df):
     df['is_consolidation'] = (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
     df['resistance'] = df['high'].rolling(20).max()
     df['support'] = df['low'].rolling(20).min()
+    # Add trend filter: 5-day MA > 5-day prior MA
+    df['ma5'] = df['close'].rolling(5).mean()
+    trend_condition = df['ma5'] > df['ma5'].shift(5)
     # Detailed debug for buy_signal conditions
     close_exceeds_resistance = df['close'] > df['resistance'].shift(1)
     volume_condition = df['volume'] > df['volume'].mean() * 0.8
     rsi_condition = (df['rsi'] > 30) & (df['rsi'] < 80)
     macd_condition = df['macd'] > df['signal']
     stochastic_condition = df['stochastic_k'] > df['stochastic_d']
-    # Relaxed condition: Temporarily remove close > resistance.shift(1) for testing
-    df['buy_signal'] = volume_condition & rsi_condition & macd_condition & stochastic_condition
+    df['buy_signal'] = trend_condition & volume_condition & rsi_condition & macd_condition & stochastic_condition
     df['stop_loss'] = df['close'] - 1.5 * df['atr']
     df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']
-    # Debug: Log detailed buy signal conditions and resistance comparison
     st.write("Debug: Buy signal condition checks:")
-    st.write(f"- Close > Resistance.shift(1): {close_exceeds_resistance.sum()} True (Note: Disabled for testing)")
+    st.write(f"- Trend (MA5 > MA5.shift(5)): {trend_condition.sum()} True")
     st.write(f"- Volume > Mean * 0.8: {volume_condition.sum()} True")
     st.write(f"- 30 < RSI < 80: {rsi_condition.sum()} True")
     st.write(f"- MACD > Signal: {macd_condition.sum()} True")
     st.write(f"- Stochastic K > D: {stochastic_condition.sum()} True")
-    # Compare close and resistance.shift(1) for insight
     st.write("Debug: Sample comparison of Close vs Resistance.shift(1):")
     st.write(df[['date', 'close', 'resistance']].tail(10).assign(resistance_shift1=lambda x: x['resistance'].shift(1)))
     num_buy_signals = df['buy_signal'].sum()
@@ -431,9 +444,8 @@ def backtest_strategy(df):
     for i in range(1, len(df)):
         if df['buy_signal'].iloc[i-1]:
             if position is None:
-                # Use fallback values with increased buffers
-                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.80  # 20% below close
-                take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1.20  # 20% above close
+                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.80
+                take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1.20
                 position = {
                     'entry_date': df['date'].iloc[i],
                     'entry_price': df['close'].iloc[i],
@@ -800,11 +812,11 @@ if not pl_df.empty:
 # Seasonality heatmap
 st.header("Seasonality Analysis")
 # Ensure date is datetime for dt access
-if not pd.api.types.is_datetime64_any_dtype(aapl_df['date']):
-    aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
-aapl_df['month'] = aapl_df['date'].dt.month
-aapl_df['year'] = aapl_df['date'].dt.year
-monthly_returns = aapl_df.groupby(['year', 'month'])['daily_return'].mean().unstack() * 100
+if not pd.api.types.is_datetime64_any_dtype(st.session_state.aapl_df['date']):
+    st.session_state.aapl_df['date'] = pd.to_datetime(st.session_state.aapl_df['date'], errors='coerce')
+st.session_state.aapl_df['month'] = st.session_state.aapl_df['date'].dt.month
+st.session_state.aapl_df['year'] = st.session_state.aapl_df['date'].dt.year
+monthly_returns = st.session_state.aapl_df.groupby(['year', 'month'])['daily_return'].mean().unstack() * 100
 # Convert month numbers to names for x-axis
 month_names = {i: calendar.month_name[i] for i in range(1, 13)}
 fig_heatmap = go.Figure(data=go.Heatmap(
@@ -840,43 +852,44 @@ st.download_button("Download Stock Data (Excel)", excel_buffer, file_name=f"{st.
 
 # Export PDF report
 # Export PDF report
-pdf_buffer = io.BytesIO()
-c = canvas.Canvas(pdf_buffer, pagesize=letter)
-c.setFont("Helvetica", 12)
-c.drawString(50, 750, f"{st.session_state.symbol} Stock Analysis Report")
-c.drawString(50, 730, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
-c.drawString(50, 710, f"Recommendation: {score['Recommendation']}")
-c.drawString(50, 690, "Scores:")
-c.drawString(70, 670, f"- Performance: {score['Performance']:.1f}/30")
-c.drawString(70, 650, f"- Risk: {score['Risk']:.1f}/20")
-c.drawString(70, 630, f"- Technical: {score['Technical']:.1f}/30")
-c.drawString(70, 610, f"- Volume: {score['Volume']:.1f}/20")
-c.drawString(70, 590, f"- Total: {score['Total']:.1f}/100")
-c.drawString(50, 570, "Key Metrics:")
-c.drawString(70, 550, f"- Average Return: {aapl_metrics['Average Return']:.2f}%")
-c.drawString(70, 530, f"- Volatility: {aapl_metrics['Volatility']:.2f}%")
-c.drawString(70, 510, f"- Win Ratio: {aapl_metrics['Win Ratio']:.2f}%")
-c.drawString(70, 490, f"- Max Drawdown: {aapl_metrics['Max Drawdown']:.2f}%")
-c.drawString(70, 470, f"- Largest Loss: {aapl_metrics['Largest Loss']:.2f}% on {aapl_metrics['Largest Loss Date']}")
-c.drawString(70, 450, f"- Largest Gain: {aapl_metrics['Largest Gain']:.2f}% on {aapl_metrics['Largest Gain Date']}")
-c.drawString(50, 430, "Latest Trade Setup:")
-# Check if 'stop_loss' exists and use fallback if missing
-stop_loss_value = aapl_df['stop_loss'].iloc[-1] if 'stop_loss' in aapl_df.columns and not aapl_df['stop_loss'].iloc[-1] is None else 0.0
-take_profit_value = aapl_df['take_profit'].iloc[-1] if 'take_profit' in aapl_df.columns and not aapl_df['take_profit'].iloc[-1] is None else 0.0
-c.drawString(70, 410, f"- Date: {aapl_df['date'].iloc[-1].strftime('%m-%d-%Y')}")
-c.drawString(70, 390, f"- Entry: ${aapl_df['close'].iloc[-1]:.2f}")
-c.drawString(70, 370, f"- Stop-Loss: ${stop_loss_value:.2f}")
-c.drawString(70, 350, f"- Take-Profit: ${take_profit_value:.2f}")
-c.drawString(50, 330, "Backtesting Results:")
-c.drawString(70, 310, f"- Win Rate: {backtest_results['Win Rate']:.2f}%")
-c.drawString(70, 290, f"- Profit Factor: {backtest_results['Profit Factor']:.2f}")
-c.drawString(70, 270, f"- Total Return: {backtest_results['Total Return']:.2f}%")
-c.drawString(70, 250, f"- Trades: {backtest_results['Trades']}")
-c.showPage()
-c.save()
-pdf_buffer.seek(0)
-st.download_button("Download PDF Report", pdf_buffer, file_name=f"{st.session_state.symbol}_investment_report.pdf", mime="application/pdf")
-
+if st.button("Generate PDF Report"):
+    pdf_buffer = io.BytesIO()
+    c = canvas.Canvas(pdf_buffer, pagesize=letter)
+    c.setFont("Helvetica", 12)
+    c.drawString(50, 750, f"{st.session_state.symbol} Stock Analysis Report")
+    c.drawString(50, 730, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+    c.drawString(50, 710, f"Recommendation: {st.session_state.analysis_results.get('Recommendation', 'N/A')}")
+    c.drawString(50, 690, "Scores:")
+    c.drawString(70, 670, f"- Performance: {st.session_state.analysis_results.get('Performance', 0):.1f}/30")
+    c.drawString(70, 650, f"- Risk: {st.session_state.analysis_results.get('Risk', 0):.1f}/20")
+    c.drawString(70, 630, f"- Technical: {st.session_state.analysis_results.get('Technical', 0):.1f}/30")
+    c.drawString(70, 610, f"- Volume: {st.session_state.analysis_results.get('Volume', 0):.1f}/20")
+    c.drawString(70, 590, f"- Total: {st.session_state.analysis_results.get('Total', 0):.1f}/100")
+    c.drawString(50, 570, "Key Metrics:")
+    c.drawString(70, 550, f"- Average Return: {st.session_state.analysis_results.get('Average Return', 0):.2f}%")
+    c.drawString(70, 530, f"- Volatility: {st.session_state.analysis_results.get('Volatility', 0):.2f}%")
+    c.drawString(70, 510, f"- Win Ratio: {st.session_state.analysis_results.get('Win Ratio', 0):.2f}%")
+    c.drawString(70, 490, f"- Max Drawdown: {st.session_state.analysis_results.get('Max Drawdown', 0):.2f}%")
+    c.drawString(70, 470, f"- Largest Loss: {st.session_state.analysis_results.get('Largest Loss', 0):.2f}% on {st.session_state.analysis_results.get('Largest Loss Date', 'N/A')}")
+    c.drawString(70, 450, f"- Largest Gain: {st.session_state.analysis_results.get('Largest Gain', 0):.2f}% on {st.session_state.analysis_results.get('Largest Gain Date', 'N/A')}")
+    c.drawString(50, 430, "Latest Trade Setup:")
+    stop_loss_value = st.session_state.aapl_df['stop_loss'].iloc[-1] if 'stop_loss' in st.session_state.aapl_df.columns and pd.notna(st.session_state.aapl_df['stop_loss'].iloc[-1]) else 0.0
+    take_profit_value = st.session_state.aapl_df['take_profit'].iloc[-1] if 'take_profit' in st.session_state.aapl_df.columns and pd.notna(st.session_state.aapl_df['take_profit'].iloc[-1]) else 0.0
+    c.drawString(70, 410, f"- Date: {st.session_state.aapl_df['date'].iloc[-1].strftime('%m-%d-%Y')}")
+    c.drawString(70, 390, f"- Entry: ${st.session_state.aapl_df['close'].iloc[-1]:.2f}")
+    c.drawString(70, 370, f"- Stop-Loss: ${stop_loss_value:.2f}")
+    c.drawString(70, 350, f"- Take-Profit: ${take_profit_value:.2f}")
+    c.drawString(50, 330, "Backtesting Results:")
+    c.drawString(70, 310, f"- Win Rate: {st.session_state.analysis_results.get('Win Rate', 0):.2f}%")
+    c.drawString(70, 290, f"- Profit Factor: {st.session_state.analysis_results.get('Profit Factor', 0):.2f}")
+    c.drawString(70, 270, f"- Total Return: {st.session_state.analysis_results.get('Total Return', 0):.2f}%")
+    c.drawString(70, 250, f"- Trades: {st.session_state.analysis_results.get('Trades', 0)}")
+    c.showPage()
+    c.save()
+    pdf_buffer.seek(0)
+    st.download_button("Download PDF Report", pdf_buffer, file_name=f"{st.session_state.symbol}_investment_report.pdf", mime="application/pdf")
+    st.session_state.analysis_results = {}  # Clear results after download to prevent stale data
+    
 # Export HTML report
 if html_report_type == "Interactive (with Hover)":
     candlestick_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
