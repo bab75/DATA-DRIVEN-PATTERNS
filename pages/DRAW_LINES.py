@@ -389,16 +389,16 @@ def calculate_metrics(df):
     average_return = df['daily_return'].mean() * 100
     volatility = df['daily_return'].std() * np.sqrt(252) * 100
     win_ratio = (df['daily_return'] > 0).mean() * 100
-    annualized_return = ((1 + Df['cumulative_return'].iloc[-1]) ** (252 / len(df))) - 1 if len(df) > 0 else 0
+    annualized_return = ((1 + df['cumulative_return'].iloc[-1]) ** (252 / len(df))) - 1 if len(df) > 0 else 0
     sharpe_ratio = (annualized_return - 0.03) / (volatility / 100) if volatility > 0 else 0
     downside_returns = df['daily_return'][df['daily_return'] < 0]
     sortino_ratio = (annualized_return - 0.03) / (downside_returns.std() * np.sqrt(252)) if len(downside_returns) > 0 else 0
     drawdowns = df['close'] / df['close'].cummax() - 1
     max_drawdown = drawdowns.min() * 100
     largest_loss = df['daily_return'].min() * 100
-    largest_loss_date = df.loc[df['daily_return'].idxmin(), 'date'].strftime('%d %B %Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].min()) else "N/A"
+    largest_loss_date = df.loc[df['daily_return'].idxmin(), 'date'].strftime('%m-%d-%Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].min()) else "N/A"
     largest_gain = df['daily_return'].max() * 100
-    largest_gain_date = df.loc[df['daily_return'].idxmax(), 'date'].strftime('%d %B %Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].max()) else "N/A"
+    largest_gain_date = df.loc[df['daily_return'].idxmax(), 'date'].strftime('%m-%d-%Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].max()) else "N/A"
     
     return {
         'Average Return': average_return,
@@ -554,8 +554,8 @@ fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical
 # Candlestick chart
 def add_candlestick_trace(fig, df, row):
     hover_texts = [
-        "Date: {date}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}".format(
-            date=row['date'].strftime('%m-%d-%Y'), open=row['open'], high=row['high'], low=row['low'], 
+        "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}".format(
+            date=row['date'].strftime('%m-%d-%Y'), month=row['date'].strftime('%B'), open=row['open'], high=row['high'], low=row['low'], 
             close=row['close'], volume=row['volume'], rsi=row['rsi'], rvol=row['rvol']
         )
         for _, row in df.iterrows()
@@ -672,7 +672,7 @@ def on_click(trace, points, state):
         idx = points.point_inds[0]
         row = aapl_df.iloc[idx]
         st.session_state.trade_details = {
-            'Date': row['date'].strftime('%Y-%m-%d'),
+            'Date': row['date'].strftime('%m-%d-%Y'),
             'Close': float(row['close']),
             'Stop-Loss': float(row['stop_loss']),
             'Take-Profit': float(row['take_profit']),
@@ -764,6 +764,25 @@ if st.session_state.trade_details and all(key in st.session_state.trade_details 
 else:
     st.info("Click a candlestick on the chart to view trade details.")
 
+# Latest Trade Setup
+latest_buy = aapl_df[aapl_df['buy_signal'] == True].iloc[-1] if not aapl_df[aapl_df['buy_signal'] == True].empty else None
+if latest_buy is not None:
+    st.header("Latest Trade Setup")
+    st.markdown(
+        "<div class='trade-details'>"
+        "<b>Date:</b> {date}<br>"
+        "<b>Entry:</b> ${entry:.2f}<br>"
+        "<b>Stop-Loss:</b> ${stop_loss:.2f}<br>"
+        "<b>Take-Profit:</b> ${take_profit:.2f}"
+        "</div>".format(
+            date=latest_buy['date'].strftime('%m-%d-%Y'),
+            entry=latest_buy['close'],
+            stop_loss=latest_buy['stop_loss'],
+            take_profit=latest_buy['take_profit']
+        ),
+        unsafe_allow_html=True
+    )
+
 # Display candlestick chart
 st.plotly_chart(fig, use_container_width=True)
 
@@ -828,14 +847,15 @@ c.drawString(70, 490, f"- Max Drawdown: {aapl_metrics['Max Drawdown']:.2f}%")
 c.drawString(70, 470, f"- Largest Loss: {aapl_metrics['Largest Loss']:.2f}% on {aapl_metrics['Largest Loss Date']}")
 c.drawString(70, 450, f"- Largest Gain: {aapl_metrics['Largest Gain']:.2f}% on {aapl_metrics['Largest Gain Date']}")
 c.drawString(50, 430, "Latest Trade Setup:")
-c.drawString(70, 410, f"- Entry: ${aapl_df['close'].iloc[-1]:.2f}")
-c.drawString(70, 390, f"- Stop-Loss: ${aapl_df['stop_loss'].iloc[-1]:.2f}")
-c.drawString(70, 370, f"- Take-Profit: ${aapl_df['take_profit'].iloc[-1]:.2f}")
-c.drawString(50, 350, "Backtesting Results:")
-c.drawString(70, 330, f"- Win Rate: {backtest_results['Win Rate']:.2f}%")
-c.drawString(70, 310, f"- Profit Factor: {backtest_results['Profit Factor']:.2f}")
-c.drawString(70, 290, f"- Total Return: {backtest_results['Total Return']:.2f}%")
-c.drawString(70, 270, f"- Trades: {backtest_results['Trades']}")
+c.drawString(70, 410, f"- Date: {aapl_df['date'].iloc[-1].strftime('%m-%d-%Y')}")
+c.drawString(70, 390, f"- Entry: ${aapl_df['close'].iloc[-1]:.2f}")
+c.drawString(70, 370, f"- Stop-Loss: ${aapl_df['stop_loss'].iloc[-1]:.2f}")
+c.drawString(70, 350, f"- Take-Profit: ${aapl_df['take_profit'].iloc[-1]:.2f}")
+c.drawString(50, 330, "Backtesting Results:")
+c.drawString(70, 310, f"- Win Rate: {backtest_results['Win Rate']:.2f}%")
+c.drawString(70, 290, f"- Profit Factor: {backtest_results['Profit Factor']:.2f}")
+c.drawString(70, 270, f"- Total Return: {backtest_results['Total Return']:.2f}%")
+c.drawString(70, 250, f"- Trades: {backtest_results['Trades']}")
 c.showPage()
 c.save()
 pdf_buffer.seek(0)
@@ -909,6 +929,7 @@ html_content = """
     <div class="section">
         <h2>Latest Trade Setup</h2>
         <div class="metric-box">
+            <p><b>Date:</b> {latest_date}</p>
             <p><b>Entry:</b> ${entry:.2f}</p>
             <p><b>Stop-Loss:</b> ${stop_loss:.2f}</p>
             <p><b>Take-Profit:</b> ${take_profit:.2f}</p>
@@ -947,9 +968,10 @@ html_content = """
     profit_factor=backtest_results['Profit Factor'],
     total_return=backtest_results['Total Return'],
     trades=backtest_results['Trades'],
-    entry=aapl_df['close'].iloc[-1],
-    stop_loss=aapl_df['stop_loss'].iloc[-1],
-    take_profit=aapl_df['take_profit'].iloc[-1],
+    latest_date=aapl_df['date'].iloc[-1].strftime('%m-%d-%Y') if not aapl_df.empty else 'N/A',
+    entry=aapl_df['close'].iloc[-1] if not aapl_df.empty else 0,
+    stop_loss=aapl_df['stop_loss'].iloc[-1] if not aapl_df.empty else 0,
+    take_profit=aapl_df['take_profit'].iloc[-1] if not aapl_df.empty else 0,
     candlestick_html=candlestick_html,
     bench_html=bench_html,
     heatmap_html=heatmap_html
@@ -1011,7 +1033,7 @@ with st.expander("📚 Help: How the Analysis Works"):
     #### 7. Visualization
     - **What**: Candlestick chart with Bollinger Bands, Ichimoku, RSI, MACD, Stochastic, ADX, RVOL, volume, and win/loss distribution.
     - **How**: Plotly charts with hover text and clickable trade details.
-    - **Example**: Hover shows Close: $196.45, RSI: 52.30, Volume: 51.4M. Click candlestick for trade setup.
+    - **Example**: Hover shows Date: 06-13-2025, Month: June, Close: $196.45, RSI: 52.30, Volume: 51.4M. Click candlestick for trade setup.
 
     #### 8. Benchmark Comparison
     - **What**: Compare {symbol} to benchmark (if uploaded).
