@@ -372,6 +372,25 @@ def calculate_metrics(df):
         'Largest Gain Date': largest_gain_date
     }
 
+# Load data only if Submit is pressed and not already processed
+if submit and not st.session_state.data_processed:
+    st.session_state.data_loaded = True
+    st.session_state.symbol = st.session_state.symbol_input
+    st.session_state.start_date = pd.to_datetime(st.session_state[date_range_key][0])
+    st.session_state.end_date = pd.to_datetime(st.session_state[date_range_key][1])
+    st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
+    aapl_df, pl_df = load_data(primary_file, data_source, st.session_state.symbol, st.session_state.start_date, st.session_state.end_date)
+    st.session_state.aapl_df = aapl_df
+    st.session_state.pl_df = pl_df  # Store pl_df in session state
+    st.session_state.data_processed = True
+elif not st.session_state.data_loaded:
+    st.info("Please enter a symbol, select a data source, select a date range, and click 'Submit' to load data.")
+    st.stop()
+
+if st.session_state.aapl_df.empty:
+    st.error(f"Failed to load valid data for {st.session_state.symbol}. Please check the file, symbol, or date range.")
+    st.stop()
+
 if 'aapl_metrics' not in st.session_state or submit:
     st.session_state.aapl_metrics = calculate_metrics(st.session_state.aapl_df)
 
