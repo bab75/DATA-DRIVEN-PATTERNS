@@ -427,15 +427,13 @@ def detect_consolidation_breakout(df):
                        ((df['rsi'] > 40) & (df['rsi'] < 70)) & \
                        (df['macd'] > df['signal']) & \
                        (df['stochastic_k'] > df['stochastic_d'])
-    df['stop_loss'] = df['close'] - 1.5 * df['atr']
-    df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']
-    
     # Debug: Log buy signals
     num_buy_signals = df['buy_signal'].sum()
     st.write(f"Debug: Number of buy signals detected: {num_buy_signals}")
     if num_buy_signals == 0:
-        st.warning("No buy signals detected. Relaxing conditions or increasing data points may help.")
-    
+        st.warning("No buy signals detected. Check data or relax conditions (e.g., RSI range, volume threshold).")
+        # Optional: Display first few rows with signal conditions for debugging
+        st.write("Debug: First 5 rows of signal conditions:", df[['close', 'resistance', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d']].head())
     return df
 
 aapl_df = detect_consolidation_breakout(aapl_df)
@@ -553,17 +551,15 @@ fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical
 
 # Candlestick chart
 def add_candlestick_trace(fig, df, row):
-    # Ensure date column is datetime
+    # Ensure date column is datetime and handle invalid values
     if not pd.api.types.is_datetime64_any_dtype(df['date']):
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
-    
-    # Handle any NaT values and convert to string for safety
-    df['date'] = df['date'].fillna(pd.Timestamp('1900-01-01')).astype(str).replace('1900-01-01', 'N/A')
-    
+    df['date'] = df['date'].fillna(pd.NaT)  # Use NaT instead of converting to string
+
     hover_texts = [
         "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}".format(
-            date=getattr(r, 'date') if pd.notna(pd.to_datetime(getattr(r, 'date'), errors='coerce')) else 'N/A',
-            month=datetime.strptime(getattr(r, 'date'), '%Y-%m-%d').strftime('%B') if pd.notna(pd.to_datetime(getattr(r, 'date'), errors='coerce')) else 'N/A',
+            date=getattr(r, 'date').strftime('%m-%d-%Y') if pd.notna(getattr(r, 'date')) else 'N/A',
+            month=getattr(r, 'date').strftime('%B') if pd.notna(getattr(r, 'date')) else 'N/A',
             open=getattr(r, 'open'), high=getattr(r, 'high'), low=getattr(r, 'low'),
             close=getattr(r, 'close'), volume=getattr(r, 'volume'), rsi=getattr(r, 'rsi'), rvol=getattr(r, 'rvol')
         )
@@ -814,6 +810,9 @@ if not pl_df.empty:
 
 # Seasonality heatmap
 st.header("Seasonality Analysis")
+# Ensure date is datetime for dt access
+if not pd.api.types.is_datetime64_any_dtype(aapl_df['date']):
+    aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
 aapl_df['month'] = aapl_df['date'].dt.month
 aapl_df['year'] = aapl_df['date'].dt.year
 monthly_returns = aapl_df.groupby(['year', 'month'])['daily_return'].mean().unstack() * 100
