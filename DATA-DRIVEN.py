@@ -422,7 +422,7 @@ def create_year_table(profit_loss_data, compare_days, unit):
     historical_data = pd.DataFrame([d for d in profit_loss_data if d['Year'] != 2025])
     if len([historical_data]) > 0
         historical_data['period_index'].append(range(len(historical_data)))
-        X = historical_data['period_index']].values
+        X = historical_data['period_index'].values
         historical_data[f'Profit/Loss ({unit})'].values = y
         model = LinearRegression()
         try:
