@@ -499,7 +499,7 @@ if uploaded_file and run_analysis:
 # Display results if data is available
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 09:48 AM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 09:57 AM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -604,16 +604,26 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
     # Help and Total Functionality Summary sections
     with st.expander("Help"):
         st.write("""
+        **Total Functionality of the Program**:
+        The Stock Pattern Analyzer is designed to process historical stock data, calculate profit/loss across different periods, and provide visualizations and predictions. The workflow includes:
+        1. **Upload Data**: Upload a CSV or Excel file containing stock data with columns like 'date', 'open', 'close', and optionally 'high', 'low', 'ma20', 'ma50', 'macd', 'rsi', 'atr', 'vwap'.
+        2. **Configure Settings**: Set the 'Compare Days' (1-30) and select an analysis mode via the sidebar.
+        3. **Run Analysis**: Click 'Run Analysis' to process the data, generating profit/loss calculations and a 2025 prediction using linear regression if sufficient historical data exists.
+        4. **Visualize Results**: View interactive charts, tables, and predictions, with options to download data as CSV or Excel.
+        5. **Explore and Download**: Use display modes (e.g., 'Show All Columns', 'Show by Month') and download results without resetting until a new analysis is needed.
+
+        **Calculation Logic**:
+        - **Raw Data (Open vs. Close)**: Computes profit/loss based on the opening and closing prices over a period. The percentage is calculated as ((end_price - start_price) / start_price) * 100, and the value is end_price - start_price. This mode focuses on the basic price movement from the start to the end of each period.
+        - **Open/Close/High/Low**: Assesses the full price range by using the maximum high and minimum low prices within a period. The percentage is ((max_high - min_low) / start_price) * 100, and the value is max_high - min_low, providing a measure of volatility and potential trading range.
+        - **Technical Indicators**: Adjusts the open-to-close profit/loss with weights derived from technical indicators. The base percentage is ((end_price - start_price) / start_price) * 100, modified by a weight: reduced by 20% if RSI > 70 (overbought), increased by 20% if RSI < 30 (oversold), and adjusted by 10% based on MACD's sign (positive or negative). The value is scaled similarly, offering a momentum-adjusted estimate.
+
         **Usage Guide**:
         - Upload a CSV/Excel file with stock data.
         - Set 'Compare Days' and select an 'Analysis Mode'.
         - Click 'Run Analysis' to process data.
         - Toggle 'Show Profit/Loss as Percentage' to switch between percentage and absolute value.
         - Explore charts, tables, and download results without resetting until new analysis.
-        **Analysis Modes**:
-        - **Raw Data**: Uses open/close prices for profit/loss.
-        - **Open/Close/High/Low**: Uses high/low prices for max potential profit/loss.
-        - **Technical Indicators**: Adjusts profit/loss based on RSI and MACD signals.
+
         **Troubleshooting**:
         - Ensure data spans 2010–2025 with valid dates (YYYY-MM-DD).
         - Verify required columns for the selected mode.
@@ -650,7 +660,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
             st.write(f"{step} - {status}")
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 3.1 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 3.2 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
