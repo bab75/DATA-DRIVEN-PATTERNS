@@ -285,7 +285,7 @@ def create_chart(dframe, profit_loss_data, mode, unit):
                         y=prices,
                         mode='lines+markers', name=f"Year {year} (Open)",
                         line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
-                        hovertemplate='Date: %{x}<br>Price: %{y}<extra></extra>'
+                        hovertemplate='<b>%{x}</b><br>Price: $%{y:.2f}<br>Year: ' + str(year) + '<extra></extra>'
                     ), row=1, col=1)
                 elif mode == "Open/Close/High/Low":
                     highs = [dframe[dframe['date'] == d]['high'].iloc[0] for d in valid_dates]
@@ -295,14 +295,14 @@ def create_chart(dframe, profit_loss_data, mode, unit):
                         y=highs,
                         mode='lines+markers', name=f"Year {year} (High)",
                         line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
-                        hovertemplate='Date: %{x}<br>High: %{y}<extra></extra>'
+                        hovertemplate='<b>%{x}</b><br>High: $%{y:.2f}<br>Year: ' + str(year) + '<extra></extra>'
                     ), row=1, col=1)
                     fig.add_trace(go.Scatter(
                         x=valid_dates,
                         y=lows,
                         mode='lines+markers', name=f"Year {year} (Low)",
                         line=dict(width=1, dash='dot', color=color_map[year]),
-                        hovertemplate='Date: %{x}<br>Low: %{y}<extra></extra>'
+                        hovertemplate='<b>%{x}</b><br>Low: $%{y:.2f}<br>Year: ' + str(year) + '<extra></extra>'
                     ), row=1, col=1)
                 elif mode == "Technical Indicators":
                     ma20 = [dframe[dframe['date'] == d]['ma20'].iloc[0] for d in valid_dates]
@@ -311,7 +311,7 @@ def create_chart(dframe, profit_loss_data, mode, unit):
                         y=ma20,
                         mode='lines+markers', name=f"Year {year} (MA20)",
                         line=dict(width=2, dash='dash' if year == 2025 else 'solid', color=color_map[year]),
-                        hovertemplate='Date: %{x}<br>MA20: %{y}<extra></extra>'
+                        hovertemplate='<b>%{x}</b><br>MA20: $%{y:.2f}<br>Year: ' + str(year) + '<extra></extra>'
                     ), row=1, col=1)
     
     profits = [d[f'Profit/Loss ({unit})'] for d in profit_loss_data]
@@ -323,7 +323,7 @@ def create_chart(dframe, profit_loss_data, mode, unit):
         name=f'Profit/Loss ({unit})',
         marker_color=['#006400' if p >= 0 else '#8B0000' for p in profits],
         opacity=0.9,
-        hovertemplate=f'Date: %{{x}}<br>Profit/Loss: %{{y}}{unit_symbol}<extra></extra>'
+        hovertemplate=f'<b>%{{x}}</b><br>Profit/Loss: %{{y}}{unit_symbol}<br>Year: ' + str(year) + '<extra></extra>'
     ), row=2, col=1)
     
     fig.update_layout(
@@ -354,6 +354,37 @@ def create_chart(dframe, profit_loss_data, mode, unit):
     st.download_button(label="Download Chart", data=chart_div, file_name="stock_chart.html", mime="text/html")
     
     return fig
+
+# Function to validate column logic
+def validate_calculation_logic(df, compare_days):
+    """Validate that calculations make sense"""
+    total_periods = 0
+    for month in range(1, 13):
+        days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month-1]
+        periods_in_month = (days_in_month // compare_days)
+        total_periods += periods_in_month
+    
+    st.info(f"Expected periods per year: {total_periods} (with {compare_days}-day intervals)")
+    actual_columns = len([col for col in df.columns if col != 'Year'])
+    st.info(f"Actual table columns: {actual_columns}")
+    
+    if total_periods != actual_columns:
+        st.warning("Mismatch between expected and actual periods. Check data coverage.")
+
+# Function to apply styling to all data
+def apply_styling_to_all_data(df):
+    """Apply styling to all data including predictions"""
+    numeric_cols = [col for col in df.columns if col != 'Year']
+    
+    def style_cell(val):
+        if isinstance(val, (int, float)) and not pd.isna(val):
+            if val >= 0:
+                return 'background-color: #90EE90'
+            else:
+                return 'background-color: #FFB6C1'
+        return ''
+    
+    return df.style.applymap(style_cell, subset=numeric_cols)
 
 # Function to create styled table for all years
 def create_year_table(profit_loss_data, compare_days, unit):
@@ -396,7 +427,10 @@ def create_year_table(profit_loss_data, compare_days, unit):
         except Exception as e:
             st.warning(f"Failed to integrate predictions: {str(e)}")
     
-    return df, df.style
+    styled_df = apply_styling_to_all_data(df)
+    validate_calculation_logic(df, compare_days)
+    
+    return df, styled_df
 
 # Function to create prediction card
 def create_prediction_card(pred_data, unit):
@@ -404,15 +438,9 @@ def create_prediction_card(pred_data, unit):
         return None
     pred_df = pd.DataFrame(pred_data).fillna(0)
     pred_df = pred_df[['Year', 'Start Date', 'End Date', f'Profit/Loss ({unit})']]
-    styled_df = pred_df.style
+    styled_df = pred_df.style.applymap(lambda val: 'background-color: #90EE90' if val >= 0 else 'background-color: #FFB6C1', 
+                                      subset=[f'Profit/Loss ({unit})'])
     return styled_df
-
-# Global color_profit function
-def color_profit(val):
-    """Apply color styling to profit/loss values"""
-    if isinstance(val, (int, float)) and not pd.isna(val):
-        return 'background-color: #90EE90' if val >= 0 else 'background-color: #FFB6C1'
-    return ''
 
 # Main app logic
 if uploaded_file and run_analysis:
@@ -433,7 +461,7 @@ if uploaded_file and run_analysis:
 # Display results if data is available
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 07:04 PM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 08:22 AM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -467,22 +495,14 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         if st.session_state.display_mode == "Show First 20":
             columns_to_show = ['Year'] + [col for col in df.columns if col != 'Year'][:20]
             limited_df = df[columns_to_show]
-            numeric_cols = [col for col in limited_df.columns if col != 'Year']
-            if numeric_cols:
-                styled_limited_df = limited_df.style.applymap(color_profit, subset=numeric_cols)
-                st.dataframe(styled_limited_df, use_container_width=True)
-            else:
-                st.dataframe(limited_df, use_container_width=True)
+            styled_limited_df = apply_styling_to_all_data(limited_df)
+            st.dataframe(styled_limited_df, use_container_width=True)
         elif st.session_state.display_mode == "Show by Month":
             month_cols = ['Year'] + [col for col in df.columns if col != 'Year' and col.startswith(st.session_state.selected_month)]
             if len(month_cols) > 1:
                 month_df = df[month_cols]
-                numeric_cols = [col for col in month_df.columns if col != 'Year']
-                if numeric_cols:
-                    styled_month_df = month_df.style.applymap(color_profit, subset=numeric_cols)
-                    st.dataframe(styled_month_df, use_container_width=True)
-                else:
-                    st.dataframe(month_df, use_container_width=True)
+                styled_month_df = apply_styling_to_all_data(month_df)
+                st.dataframe(styled_month_df, use_container_width=True)
             else:
                 st.warning(f"No data found for {st.session_state.selected_month}")
         else:
@@ -491,10 +511,21 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         st.checkbox("Transpose Table (Years as columns)", value=st.session_state.transpose_table, key="transpose_table_check", on_change=update_transpose)
         if st.session_state.transpose_table:
             df_transposed = df.set_index('Year').T
-            styled_transposed = df_transposed.style.applymap(color_profit)
+            styled_transposed = apply_styling_to_all_data(df_transposed.reset_index().rename(columns={'index': 'Period'}))
             st.dataframe(styled_transposed, use_container_width=True)
         
-        st.button("Copy to Clipboard", key="copy_all", on_click=lambda: st.write_clipboard(df.to_csv()))
+        if st.button("Copy Table Data", key="copy_all"):
+            st.code(df.to_string(), language=None)
+            st.success("Table data displayed above - use Ctrl+A, Ctrl+C to copy")
+        
+        csv_data = df.to_csv(index=False)
+        st.download_button(
+            label="Download as CSV",
+            data=csv_data,
+            file_name="stock_analysis.csv",
+            mime="text/csv",
+            key="download_csv"
+        )
 
     else:
         st.warning("No table data available. Ensure your dataset has sufficient data for the selected 'Compare Days' and analysis mode.")
