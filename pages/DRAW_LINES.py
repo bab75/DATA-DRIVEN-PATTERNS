@@ -430,9 +430,9 @@ def backtest_strategy(df):
     for i in range(1, len(df)):
         if df['buy_signal'].iloc[i-1]:
             if position is None:
-                # Use fallback values if stop_loss or take_profit is NaN
-                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.90  # Increased to 10% below close
-                take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1.10
+                # Use fallback values with increased buffers
+                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.85  # 15% below close
+                take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1.15  # 15% above close
                 position = {
                     'entry_date': df['date'].iloc[i],
                     'entry_price': df['close'].iloc[i],
@@ -804,10 +804,25 @@ if not pd.api.types.is_datetime64_any_dtype(aapl_df['date']):
 aapl_df['month'] = aapl_df['date'].dt.month
 aapl_df['year'] = aapl_df['date'].dt.year
 monthly_returns = aapl_df.groupby(['year', 'month'])['daily_return'].mean().unstack() * 100
-fig_heatmap = go.Figure(data=go.Heatmap(z=monthly_returns.values, x=monthly_returns.columns, y=monthly_returns.index,
-                                        colorscale="RdYlGn", hovertext=[[f"Return: {x:.2f}%" for x in row] for row in monthly_returns.values], hoverinfo='text'))
-fig_heatmap.update_layout(title="Monthly Average Returns Heatmap", height=400, template="plotly_white",
-                          font=dict(family="Arial", size=12, color="#000000"), xaxis_title="Month", yaxis_title="Year")
+# Convert month numbers to names for x-axis
+month_names = {i: calendar.month_name[i] for i in range(1, 13)}
+fig_heatmap = go.Figure(data=go.Heatmap(
+    z=monthly_returns.values,
+    x=[month_names[col] for col in monthly_returns.columns],
+    y=monthly_returns.index,
+    colorscale="RdYlGn",
+    hovertext=[[f"Return: {x:.2f}%" for x in row] for row in monthly_returns.values],
+    hoverinfo='text'
+))
+fig_heatmap.update_layout(
+    title="Monthly Average Returns Heatmap",
+    height=400,
+    template="plotly_white",
+    font=dict(family="Arial", size=12, color="#000000"),
+    xaxis_title="Month",
+    yaxis_title="Year",
+    xaxis=dict(tickmode='array', tickvals=list(month_names.values()), ticktext=list(month_names.values()))
+)
 st.plotly_chart(fig_heatmap, use_container_width=True)
 
 # Export data as CSV and Excel
