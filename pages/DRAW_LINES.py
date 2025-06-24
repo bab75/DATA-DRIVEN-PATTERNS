@@ -50,11 +50,18 @@ def load_data(primary_file, secondary_file):
             elif primary_file.name.endswith('.xlsx'):
                 aapl_df = pd.read_excel(primary_file)
             
+            # Normalize column names (lowercase, strip whitespace)
+            aapl_df.columns = aapl_df.columns.str.lower().str.strip()
+            
             # Validate required columns
             required_cols = ['date', 'open', 'high', 'low', 'close', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr', 'senkou_span_a', 'senkou_span_b']
-            missing_cols = [col for col in required_cols if col not in aapl_df.columns]
+            actual_cols = aapl_df.columns.tolist()
+            missing_cols = [col for col in required_cols if col not in actual_cols]
             if missing_cols:
-                st.error(f"Missing columns in AAPL data: {', '.join(missing_cols)}")
+                st.error(f"Missing required columns in AAPL data: {', '.join(missing_cols)}")
+                st.write("Available columns:", actual_cols)
+                st.write("Sample data (first 5 rows):", aapl_df.head())
+                st.write("Data types:", aapl_df.dtypes)
                 return pd.DataFrame(), pd.DataFrame()
             
             # Convert data types
@@ -62,13 +69,32 @@ def load_data(primary_file, secondary_file):
             for col in ['open', 'high', 'low', 'close', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr', 'senkou_span_a', 'senkou_span_b']:
                 aapl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
             
-            # Check for null values
-            if aapl_df[['open', 'high', 'low', 'close', 'volume']].isnull().any().any():
-                st.error("AAPL data contains null values in OHLC or volume columns.")
+            # Drop rows with null values in critical columns
+            critical_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
+            initial_len = len(aapl_df)
+            aapl_df = aapl_df.dropna(subset=critical_cols)
+            if aapl_df.empty:
+                st.error(f"AAPL data is empty after removing {initial_len} rows with null values in critical columns: {', '.join(critical_cols)}")
+                st.write("Sample data (first 5 rows):", aapl_df.head())
+                st.write("Data types:", aapl_df.dtypes)
                 return pd.DataFrame(), pd.DataFrame()
+            
+            # Ensure no null dates
+            if aapl_df['date'].isnull().any():
+                st.error("Invalid or missing dates in AAPL data. Please check the 'date' column format (e.g., YYYY-MM-DD).")
+                st.write("Sample data (first 5 rows):", aapl_df.head())
+                return pd.DataFrame(), pd.DataFrame()
+            
+            # Verify numeric columns
+            for col in ['open', 'high', 'low', 'close', 'volume']:
+                if not pd.api.types.is_numeric_dtype(aapl_df[col]):
+                    st.error(f"Column '{col}' contains non-numeric data. Please ensure all values are numbers (e.g., 196.45, not '$196.45').")
+                    st.write("Sample data (first 5 rows):", aapl_df[[col]].head())
+                    return pd.DataFrame(), pd.DataFrame()
                 
         except Exception as e:
-            st.error(f"Error loading AAPL data: {str(e)}")
+            st.error(f"Error loading AAPL data: {str(e)}. Please check the file format and content.")
+            st.write("Sample data (first 5 rows):", aapl_df.head() if not aapl_df.empty else "No data loaded")
             return pd.DataFrame(), pd.DataFrame()
     
     if secondary_file:
@@ -79,6 +105,9 @@ def load_data(primary_file, secondary_file):
                 pl_df = pd.read_excel(secondary_file)
             pl_df['Start Date'] = pd.to_datetime(pl_df['Start Date'], errors='coerce')
             pl_df['End Date'] = pd.to_datetime(pl_df['End Date'], errors='coerce')
+            if pl_df[['Start Date', 'End Date', 'Profit/Loss (Percentage)']].isnull().any().any():
+                st.warning("Benchmark data contains null values. Proceeding without benchmark.")
+                pl_df = pd.DataFrame()
         except Exception as e:
             st.warning(f"Error loading benchmark data: {str(e)}. Proceeding without benchmark.")
     
@@ -96,6 +125,9 @@ if aapl_df.empty:
 
 # Filter by date range
 aapl_df = aapl_df[(aapl_df['date'] >= pd.to_datetime(date_range[0])) & (aapl_df['date'] <= pd.to_datetime(date_range[1]))]
+if aapl_df.empty:
+    st.error("No data available for the selected date range. Please adjust the date range or upload a different file.")
+    st.stop()
 
 # Calculate returns and metrics
 def calculate_metrics(df):
@@ -120,14 +152,11 @@ aapl_metrics = calculate_metrics(aapl_df)
 
 # Detect consolidation and breakout
 def detect_consolidation_breakout(df):
-    # Consolidation: low ATR, low ADX, or consolidation=True
-    df['is_consolidation'] = (df.get('consolidation', False) == True) | (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
-    # Breakout: price above resistance, volume spike, bullish indicators
+    df['is_consolidation'] = (df.get('consolidation', pd.Series(dtype=bool)) == True) | (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
     df['resistance'] = df['high'].rolling(20).max()
     df['support'] = df['low'].rolling(20).min()
     df['buy_signal'] = (df['close'] > df['resistance'].shift(1)) & (df['volume'] > df['volume'].mean() * 1.2) & \
                        ((df['rsi'] > 40) & (df['rsi'] < 70)) & (df['macd'] > df['signal'])
-    # Stop-loss and take-profit
     df['stop_loss'] = df['close'] - 1.5 * df['atr']
     df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']  # 1:2 risk-reward
     return df
@@ -189,13 +218,21 @@ fig = make_subplots(rows=5, cols=1, shared_xaxes=True, vertical_spacing=0.05,
                     row_heights=[0.4, 0.15, 0.15, 0.15, 0.15])
 
 # Candlestick chart
-fig.add_trace(go.Candlestick(x=aapl_df['date'],
-                             open=aapl_df['open'], high=aapl_df['high'], low=aapl_df['low'], close=aapl_df['close'],
-                             name="Candlestick",
-                             increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
-                             hovertemplate="Date: %{x|%m-%d-%Y}<br>Open: $%{open:.2f}<br>High: $%{high:.2f}<br>Low: $%{low:.2f}<br>Close: $%{close:.2f}<br>Volume: %{customdata:,}<extra></extra>",
-                             customdata=aapl_df['volume']), row=1, col=1)
-if "Bollinger Bands" in show_indicators:
+try:
+    fig.add_trace(go.Candlestick(x=aapl_df['date'],
+                                 open=aapl_df['open'], high=aapl_df['high'], low=aapl_df['low'], close=aapl_df['close'],
+                                 name="Candlestick",
+                                 increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
+                                 hovertemplate="Date: %{x|%m-%d-%Y}<br>Open: $%{open:.2f}<br>High: $%{high:.2f}<br>Low: $%{low:.2f}<br>Close: $%{close:.2f}<br>Volume: %{customdata:,}<extra></extra>",
+                                 customdata=aapl_df['volume']), row=1, col=1)
+except Exception as e:
+    st.error(f"Error plotting candlestick chart: {str(e)}.")
+    st.write("Available columns:", aapl_df.columns.tolist())
+    st.write("Sample data (first 5 rows):", aapl_df[['date', 'open', 'high', 'low', 'close', 'volume']].head())
+    st.write("Data types:", aapl_df[['date', 'open', 'high', 'low', 'close', 'volume']].dtypes)
+    st.stop()
+
+if "Bollinger Bands" in show_indicators and 'std_dev' in aapl_df.columns and 'ma20' in aapl_df.columns:
     fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['ma20'] + 2*aapl_df['std_dev'], name="Bollinger Upper", line=dict(color="#0288d1")), row=1, col=1)
     fig.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['ma20'] - 2*aapl_df['std_dev'], name="Bollinger Lower", line=dict(color="#0288d1"), fill='tonexty', fillcolor='rgba(2,136,209,0.1)'), row=1, col=1)
 if "Ichimoku Cloud" in show_indicators:
@@ -205,13 +242,13 @@ if "Ichimoku Cloud" in show_indicators:
 # Add breakout signals
 buy_signals = aapl_df[aapl_df['buy_signal'] == True]
 for _, row in buy_signals.iterrows():
-    fig.add_annotation(x=row['date'], y=row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, row=1, col=1)
+    fig.add_annotation(x=row['date'], y=row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=1, col=1)
 
 # Add stop-loss and take-profit
 if not buy_signals.empty:
     latest_buy = buy_signals.iloc[-1]
-    fig.add_hline(y=latest_buy['stop_loss'], line_dash="dash", line_color="#f44336", annotation_text="Stop-Loss", row=1, col=1)
-    fig.add_hline(y=latest_buy['take_profit'], line_dash="dash", line_color="#4CAF50", annotation_text="Take-Profit", row=1, col=1)
+    fig.add_hline(y=latest_buy['stop_loss'], line_dash="dash", line_color="#f44336", annotation_text="Stop-Loss", annotation_font_color="#000000", row=1, col=1)
+    fig.add_hline(y=latest_buy['take_profit'], line_dash="dash", line_color="#4CAF50", annotation_text="Take-Profit", annotation_font_color="#000000", row=1, col=1)
 
 # RSI chart
 if "RSI" in show_indicators:
@@ -251,13 +288,16 @@ st.plotly_chart(fig, use_container_width=True)
 # Benchmark comparison
 if not pl_df.empty:
     st.header("Benchmark Comparison")
-    pl_cum_return = (1 + pl_df['Profit/Loss (Percentage)']).cumprod() - 1
-    fig_bench = go.Figure()
-    fig_bench.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['cumulative_return'], name="AAPL", line=dict(color="#0288d1")))
-    fig_bench.add_trace(go.Scatter(x=pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800")))
-    fig_bench.update_layout(title="AAPL vs. Benchmark Cumulative Returns", height=400, template="plotly_white",
-                            hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
-    st.plotly_chart(fig_bench, use_container_width=True)
+    try:
+        pl_cum_return = (1 + pl_df['Profit/Loss (Percentage)']).cumprod() - 1
+        fig_bench = go.Figure()
+        fig_bench.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['cumulative_return'], name="AAPL", line=dict(color="#0288d1")))
+        fig_bench.add_trace(go.Scatter(x=pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800")))
+        fig_bench.update_layout(title="AAPL vs. Benchmark Cumulative Returns", height=400, template="plotly_white",
+                                hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
+        st.plotly_chart(fig_bench, use_container_width=True)
+    except Exception as e:
+        st.warning(f"Error plotting benchmark comparison: {str(e)}. Skipping benchmark chart.")
 
 # Seasonality heatmap
 st.header("Seasonality Analysis")
