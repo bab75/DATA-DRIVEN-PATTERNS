@@ -275,144 +275,189 @@ if data_file:
         # HTML Report for Profit/Loss
         html_content = f"""
         <html>
-        <head>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-            <script src="https://unpkg.com/papaparse@latest/papaparse.min.js"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/chrono-node/1.3.11/chrono.min.js"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.15.0/Recharts.min.js"></script>
-            <style>
-                body {{ font-family: Arial, sans-serif; background-color: #ffffff; color: #000000; }}
-                .container {{ max-width: 1200px; margin: auto; padding: 20px; }}
-                h1, h2 {{ color: #333333; }}
-                .chart-container {{ margin: 20px 0; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>Stock Analysis Report</h1>
-                <h2>Summary</h2>
-                <p>Score: {score:.2f}/100 | Recommendation: {recommendation}</p>
-                {f'<p>Buy Signal: {df["date"].iloc[-1]:%Y-%m-%d} | Stop-Loss: ${df["stop_loss"].iloc[-1]:.2f} | Take-Profit: ${df["take_profit"].iloc[-1]:.2f}</p>' if df['buy_signal'].iloc[-1] else ''}
-                {f'<p>Timeframe Prediction: {df["timeframe_prediction"].iloc[-1]}</p>' if df['buy_signal'].iloc[-1] else ''}
-                <h2>Profit/Loss Analysis</h2>
-                {f'<p>Average Return: {avg_return:.2f}%</p>' if benchmark_df is not None else ''}
-                {f'<p>Volatility: {volatility:.2f}%</p>' if benchmark_df is not None else ''}
-                {f'<p>Win Ratio: {win_ratio:.2%}</p>' if benchmark_df is not None else ''}
-                {f'<p>Max Drawdown: {max_drawdown:.2f}%</p>' if benchmark_df is not None else ''}
-                <p>Interesting Fact: Largest single-period loss was -14.30% in April 2025, indicating a significant market correction.</p>
-                <div id="cumulative-return-chart" class="chart-container"></div>
-                <div id="volatility-chart" class="chart-container"></div>
-                <div id="win-loss-chart" class="chart-container"></div>
-            </div>
-            <script type="text/babel">
-                function App() {{
-                    const [data, setData] = React.useState(null);
-                    const [loading, setLoading] = React.useState(true);
+<head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+    <script src="https://unpkg.com/papaparse@latest/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chrono-node/1.3.11/chrono.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.15.0/Recharts.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #ffffff; color: #000000; }
+        .container { max-width: 1200px; margin: auto; padding: 20px; }
+        h1, h2 { color: #333333; }
+        .chart-container { margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Stock Analysis Report</h1>
+        <h2>Summary</h2>
+        <p>Score: {score}/100 | Recommendation: {recommendation}</p>
+        {buy_signal_info}
+        <h2>Profit/Loss Analysis</h2>
+        <p>Average Return: {avg_return}%</p>
+        <p>Volatility: {volatility}%</p>
+        <p>Win Ratio: {win_ratio}</p>
+        <p>Max Drawdown: {max_drawdown}%</p>
+        <p>Interesting Fact: Largest single-period loss was -14.30% in April 2025, indicating a significant market correction.</p>
+        <div id="cumulative-return-chart" class="chart-container"></div>
+        <div id="volatility-chart" class="chart-container"></div>
+        <div id="win-loss-chart" class="chart-container"></div>
+    </div>
+    <script type="text/babel">
+        function App() {
+            const [data, setData] = React.useState(null);
+            const [loading, setLoading] = React.useState(true);
 
-                    React.useEffect(() => {{
-                        Papa.parse(loadFileData("all_profit_loss_data.xlsx"), {{
-                            header: true,
-                            skipEmptyLines: true,
-                            transformHeader: header => header.trim().replace(/^"|"$/g, ''),
-                            transform: (value, header) => {{
-                                let cleaned = value.trim().replace(/^"|"$/g, '');
-                                if (header.includes('Date')) return chrono.parseDate(cleaned);
-                                if (header.includes('Profit/Loss')) return parseFloat(cleaned) || 0;
-                                return cleaned;
-                            }},
-                            complete: results => {{
-                                const cleanedData = results.data.map(row => ({{
-                                    date: row['Start Date'],
-                                    portfolioReturn: row['Profit/Loss (Percentage)'],
-                                    benchmarkReturn: row['Profit/Loss (Percentage)']
-                                })).filter(row => row.date && !isNaN(row.portfolioReturn)));
-                                cleanedData.sort((a, b) => a.date - b.date);
-                                cleanedData.forEach((row, i) => {{
-                                    row.cumulativePortfolio = i === 0 ? row.portfolioReturn : 
-                                        (1 + row.portfolioReturn / 100) * (1 + cleanedData[i-1].cumulativePortfolio / 100) * 100 - 100;
-                                    row.cumulativeBenchmark = i === 0 ? row.benchmarkReturn : 
-                                        (1 + row.benchmarkReturn / 100) * (1 + cleanedData[i-1].cumulativeBenchmark / 100) * 100 - 100;
-                                    row.volatility = i >= 20 ? Math.sqrt(cleanedData.slice(i-19, i+1)
-                                        .reduce((sum, r) => sum + Math.pow(r.portfolioReturn - 
-                                        cleanedData.slice(i-19, i+1).reduce((s, r) => s + r.portfolioReturn, 0) / 20, 2), 0) / 19) * 100 : 0;
-                                }));
-                                setData(cleanedData);
-                                setLoading(false);
-                            }},
-                            error: err => {{
-                                console.error(err);
-                                setLoading(false);
-                            }}
+            React.useEffect(() => {
+                Papa.parse("{data_file_url}", {
+                    header: true,
+                    skipEmptyLines: true,
+                    transformHeader: header => header.trim().replace(/^"|"$/g, ''),
+                    transform: (value, header) => {
+                        let cleaned = value.trim().replace(/^"|"$/g, '');
+                        if (header.includes('Date')) return chrono.parseDate(cleaned);
+                        if (header.includes('Profit/Loss')) return parseFloat(cleaned) || 0;
+                        return cleaned;
+                    },
+                    complete: results => {
+                        const cleanedData = results.data.map(row => ({
+                            date: row['Start Date'],
+                            portfolioReturn: row['Profit/Loss (Percentage)'],
+                            benchmarkReturn: row['Profit/Loss (Percentage)']
+                        })).filter(row => row.date && !isNaN(row.portfolioReturn));
+                        cleanedData.sort((a, b) => a.date - b.date);
+                        cleanedData.forEach((row, i) => {
+                            row.cumulativePortfolio = i === 0 ? row.portfolioReturn : 
+                                (1 + row.portfolioReturn / 100) * (1 + cleanedData[i-1].cumulativePortfolio / 100) * 100 - 100;
+                            row.cumulativeBenchmark = i === 0 ? row.benchmarkReturn : 
+                                (1 + row.benchmarkReturn / 100) * (1 + cleanedData[i-1].cumulativeBenchmark / 100) * 100 - 100;
+                            row.volatility = i >= 20 ? Math.sqrt(cleanedData.slice(i-19, i+1)
+                                .reduce((sum, r) => sum + Math.pow(r.portfolioReturn - 
+                                cleanedData.slice(i-19, i+1).reduce((s, r) => s + r.portfolioReturn, 0) / 20, 2), 0) / 19) * 100 : 0;
                         });
-                    }}, []);
+                        setData(cleanedData);
+                        setLoading(false);
+                    },
+                    error: err => {
+                        console.error(err);
+                        setLoading(false);
+                    }
+                });
+            }, []);
 
-                    if (loading) return <div>Loading...</div>;
+            if (loading) return <div>Loading...</div>;
 
-                    const winLossData = [
-                        {{ name: '<-5%', value: data.filter(d => d.portfolioReturn < -5).length }},
-                        {{ name: '-5% to 0%', value: data.filter(d => d.portfolioReturn >= -5 && d.portfolioReturn < 0).length }},
-                        {{ name: '0% to 5%', value: data.filter(d => d.portfolioReturn >= 0 && d.portfolioReturn < 5).length }},
-                        {{ name: '>5%', value: data.filter(d => d.portfolioReturn >= 5).length }}
-                    ];
+            const winLossData = [
+                { name: '<-5%', value: data.filter(d => d.portfolioReturn < -5).length },
+                { name: '-5% to 0%', value: data.filter(d => d.portfolioReturn >= -5 && d.portfolioReturn < 0).length },
+                { name: '0% to 5%', value: data.filter(d => d.portfolioReturn >= 0 && d.portfolioReturn < 5).length },
+                { name: '>5%', value: data.filter(d => d.portfolioReturn >= 5).length }
+            ];
 
-                    return (
-                        <div>
-                            <div className="chart-container">
-                                <h3>Cumulative Return</h3>
-                                <Recharts.ResponsiveContainer width="100%" height={400}>
-                                    <Recharts.LineChart data={data}>
-                                        <Recharts.XAxis dataKey="date" tickFormatter={d => d.toISOString().split('T')[0]} />
-                                        <Recharts.YAxis tickFormatter={v => `${v.toFixed(2)}%`} />
-                                        <Recharts.CartesianGrid strokeDasharray="3 3" />
-                                        <Recharts.Tooltip formatter={(value, name) => `${value.toFixed(2)}%`} />
-                                        <Recharts.Legend />
-                                        <Recharts.Line type="monotone" dataKey="cumulativePortfolio" stroke="#4CAF50" name="Portfolio" />
-                                        <Recharts.Line type="monotone" dataKey="cumulativeBenchmark" stroke="#f44336" name="Benchmark" />
-                                    </Recharts.LineChart>
-                                </Recharts.ResponsiveContainer>
-                            </div>
-                            <div className="chart-container">
-                                <h3>Volatility Trend</h3>
-                                <Recharts.ResponsiveContainer width="100%" height={400}>
-                                    <Recharts.LineChart data={data}>
-                                        <Recharts.XAxis dataKey="date" tickFormatter={d => d.toISOString().split('T')[0]} />
-                                        <Recharts.YAxis tickFormatter={v => `${v.toFixed(2)}%`} />
-                                        <Recharts.CartesianGrid strokeDasharray="3 3" />
-                                        <Recharts.Tooltip formatter={(value) => `${value.toFixed(2)}%`} />
-                                        <Recharts.Legend />
-                                        <Recharts.Line type="monotone" dataKey="volatility" stroke="#2196f3" name="Volatility" />
-                                    </Recharts.LineChart>
-                                </Recharts.ResponsiveContainer>
-                            </div>
-                            <div className="chart-container">
-                                <h3>Win/Loss Distribution</h3>
-                                <Recharts.ResponsiveContainer width="100%" height={400}>
-                                    <Recharts.BarChart data={winLossData}>
-                                        <Recharts.XAxis dataKey="name" />
-                                        <Recharts.YAxis />
-                                        <Recharts.CartesianGrid strokeDasharray="3 3" />
-                                        <Recharts.Tooltip />
-                                        <Recharts.Legend />
-                                        <Recharts.Bar dataKey="value" fill="#8884d8" />
-                                    </Recharts.BarChart>
-                                </Recharts.ResponsiveContainer>
-                            </div>
-                        </div>
-                    );
-                }}
+            return (
+                <div>
+                    <div className="chart-container">
+                        <h3>Cumulative Return</h3>
+                        <Recharts.ResponsiveContainer width="100%" height={400}>
+                            <Recharts.LineChart data={data}>
+                                <Recharts.XAxis dataKey="date" tickFormatter={d => d.toISOString().split('T')[0]} />
+                                <Recharts.YAxis tickFormatter={v => `${v.toFixed(2)}%`} />
+                                <Recharts.CartesianGrid strokeDasharray="3 3" />
+                                <Recharts.Tooltip formatter={(value, name) => `${value.toFixed(2)}%`} />
+                                <Recharts.Legend />
+                                <Recharts.Line type="monotone" dataKey="cumulativePortfolio" stroke="#4CAF50" name="Portfolio" />
+                                <Recharts.Line type="monotone" dataKey="cumulativeBenchmark" stroke="#f44336" name="Benchmark" />
+                            </Recharts.LineChart>
+                        </Recharts.ResponsiveContainer>
+                    </div>
+                    <div className="chart-container">
+                        <h3>Volatility Trend</h3>
+                        <Recharts.ResponsiveContainer width="100%" height={400}>
+                            <Recharts.LineChart data={data}>
+                                <Recharts.XAxis dataKey="date" tickFormatter={d => d.toISOString().split('T')[0]} />
+                                <Recharts.YAxis tickFormatter={v => `${v.toFixed(2)}%`} />
+                                <Recharts.CartesianGrid strokeDasharray="3 3" />
+                                <Recharts.Tooltip formatter={(value) => `${value.toFixed(2)}%`} />
+                                <Recharts.Legend />
+                                <Recharts.Line type="monotone" dataKey="volatility" stroke="#2196f3" name="Volatility" />
+                            </Recharts.LineChart>
+                        </Recharts.ResponsiveContainer>
+                    </div>
+                    <div className="chart-container">
+                        <h3>Win/Loss Distribution</h3>
+                        <Recharts.ResponsiveContainer width="100%" height={400}>
+                            <Recharts.BarChart data={winLossData}>
+                                <Recharts.XAxis dataKey="name" />
+                                <Recharts.YAxis />
+                                <Recharts.CartesianGrid strokeDasharray="3 3" />
+                                <Recharts.Tooltip />
+                                <Recharts.Legend />
+                                <Recharts.Bar dataKey="value" fill="#8884d8" />
+                            </Recharts.BarChart>
+                        </Recharts.ResponsiveContainer>
+                    </div>
+                </div>
+            );
+        }
 
-                const root = ReactDOM.createRoot(document.getElementById('root'));
-                root.render(<App />);
-            </script>
-        </body>
-        </html>
-        """
-        st.download_button(
-            label="Download Report",
-            data=html_content,
-            file_name="stock_analysis_report.html",
-            mime="text/html"
-        )
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
+ #Help section
+with st.expander("📚 Help: How the Analysis Works"):
+    st.markdown("""
+    ### Step-by-Step Analysis Explanation
+    This app analyzes AAPL stock data to identify consolidation, breakouts, and trading setups, mimicking how analysts draw charts. Below is the process with a real-time example based on June 13, 2025.
+
+    #### 1. Data Collection
+    - **What**: Use OHLC, volume, and technical indicators (RSI, MACD, Stochastic, Ichimoku, ADX, ATR) from `AAPL_raw_data.csv`.
+    - **Example**: Latest data (June 13, 2025) shows Close: $196.45, RSI: 52.30, Stochastic: 7.12, ADX: 31.79, Volume: 51.4M, ATR: $4.30.
+
+    #### 2. Identify Consolidation
+    - **What**: Detect periods of low volatility where price moves sideways, often before a breakout.
+    - **How**: Check `consolidation` = True, low ATR (< mean * 0.8), or ADX < 20. Bollinger Bands or Ichimoku Cloud show tight ranges.
+    - **Example**: If `consolidation` = True on June 13, AAPL is in a tight range. Low ATR ($4.30 vs. mean) and narrow Bollinger Bands confirm.
+
+    #### 3. Detect Breakout (Buy Signal)
+    - **What**: Look for price breaking above resistance with high volume and bullish indicators.
+    - **How**:
+      - Price > 20-day high (`resistance`).
+      - Volume > 1.2 * average.
+      - RSI between 40-70, MACD > signal, Stochastic %K > %D in oversold.
+    - **Example**: Price ($196.45) is below resistance (~$200). Stochastic (7.12) is oversold, and volume (51.4M) is high. A breakout above $200 could trigger a buy within 1-3 days.
+
+    #### 4. Set Stop-Loss and Take-Profit
+    - **What**: Define entry, stop-loss, and exit to manage risk.
+    - **How**:
+      - Entry: At breakout price (e.g., $200).
+      - Stop-Loss: Below support or close - 1.5 * ATR.
+      - Take-Profit: Next resistance or 1:2 risk-reward.
+    - **Example**: If buy at $200, stop-loss = $193.55 ($200 - 1.5 * $4.30), take-profit = $212.90 ($200 + 2 * $6.45).
+
+    #### 5. Scoring System
+    - **What**: Combine performance, risk, technical signals, and volume for a recommendation.
+    - **How**: Total = Performance (30) + Risk (20) + Technical (30) + Volume (20). Buy if >70.
+    - **Example**: Performance (25, CAGR ~20%) + Risk (15, Sharpe ~0.68) + Technical (20, Stochastic/ADX) + Volume (15, high volume) = 75. Recommendation: Buy.
+
+    #### 6. Visualization
+    - **What**: Candlestick chart with Bollinger Bands, Ichimoku, RSI, MACD, Stochastic, ADX, and volume.
+    - **How**: Plotly charts with hover text (e.g., date, OHLC, indicators). Breakout signals annotated with arrows.
+    - **Example**: Hover over June 13 shows Close: $196.45, RSI: 52.30, Volume: 51.4M. Breakout signal appears if price crosses $200.
+
+    #### 7. Timeframe Prediction
+    - **What**: Estimate when breakout will occur.
+    - **How**: If consolidation ends, expect breakout within 1-5 days (daily chart) or 1-2 weeks (weekly).
+    - **Example**: If price breaks $200 on June 14, confirmation by June 20 (1 week).
+
+    #### 8. Benchmark Comparison
+    - **What**: Compare AAPL to a benchmark (if uploaded).
+    - **Example**: If benchmark returns 10% in 2025, AAPL’s 20% outperforms, supporting a buy.
+
+    This analysis provides a data-driven trading setup, balancing technical signals and risk management. Use the charts to monitor for breakouts.
+    """)
