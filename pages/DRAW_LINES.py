@@ -748,9 +748,7 @@ if not pl_df.empty:
         fig_bench = go.Figure()
         fig_bench.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['cumulative_return'], name=st.session_state.symbol, line=dict(color="#0288d1"),
                                        hovertext=[f"{st.session_state.symbol} Return: {x:.2%}" for x in aapl_df['cumulative_return']], hoverinfo='text+x'))
-        fig_bench.add_trace(go.Scatter(x=pl_df['End
-
- Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800"),
+        fig_bench.add_trace(go.Scatter(x=pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800"),
                                        hovertext=[f"Benchmark Return: {x:.2%}" for x in pl_cum_return], hoverinfo='text+x'))
         fig_bench.update_layout(title=f"{st.session_state.symbol} vs. Benchmark Cumulative Returns", height=400, template="plotly_white",
                                 hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
