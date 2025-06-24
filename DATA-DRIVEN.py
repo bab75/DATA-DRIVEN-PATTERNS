@@ -52,20 +52,21 @@ st.markdown(
 st.set_page_config(page_title="Stock Pattern Analyzer", layout="wide")
 
 # Initialize session state
-if 'dframe' not in st.session_state:
-    st.session_state.dframe = None
-if 'profit_loss_data' not in st.session_state:
-    st.session_state.profit_loss_data = None
-if 'display_mode' not in st.session_state:
-    st.session_state.display_mode = "Show All Columns"
-if 'selected_month' not in st.session_state:
-    st.session_state.selected_month = month_name[1][:3]
-if 'transpose_table' not in st.session_state:
-    st.session_state.transpose_table = False
-if 'file_key' not in st.session_state:
-    st.session_state.file_key = 0
-if 'profit_loss_unit' not in st.session_state:
-    st.session_state.profit_loss_unit = "Percentage"  # Default to percentage
+def initialize_session_state():
+    if 'dframe' not in st.session_state:
+        st.session_state.dframe = None
+    if 'profit_loss_data' not in st.session_state:
+        st.session_state.profit_loss_data = None
+    if 'display_mode' not in st.session_state:
+        st.session_state.display_mode = "Show All Columns"
+    if 'selected_month' not in st.session_state:
+        st.session_state.selected_month = month_name[1][:3]
+    if 'transpose_table' not in st.session_state:
+        st.session_state.transpose_table = False
+    if 'file_key' not in st.session_state:
+        st.session_state.file_key = 0
+    if 'profit_loss_unit' not in st.session_state:
+        st.session_state.profit_loss_unit = "Percentage"
 
 # Sidebar: Control Panel
 with st.sidebar:
@@ -77,7 +78,8 @@ with st.sidebar:
     run_analysis = st.button("Run Analysis")
     if st.button("Reset", key="reset"):
         st.session_state.clear()
-        st.session_state.file_key += 1
+        initialize_session_state()  # Reinitialize session state
+        st.session_state.file_key += 1  # Increment after reinitialization
         st.experimental_rerun()
     if st.button("Mode Description"):
         st.write("""
@@ -490,7 +492,7 @@ if uploaded_file and run_analysis:
 # Display results if data is available
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 08:51 AM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 08:57 AM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -612,7 +614,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.6 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.7 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
