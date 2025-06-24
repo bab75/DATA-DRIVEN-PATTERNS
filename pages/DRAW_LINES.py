@@ -324,7 +324,7 @@ else:
 
 
      #Help section
-    with st.expander("📚 Help: How the Analysis Works"):
+with st.expander("📚 Help: How the Analysis Works"):
     st.markdown("""
     ### Step-by-Step Analysis Explanation
     This app analyzes AAPL stock data to identify consolidation, breakouts, and trading setups, mimicking how analysts draw charts. Below is the process with a real-time example based on June 13, 2025.
