@@ -51,18 +51,17 @@ st.title("📊 Stock Analysis: Consolidation & Breakout")
 st.sidebar.header("Data Source")
 data_source = st.sidebar.radio("Select Data Source", ["Upload CSV/XLSX", "Fetch Real-Time (Yahoo Finance)"], key="data_source")
 symbol = st.sidebar.text_input("Stock Symbol (e.g., AAPL)", value=st.session_state.symbol, key="symbol_input")
-
-# Date range input for both modes
+# Show date range input only for real-time mode
+if data_source == "Fetch Real-Time (Yahoo Finance)":
+    date_range = st.sidebar.date_input("Select Date Range", value=(st.session_state.start_date, st.session_state.end_date), key="date_range_input")
+primary_file = None
 if data_source == "Upload CSV/XLSX":
     primary_file = st.sidebar.file_uploader(
         "Upload Stock Data (CSV or XLSX)",
         type=["csv", "xlsx"],
         key="primary_file",
-        help="Upload a file with columns: date, open, high, low, close, volume. Download a sample file below."
+        help="Upload a file with columns: date, open, high, low, close, volume. The app will use the full date range in the file. Download a sample file below."
     )
-else:
-    primary_file = None
-
 secondary_file = st.sidebar.file_uploader(
     "Upload Benchmark Data (CSV or XLSX, Optional)",
     type=["csv", "xlsx"],
@@ -70,21 +69,15 @@ secondary_file = st.sidebar.file_uploader(
     help="Upload a file with columns: year, start date, end date, profit/loss (percentage), profit/loss (value)."
 )
 
-# Provide sample OHLCV file with 100 trading days
-np.random.seed(42)
-dates = pd.date_range(end='2025-06-13', periods=100, freq='B')
-base_price = 195.00
-prices = base_price + np.cumsum(np.random.randn(100) * 0.5)
+# Provide sample OHLCV file
 sample_data = pd.DataFrame({
-    'date': dates,
-    'open': prices,
-    'high': prices + np.random.uniform(0.5, 2.0, 100),
-    'low': prices - np.random.uniform(0.5, 2.0, 100),
-    'close': prices + np.random.uniform(-0.5, 0.5, 100),
-    'volume': np.random.randint(40000000, 60000000, 100)
+    'date': ['2025-06-13', '2025-06-12', '2025-04-10'],
+    'open': [195.00, 194.50, 210.00],
+    'high': [197.50, 196.00, 212.00],
+    'low': [194.50, 193.00, 190.00],
+    'close': [196.45, 195.00, 192.50],
+    'volume': [51400000, 50000000, 75000000]
 })
-sample_data['low'] = sample_data[['open', 'high', 'low', 'close']].min(axis=1)
-sample_data['high'] = sample_data[['open', 'high', 'low', 'close']].max(axis=1)
 csv_buffer = io.StringIO()
 sample_data.to_csv(csv_buffer, index=False)
 csv_buffer.seek(0)
@@ -103,12 +96,6 @@ st.sidebar.download_button(
     file_name="sample_stock_data.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
-
-# Date range input
-date_range_key = "date_range_input_upload" if data_source == "Upload CSV/XLSX" else "date_range_input_realtime"
-if 'date_range' not in st.session_state:
-    st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
-date_range = st.sidebar.date_input("Select Date Range", value=st.session_state.date_range, key=date_range_key)
 
 st.sidebar.header("Chart Settings")
 show_indicators = st.sidebar.multiselect(
@@ -140,11 +127,12 @@ if clear:
     st.session_state.symbol = 'AAPL'
     st.session_state.start_date = pd.to_datetime('2025-01-01')
     st.session_state.end_date = pd.to_datetime('2025-06-13')
-    st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
+    st.session_state.trade_details = None
     st.experimental_rerun()
 
 # Validate symbol format
 def validate_symbol(symbol):
+    # Allow alphanumeric characters and periods (e.g., BRK.B)
     return bool(re.match(r'^[A-Za-z0-9.]+$', symbol.strip()))
 
 # Load and validate data
@@ -167,7 +155,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             benchmark_cols = ['year', 'start date', 'end date', 'profit/loss (percentage)', 'profit/loss (value)']
             if any(col in aapl_df.columns for col in benchmark_cols):
                 st.error(
-                    "The uploaded file appears to be benchmark data. Please upload it as 'Benchmark Data' or upload a stock data file with columns: date, open, high, low, close, volume."
+                    "The uploaded file appears to be benchmark data. Please upload it as 'Benchmark Data' or upload a stock data file with columns: date, open, high, low, close, volume. Download a sample file from the sidebar."
                 )
                 return pd.DataFrame(), pd.DataFrame()
             
@@ -177,7 +165,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             missing_cols = [col for col in required_cols if col not in actual_cols]
             if missing_cols:
                 st.error(
-                    f"Missing required columns in stock data: {', '.join(missing_cols)}. Please upload a file with columns: date, open, high, low, close, volume."
+                    f"Missing required columns in stock data: {', '.join(missing_cols)}. Please upload a file with columns: date, open, high, low, close, volume. Download a sample file from the sidebar."
                 )
                 st.write("Available columns:", actual_cols)
                 st.write("Sample data (first 5 rows):", aapl_df.head())
@@ -218,30 +206,20 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
                 )
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Get file's date range
+            # Use full date range from the file
             if not aapl_df['date'].empty:
                 min_date = aapl_df['date'].min()
                 max_date = aapl_df['date'].max()
-                st.sidebar.write(f"File date range: {min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}")
-                
-                # Validate selected date range
-                if start_date < min_date or end_date > max_date:
-                    st.error(f"Selected date range ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}) is outside the file's range ({min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}).")
-                    return pd.DataFrame(), pd.DataFrame()
-                
-                # Filter by selected date range
-                aapl_df = aapl_df[(aapl_df['date'] >= start_date) & (aapl_df['date'] <= end_date)]
-                if aapl_df.empty:
-                    st.error(f"No data available for the selected date range ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}). Please adjust the date range.")
-                    return pd.DataFrame(), pd.DataFrame()
-                
-                # Ensure sufficient data points
-                if len(aapl_df) < 52:
-                    st.error(f"Insufficient data points ({len(aapl_df)}) in selected date range. Please select a range with at least 52 trading days.")
-                    return pd.DataFrame(), pd.DataFrame()
-            
+                st.session_state.start_date = min_date
+                st.session_state.end_date = max_date
+                st.sidebar.write(f"Using date range from file: {min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}")
             else:
                 st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates.")
+                return pd.DataFrame(), pd.DataFrame()
+            
+            # Ensure sufficient data points
+            if len(aapl_df) < 52:
+                st.error(f"Insufficient data points ({len(aapl_df)}) in uploaded file. Please provide at least 52 trading days of data.")
                 return pd.DataFrame(), pd.DataFrame()
             
             # Check for VWAP
@@ -269,6 +247,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             
             # Handle multi-index DataFrame
             if isinstance(aapl_df, pd.DataFrame) and aapl_df.columns.nlevels > 1:
+                # Try to select single ticker data
                 try:
                     aapl_df = aapl_df.xs(symbol, level=1, axis=1, drop_level=True)
                 except KeyError:
@@ -282,7 +261,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             aapl_df['date'] = pd.to_datetime(aapl_df['date'])
             
             # Ensure sufficient data points
-            if len(aapl_df) < 52:
+            if len(aapl_df) < 52:  # Minimum for Ichimoku (window3=52)
                 st.error(f"Insufficient data points ({len(aapl_df)}) for {symbol}. Please select a wider date range (at least 52 trading days, e.g., 3 months).")
                 return pd.DataFrame(), pd.DataFrame()
         
@@ -316,7 +295,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             aapl_df['std_dev'] = close.rolling(window=20).std()
             aapl_df['rvol'] = volume / volume.rolling(window=20).mean()
             
-            # Fibonacci retracement levels
+            # Fibonacci retracement levels using Pandas Series
             recent_high = high.rolling(window=20).max()
             recent_low = low.rolling(window=20).min()
             diff = recent_high - recent_low
@@ -369,17 +348,24 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
 if submit:
     st.session_state.data_loaded = True
     st.session_state.symbol = st.session_state.symbol_input
-    st.session_state.start_date = pd.to_datetime(st.session_state[date_range_key][0])
-    st.session_state.end_date = pd.to_datetime(st.session_state[date_range_key][1])
-    st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
+    if data_source == "Fetch Real-Time (Yahoo Finance)":
+        st.session_state.start_date = pd.to_datetime(st.session_state.date_range_input[0])
+        st.session_state.end_date = pd.to_datetime(st.session_state.date_range_input[1])
     aapl_df, pl_df = load_data(primary_file, data_source, st.session_state.symbol, st.session_state.start_date, st.session_state.end_date)
 else:
-    st.info("Please enter a symbol, select a data source, select a date range, and click 'Submit' to load data.")
+    st.info("Please enter a symbol, select a data source, and click 'Submit' to load data.")
     st.stop()
 
 if aapl_df.empty:
     st.error(f"Failed to load valid data for {st.session_state.symbol}. Please check the file, symbol, or date range.")
     st.stop()
+
+# Filter by date range (not needed for upload mode as full range is used)
+if data_source == "Fetch Real-Time (Yahoo Finance)":
+    aapl_df = aapl_df[(aapl_df['date'] >= st.session_state.start_date) & (aapl_df['date'] <= st.session_state.end_date)]
+    if aapl_df.empty:
+        st.error("No data available for the selected date range. Please adjust the date range or upload a different file.")
+        st.stop()
 
 # Calculate metrics
 @st.cache_data
@@ -396,9 +382,9 @@ def calculate_metrics(df):
     drawdowns = df['close'] / df['close'].cummax() - 1
     max_drawdown = drawdowns.min() * 100
     largest_loss = df['daily_return'].min() * 100
-    largest_loss_date = df.loc[df['daily_return'].idxmin(), 'date'].strftime('%m-%d-%Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].min()) else "N/A"
+    largest_loss_date = df.loc[df['daily_return'].idxmin(), 'date'].strftime('%d %B %Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].min()) else "N/A"
     largest_gain = df['daily_return'].max() * 100
-    largest_gain_date = df.loc[df['daily_return'].idxmax(), 'date'].strftime('%m-%d-%Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].max()) else "N/A"
+    largest_gain_date = df.loc[df['daily_return'].idxmax(), 'date'].strftime('%d %B %Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].max()) else "N/A"
     
     return {
         'Average Return': average_return,
@@ -416,30 +402,6 @@ def calculate_metrics(df):
 
 aapl_metrics = calculate_metrics(aapl_df)
 
-# Detect consolidation and breakout
-@st.cache_data
-def detect_consolidation_breakout(df):
-    df['is_consolidation'] = (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
-    df['resistance'] = df['high'].rolling(20).max()
-    df['support'] = df['low'].rolling(20).min()
-    df['buy_signal'] = (df['close'] > df['resistance'].shift(1)) & \
-                       (df['volume'] > df['volume'].mean() * 1.0) & \
-                       ((df['rsi'] > 40) & (df['rsi'] < 70)) & \
-                       (df['macd'] > df['signal']) & \
-                       (df['stochastic_k'] > df['stochastic_d'])
-    df['stop_loss'] = df['close'] - 1.5 * df['atr']
-    df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']
-    
-    # Debug: Log buy signals
-    num_buy_signals = df['buy_signal'].sum()
-    st.write(f"Debug: Number of buy signals detected: {num_buy_signals}")
-    if num_buy_signals == 0:
-        st.warning("No buy signals detected. Relaxing conditions or increasing data points may help.")
-    
-    return df
-
-aapl_df = detect_consolidation_breakout(aapl_df)
-
 # Backtesting framework
 @st.cache_data
 def backtest_strategy(df):
@@ -448,38 +410,33 @@ def backtest_strategy(df):
     for i in range(1, len(df)):
         if df['buy_signal'].iloc[i-1]:
             if position is None:
-                if pd.notna(df['stop_loss'].iloc[i]) and pd.notna(df['take_profit'].iloc[i]):
-                    position = {
-                        'entry_date': df['date'].iloc[i],
-                        'entry_price': df['close'].iloc[i],
-                        'stop_loss': df['stop_loss'].iloc[i],
-                        'take_profit': df['take_profit'].iloc[i]
-                    }
-                else:
-                    st.write(f"Debug: Skipping trade at index {i} due to invalid stop-loss or take-profit.")
+                position = {
+                    'entry_date': df['date'].iloc[i],
+                    'entry_price': df['close'].iloc[i],
+                    'stop_loss': df['stop_loss'].iloc[i],
+                    'take_profit': df['take_profit'].iloc[i]
+                }
         elif position:
-            if pd.notna(df['low'].iloc[i]) and pd.notna(df['high'].iloc[i]):
-                if df['low'].iloc[i] <= position['stop_loss']:
-                    trades.append({
-                        'entry_date': position['entry_date'],
-                        'exit_date': df['date'].iloc[i],
-                        'entry_price': position['entry_price'],
-                        'exit_price': position['stop_loss'],
-                        'return': (position['stop_loss'] - position['entry_price']) / position['entry_price'] * 100
-                    })
-                    position = None
-                elif df['high'].iloc[i] >= position['take_profit']:
-                    trades.append({
-                        'entry_date': position['entry_date'],
-                        'exit_date': df['date'].iloc[i],
-                        'entry_price': position['entry_price'],
-                        'exit_price': position['take_profit'],
-                        'return': (position['take_profit'] - position['entry_price']) / position['entry_price'] * 100
-                    })
-                    position = None
+            if df['low'].iloc[i] <= position['stop_loss']:
+                trades.append({
+                    'entry_date': position['entry_date'],
+                    'exit_date': df['date'].iloc[i],
+                    'entry_price': position['entry_price'],
+                    'exit_price': position['stop_loss'],
+                    'return': (position['stop_loss'] - position['entry_price']) / position['entry_price'] * 100
+                })
+                position = None
+            elif df['high'].iloc[i] >= position['take_profit']:
+                trades.append({
+                    'entry_date': position['entry_date'],
+                    'exit_date': df['date'].iloc[i],
+                    'entry_price': position['entry_price'],
+                    'exit_price': position['take_profit'],
+                    'return': (position['take_profit'] - position['entry_price']) / position['entry_price'] * 100
+                })
+                position = None
     
     if not trades:
-        st.write("Debug: No trades executed. Possible reasons: No buy signals, invalid stop-loss/take-profit, or insufficient data.")
         return {'Win Rate': 0, 'Profit Factor': 0, 'Total Return': 0, 'Trades': 0}
     
     trades_df = pd.DataFrame(trades)
@@ -489,7 +446,6 @@ def backtest_strategy(df):
     profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
     total_return = trades_df['return'].sum()
     
-    st.write(f"Debug: Number of trades executed: {len(trades)}")
     return {
         'Win Rate': win_rate,
         'Profit Factor': profit_factor,
@@ -497,6 +453,22 @@ def backtest_strategy(df):
         'Trades': len(trades)
     }
 
+# Detect consolidation and breakout
+@st.cache_data
+def detect_consolidation_breakout(df):
+    df['is_consolidation'] = (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
+    df['resistance'] = df['high'].rolling(20).max()
+    df['support'] = df['low'].rolling(20).min()
+    df['buy_signal'] = (df['close'] > df['resistance'].shift(1)) & \
+                       (df['volume'] > df['volume'].mean() * 1.2) & \
+                       ((df['rsi'] > 40) & (df['rsi'] < 70)) & \
+                       (df['macd'] > df['signal']) & \
+                       (df['stochastic_k'] < 20) & (df['stochastic_k'] > df['stochastic_d'])
+    df['stop_loss'] = df['close'] - 1.5 * df['atr']
+    df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']
+    return df
+
+aapl_df = detect_consolidation_breakout(aapl_df)
 backtest_results = backtest_strategy(aapl_df)
 
 # Technical signals
@@ -554,8 +526,8 @@ fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical
 # Candlestick chart
 def add_candlestick_trace(fig, df, row):
     hover_texts = [
-        "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}".format(
-            date=row['date'].strftime('%m-%d-%Y'), month=row['date'].strftime('%B'), open=row['open'], high=row['high'], low=row['low'], 
+        "Date: {date}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}".format(
+            date=row['date'].strftime('%m-%d-%Y'), open=row['open'], high=row['high'], low=row['low'], 
             close=row['close'], volume=row['volume'], rsi=row['rsi'], rvol=row['rvol']
         )
         for _, row in df.iterrows()
@@ -672,7 +644,7 @@ def on_click(trace, points, state):
         idx = points.point_inds[0]
         row = aapl_df.iloc[idx]
         st.session_state.trade_details = {
-            'Date': row['date'].strftime('%m-%d-%Y'),
+            'Date': row['date'].strftime('%Y-%m-%d'),
             'Close': float(row['close']),
             'Stop-Loss': float(row['stop_loss']),
             'Take-Profit': float(row['take_profit']),
@@ -764,25 +736,6 @@ if st.session_state.trade_details and all(key in st.session_state.trade_details 
 else:
     st.info("Click a candlestick on the chart to view trade details.")
 
-# Latest Trade Setup
-latest_buy = aapl_df[aapl_df['buy_signal'] == True].iloc[-1] if not aapl_df[aapl_df['buy_signal'] == True].empty else None
-if latest_buy is not None:
-    st.header("Latest Trade Setup")
-    st.markdown(
-        "<div class='trade-details'>"
-        "<b>Date:</b> {date}<br>"
-        "<b>Entry:</b> ${entry:.2f}<br>"
-        "<b>Stop-Loss:</b> ${stop_loss:.2f}<br>"
-        "<b>Take-Profit:</b> ${take_profit:.2f}"
-        "</div>".format(
-            date=latest_buy['date'].strftime('%m-%d-%Y'),
-            entry=latest_buy['close'],
-            stop_loss=latest_buy['stop_loss'],
-            take_profit=latest_buy['take_profit']
-        ),
-        unsafe_allow_html=True
-    )
-
 # Display candlestick chart
 st.plotly_chart(fig, use_container_width=True)
 
@@ -847,15 +800,14 @@ c.drawString(70, 490, f"- Max Drawdown: {aapl_metrics['Max Drawdown']:.2f}%")
 c.drawString(70, 470, f"- Largest Loss: {aapl_metrics['Largest Loss']:.2f}% on {aapl_metrics['Largest Loss Date']}")
 c.drawString(70, 450, f"- Largest Gain: {aapl_metrics['Largest Gain']:.2f}% on {aapl_metrics['Largest Gain Date']}")
 c.drawString(50, 430, "Latest Trade Setup:")
-c.drawString(70, 410, f"- Date: {aapl_df['date'].iloc[-1].strftime('%m-%d-%Y')}")
-c.drawString(70, 390, f"- Entry: ${aapl_df['close'].iloc[-1]:.2f}")
-c.drawString(70, 370, f"- Stop-Loss: ${aapl_df['stop_loss'].iloc[-1]:.2f}")
-c.drawString(70, 350, f"- Take-Profit: ${aapl_df['take_profit'].iloc[-1]:.2f}")
-c.drawString(50, 330, "Backtesting Results:")
-c.drawString(70, 310, f"- Win Rate: {backtest_results['Win Rate']:.2f}%")
-c.drawString(70, 290, f"- Profit Factor: {backtest_results['Profit Factor']:.2f}")
-c.drawString(70, 270, f"- Total Return: {backtest_results['Total Return']:.2f}%")
-c.drawString(70, 250, f"- Trades: {backtest_results['Trades']}")
+c.drawString(70, 410, f"- Entry: ${aapl_df['close'].iloc[-1]:.2f}")
+c.drawString(70, 390, f"- Stop-Loss: ${aapl_df['stop_loss'].iloc[-1]:.2f}")
+c.drawString(70, 370, f"- Take-Profit: ${aapl_df['take_profit'].iloc[-1]:.2f}")
+c.drawString(50, 350, "Backtesting Results:")
+c.drawString(70, 330, f"- Win Rate: {backtest_results['Win Rate']:.2f}%")
+c.drawString(70, 310, f"- Profit Factor: {backtest_results['Profit Factor']:.2f}")
+c.drawString(70, 290, f"- Total Return: {backtest_results['Total Return']:.2f}%")
+c.drawString(70, 270, f"- Trades: {backtest_results['Trades']}")
 c.showPage()
 c.save()
 pdf_buffer.seek(0)
@@ -929,7 +881,6 @@ html_content = """
     <div class="section">
         <h2>Latest Trade Setup</h2>
         <div class="metric-box">
-            <p><b>Date:</b> {latest_date}</p>
             <p><b>Entry:</b> ${entry:.2f}</p>
             <p><b>Stop-Loss:</b> ${stop_loss:.2f}</p>
             <p><b>Take-Profit:</b> ${take_profit:.2f}</p>
@@ -968,10 +919,9 @@ html_content = """
     profit_factor=backtest_results['Profit Factor'],
     total_return=backtest_results['Total Return'],
     trades=backtest_results['Trades'],
-    latest_date=aapl_df['date'].iloc[-1].strftime('%m-%d-%Y') if not aapl_df.empty else 'N/A',
-    entry=aapl_df['close'].iloc[-1] if not aapl_df.empty else 0,
-    stop_loss=aapl_df['stop_loss'].iloc[-1] if not aapl_df.empty else 0,
-    take_profit=aapl_df['take_profit'].iloc[-1] if not aapl_df.empty else 0,
+    entry=aapl_df['close'].iloc[-1],
+    stop_loss=aapl_df['stop_loss'].iloc[-1],
+    take_profit=aapl_df['take_profit'].iloc[-1],
     candlestick_html=candlestick_html,
     bench_html=bench_html,
     heatmap_html=heatmap_html
@@ -990,7 +940,7 @@ with st.expander("📚 Help: How the Analysis Works"):
     #### 1. Data Collection
     - **What**: Use OHLC, volume, and technical indicators (RSI, MACD, Stochastic, Ichimoku, ADX, ATR, Fibonacci, RVOL) from uploaded file or Yahoo Finance.
     - **How**: 
-      - **Upload Mode**: Upload a CSV/XLSX file with columns: date, open, high, low, close, volume. Select a date range within the file’s data (at least 52 trading days).
+      - **Upload Mode**: Upload a CSV/XLSX file with columns: date, open, high, low, close, volume. The app uses the full date range in the file (earliest to latest date).
       - **Real-Time Mode**: Fetch data via Yahoo Finance with a single valid symbol (e.g., AAPL) and user-specified date range (at least 52 trading days).
     - **Example**: Close: $196.45, RSI: 52.30, Stochastic %K: 7.12, %D: 8.00, ADX: 31.79, Volume: 51.4M, ATR: $4.30, RVOL: 1.2.
 
@@ -999,11 +949,11 @@ with st.expander("📚 Help: How the Analysis Works"):
     - **How**:
       - **Candlesticks**: Green (#4CAF50) for bullish, red (#f44336) for bearish.
       - **Consolidation**: Low ATR (< mean * 0.8), ADX < 20.
-      - **Breakout**: Close > 20-day high, volume > average, RSI 40-70, MACD > signal, Stochastic %K > %D.
+      - **Breakout**: Close > 20-day high, volume > 1.2 * average, RSI 40-70, MACD > signal, Stochastic %K < 20 and > %D.
       - **Stop-Loss/Take-Profit**: Stop-loss = close - 1.5 * ATR; take-profit = close + 3 * ATR (1:2 risk-reward).
       - **Fibonacci**: Levels (23.6%, 38.2%, 50%, 61.8%) based on 20-day high/low.
       - **RVOL**: Volume / 20-day average volume.
-    - **Example**: Price ($196.45) below resistance (~$200). Buy if breaks $200 with volume > 50M, RSI 40-70, Stochastic %K > %D. Stop-loss: $193.55, take-profit: $212.90.
+    - **Example**: Price ($196.45) below resistance (~$200). Buy if breaks $200 with volume > 60M, RSI 40-70, Stochastic %K (7.12) > %D (8.00). Stop-loss: $193.55, take-profit: $212.90.
 
     #### 3. Profit/Loss Analysis
     - **What**: Calculate performance metrics.
@@ -1033,7 +983,7 @@ with st.expander("📚 Help: How the Analysis Works"):
     #### 7. Visualization
     - **What**: Candlestick chart with Bollinger Bands, Ichimoku, RSI, MACD, Stochastic, ADX, RVOL, volume, and win/loss distribution.
     - **How**: Plotly charts with hover text and clickable trade details.
-    - **Example**: Hover shows Date: 06-13-2025, Month: June, Close: $196.45, RSI: 52.30, Volume: 51.4M. Click candlestick for trade setup.
+    - **Example**: Hover shows Close: $196.45, RSI: 52.30, Volume: 51.4M. Click candlestick for trade setup.
 
     #### 8. Benchmark Comparison
     - **What**: Compare {symbol} to benchmark (if uploaded).
@@ -1046,9 +996,8 @@ with st.expander("📚 Help: How the Analysis Works"):
 
     **Troubleshooting Tips**:
     - **Real-Time Data Errors**: Ensure a single valid symbol (e.g., AAPL, not AAPL,MSFT) and date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-13). Check internet connectivity.
-    - **Upload Errors**: Verify the file has columns: date, open, high, low, close, volume. Select a date range within the file’s range with at least 52 trading days. Use the sample file provided.
-    - **No Trades in Backtesting**: Ensure sufficient data points (at least 52 trading days). Check debug messages for buy signal counts. Try a larger dataset or relax signal conditions in the code.
-    - **Indicator Errors**: Ensure sufficient data points and valid numeric data.
+    - **Upload Errors**: Verify the file has columns: date, open, high, low, close, volume. The app uses the full date range in the file. Use the sample file provided. Upload benchmark data (e.g., all_profit_loss_data.xlsx) as 'Benchmark Data'.
+    - **Indicator Errors**: Ensure sufficient data points (at least 52 trading days) and valid numeric data.
     - **Syntax Errors**: If errors persist, ensure Python 3.13 compatibility and check for indentation issues. Contact support with logs if on Streamlit Cloud.
     - Click 'Clear' to start a new analysis.
     """
