@@ -8,10 +8,11 @@ from datetime import datetime, timedelta
 import uuid
 import pdfkit
 import warnings
+import os
 
 # Check Plotly version
 if float(plotly.__version__.split('.')[0]) < 5:
-    st.error("Plotly version >= 5.0.0 is required.")
+    st.error("Plotly version >= 5.0.0 is required. Please update with `pip install plotly>=5.0.0`.")
     st.stop()
 
 # Streamlit page configuration
@@ -64,6 +65,19 @@ def validate_data(df):
         return False
     return df
 
+def validate_benchmark_data(df):
+    required_columns = ['Year', 'Start Date', 'End Date', 'Profit/Loss (Percentage)']
+    missing_cols = [col for col in required_columns if col not in df.columns]
+    if missing_cols:
+        st.error(f"Missing benchmark columns: {missing_cols}")
+        return False
+    df['Start Date'] = pd.to_datetime(df['Start Date'], errors='coerce')
+    df['End Date'] = pd.to_datetime(df['End Date'], errors='coerce')
+    df = df.dropna(subset=['Start Date', 'End Date', 'Profit/Loss (Percentage)'])
+    df['Profit/Loss (Percentage)'] = pd.to_numeric(df['Profit/Loss (Percentage)'], errors='coerce')
+    df = df.dropna(subset=['Profit/Loss (Percentage)'])
+    return df
+
 if data_file:
     df = load_data(data_file)
     if df is not None:
@@ -99,9 +113,10 @@ if data_file:
         df['stochastic_k'] = 100 * (df['close'] - df['low'].rolling(window=14).min()) / \
                              (df['high'].rolling(window=14).max() - df['low'].rolling(window=14).min())
         df['stochastic_d'] = df['stochastic_k'].rolling(window=3).mean()
-        df['atr'] = df[['high', 'low', 'close']].apply(lambda x: max(x['high'] - x['low'], 
-                                                                     abs(x['high'] - x['close'].shift()), 
-                                                                     abs(x['low'] - x['close'].shift())), axis=1).rolling(window=14).mean()
+        df['atr'] = df[['high', 'low', 'close']].apply(
+            lambda x: max(x['high'] - x['low'], 
+                          abs(x['high'] - x['close'].shift()), 
+                          abs(x['low'] - x['close'].shift())), axis=1).rolling(window=14).mean()
         df['adx'] = df['atr'].rolling(window=14).mean() / df['close'] * 100
         df['std_dev'] = df['close'].rolling(window=20).std()
         df['upper_band'] = df['ma20'] + 2 * df['std_dev']
@@ -127,7 +142,7 @@ if data_file:
             df['stop_loss'] = df['close'] - 1.5 * df['atr']
             df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']
             df['timeframe_prediction'] = df['buy_signal'].apply(
-                lambda x: f"Breakout expected within {datetime.now() + timedelta(days=1):%Y-%m-%d} to {datetime.now() + timedelta(days=5):%Y-%m-%d}" if x else "")
+                lambda x: f"Breakout expected within {(df['date'].iloc[-1] if x else datetime.now()) + timedelta(days=1):%Y-%m-%d} to {(df['date'].iloc[-1] if x else datetime.now()) + timedelta(days=5):%Y-%m-%d}" if x else "")
             return df
 
         df = detect_consolidation_breakout(df)
@@ -227,19 +242,6 @@ if data_file:
         st.plotly_chart(fig, use_container_width=True)
 
         # Profit/Loss Analysis
-        def validate_benchmark_data(df):
-            required_columns = ['Year', 'Start Date', 'End Date', 'Profit/Loss (Percentage)']
-            missing_cols = [col for col in required_columns if col not in df.columns]
-            if missing_cols:
-                st.error(f"Missing benchmark columns: {missing_cols}")
-                return False
-            df['Start Date'] = pd.to_datetime(df['Start Date'], errors='coerce')
-            df['End Date'] = pd.to_datetime(df['End Date'], errors='coerce')
-            df = df.dropna(subset=['Start Date', 'End Date', 'Profit/Loss (Percentage)'])
-            df['Profit/Loss (Percentage)'] = pd.to_numeric(df['Profit/Loss (Percentage)'], errors='coerce')
-            df = df.dropna(subset=['Profit/Loss (Percentage)'])
-            return df
-
         if benchmark_df is not None:
             benchmark_df = benchmark_df[benchmark_df['Year'].isin(year_filter)]
             benchmark_df['cumulative_return'] = (1 + benchmark_df['Profit/Loss (Percentage)'] / 100).cumprod() * 100 - 100
@@ -272,142 +274,50 @@ if data_file:
             heatmap_fig.update_layout(title="Seasonality Heatmap", xaxis_title="Month", yaxis_title="Year")
             st.plotly_chart(heatmap_fig, use_container_width=True)
 
-        # HTML Report for Profit/Loss
-        html_content = f"""
-        <html>
-<head>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-    <script src="https://unpkg.com/papaparse@latest/papaparse.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chrono-node/1.3.11/chrono.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.15.0/Recharts.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; background-color: #ffffff; color: #000000; }
-        .container { max-width: 1200px; margin: auto; padding: 20px; }
-        h1, h2 { color: #333333; }
-        .chart-container { margin: 20px 0; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Stock Analysis Report</h1>
-        <h2>Summary</h2>
-        <p>Score: {score}/100 | Recommendation: {recommendation}</p>
-        {buy_signal_info}
-        <h2>Profit/Loss Analysis</h2>
-        <p>Average Return: {avg_return}%</p>
-        <p>Volatility: {volatility}%</p>
-        <p>Win Ratio: {win_ratio}</p>
-        <p>Max Drawdown: {max_drawdown}%</p>
-        <p>Interesting Fact: Largest single-period loss was -14.30% in April 2025, indicating a significant market correction.</p>
-        <div id="cumulative-return-chart" class="chart-container"></div>
-        <div id="volatility-chart" class="chart-container"></div>
-        <div id="win-loss-chart" class="chart-container"></div>
-    </div>
-    <script type="text/babel">
-        function App() {
-            const [data, setData] = React.useState(null);
-            const [loading, setLoading] = React.useState(true);
-
-            React.useEffect(() => {
-                Papa.parse("{data_file_url}", {
-                    header: true,
-                    skipEmptyLines: true,
-                    transformHeader: header => header.trim().replace(/^"|"$/g, ''),
-                    transform: (value, header) => {
-                        let cleaned = value.trim().replace(/^"|"$/g, '');
-                        if (header.includes('Date')) return chrono.parseDate(cleaned);
-                        if (header.includes('Profit/Loss')) return parseFloat(cleaned) || 0;
-                        return cleaned;
-                    },
-                    complete: results => {
-                        const cleanedData = results.data.map(row => ({
-                            date: row['Start Date'],
-                            portfolioReturn: row['Profit/Loss (Percentage)'],
-                            benchmarkReturn: row['Profit/Loss (Percentage)']
-                        })).filter(row => row.date && !isNaN(row.portfolioReturn));
-                        cleanedData.sort((a, b) => a.date - b.date);
-                        cleanedData.forEach((row, i) => {
-                            row.cumulativePortfolio = i === 0 ? row.portfolioReturn : 
-                                (1 + row.portfolioReturn / 100) * (1 + cleanedData[i-1].cumulativePortfolio / 100) * 100 - 100;
-                            row.cumulativeBenchmark = i === 0 ? row.benchmarkReturn : 
-                                (1 + row.benchmarkReturn / 100) * (1 + cleanedData[i-1].cumulativeBenchmark / 100) * 100 - 100;
-                            row.volatility = i >= 20 ? Math.sqrt(cleanedData.slice(i-19, i+1)
-                                .reduce((sum, r) => sum + Math.pow(r.portfolioReturn - 
-                                cleanedData.slice(i-19, i+1).reduce((s, r) => s + r.portfolioReturn, 0) / 20, 2), 0) / 19) * 100 : 0;
-                        });
-                        setData(cleanedData);
-                        setLoading(false);
-                    },
-                    error: err => {
-                        console.error(err);
-                        setLoading(false);
-                    }
-                });
-            }, []);
-
-            if (loading) return <div>Loading...</div>;
-
-            const winLossData = [
-                { name: '<-5%', value: data.filter(d => d.portfolioReturn < -5).length },
-                { name: '-5% to 0%', value: data.filter(d => d.portfolioReturn >= -5 && d.portfolioReturn < 0).length },
-                { name: '0% to 5%', value: data.filter(d => d.portfolioReturn >= 0 && d.portfolioReturn < 5).length },
-                { name: '>5%', value: data.filter(d => d.portfolioReturn >= 5).length }
-            ];
-
-            return (
-                <div>
-                    <div className="chart-container">
-                        <h3>Cumulative Return</h3>
-                        <Recharts.ResponsiveContainer width="100%" height={400}>
-                            <Recharts.LineChart data={data}>
-                                <Recharts.XAxis dataKey="date" tickFormatter={d => d.toISOString().split('T')[0]} />
-                                <Recharts.YAxis tickFormatter={v => `${v.toFixed(2)}%`} />
-                                <Recharts.CartesianGrid strokeDasharray="3 3" />
-                                <Recharts.Tooltip formatter={(value, name) => `${value.toFixed(2)}%`} />
-                                <Recharts.Legend />
-                                <Recharts.Line type="monotone" dataKey="cumulativePortfolio" stroke="#4CAF50" name="Portfolio" />
-                                <Recharts.Line type="monotone" dataKey="cumulativeBenchmark" stroke="#f44336" name="Benchmark" />
-                            </Recharts.LineChart>
-                        </Recharts.ResponsiveContainer>
-                    </div>
-                    <div className="chart-container">
-                        <h3>Volatility Trend</h3>
-                        <Recharts.ResponsiveContainer width="100%" height={400}>
-                            <Recharts.LineChart data={data}>
-                                <Recharts.XAxis dataKey="date" tickFormatter={d => d.toISOString().split('T')[0]} />
-                                <Recharts.YAxis tickFormatter={v => `${v.toFixed(2)}%`} />
-                                <Recharts.CartesianGrid strokeDasharray="3 3" />
-                                <Recharts.Tooltip formatter={(value) => `${value.toFixed(2)}%`} />
-                                <Recharts.Legend />
-                                <Recharts.Line type="monotone" dataKey="volatility" stroke="#2196f3" name="Volatility" />
-                            </Recharts.LineChart>
-                        </Recharts.ResponsiveContainer>
-                    </div>
-                    <div className="chart-container">
-                        <h3>Win/Loss Distribution</h3>
-                        <Recharts.ResponsiveContainer width="100%" height={400}>
-                            <Recharts.BarChart data={winLossData}>
-                                <Recharts.XAxis dataKey="name" />
-                                <Recharts.YAxis />
-                                <Recharts.CartesianGrid strokeDasharray="3 3" />
-                                <Recharts.Tooltip />
-                                <Recharts.Legend />
-                                <Recharts.Bar dataKey="value" fill="#8884d8" />
-                            </Recharts.BarChart>
-                        </Recharts.ResponsiveContainer>
-                    </div>
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+        # Generate HTML Report
+        if benchmark_df is not None:
+            # Save benchmark data as CSV for HTML report
+            benchmark_csv = "benchmark_data.csv"
+            benchmark_df.to_csv(benchmark_csv, index=False)
+            
+            # Load HTML template
+            try:
+                with open("report_template.html", "r") as f:
+                    html_template = f.read()
+            except FileNotFoundError:
+                st.error("report_template.html not found. Please ensure the file exists in the same directory as the script.")
+                st.stop()
+            
+            # Format HTML with metrics
+            buy_signal_info = f'<p>Buy Signal: {df["date"].iloc[-1]:%Y-%m-%d} | Stop-Loss: ${df["stop_loss"].iloc[-1]:.2f} | Take-Profit: ${df["take_profit"].iloc[-1]:.2f}</p>' \
+                            f'<p>Timeframe Prediction: {df["timeframe_prediction"].iloc[-1]}</p>' if df['buy_signal'].iloc[-1] else ''
+            html_content = html_template.format(
+                score=f"{score:.2f}",
+                recommendation=recommendation,
+                buy_signal_info=buy_signal_info,
+                avg_return=f"{avg_return:.2f}",
+                volatility=f"{volatility:.2f}",
+                win_ratio=f"{win_ratio:.2%}",
+                max_drawdown=f"{max_drawdown:.2f}",
+                data_file_url=benchmark_csv
+            )
+            
+            # Save and provide download button
+            report_file = f"stock_analysis_report_{uuid.uuid4()}.html"
+            with open(report_file, "w") as f:
+                f.write(html_content)
+            with open(report_file, "rb") as f:
+                st.download_button(
+                    label="Download Report",
+                    data=f,
+                    file_name=report_file,
+                    mime="text/html"
+                )
+            # Clean up temporary files
+            os.remove(report_file)
+            os.remove(benchmark_csv)
+else:
+    st.info("Please upload AAPL_raw_data.csv or .xlsx to start analysis.")
 
  #Help section
 with st.expander("📚 Help: How the Analysis Works"):
