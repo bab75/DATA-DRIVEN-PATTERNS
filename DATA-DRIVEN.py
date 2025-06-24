@@ -210,9 +210,13 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
             if not month_trading_days.size:
                 continue
                 
+            last_end_date = month_start - timedelta(days=1)
             i = 0
             while i < len(month_trading_days):
                 start_date = month_trading_days[i]
+                if start_date <= last_end_date:
+                    i += 1
+                    continue
                 end_date = get_nth_trading_day(start_date, compare_days, year)
                 if not end_date:
                     break
@@ -260,6 +264,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                         'Profit/Loss (Percentage)': profit_loss_percent,
                         'Profit/Loss (Value)': profit_loss_value
                     })
+                    last_end_date = end_date
                 
                 i += 1
 
@@ -394,9 +399,7 @@ def create_chart(dframe, profit_loss_data, mode, unit):
             x=1.1, y=1.1
         )]
     )
-    fig.update_xaxes(tickformat="%b %d, %Y")  # Changed to "Jan 10, 2020" format
-    # Alternative: Use "%m-%d-%Y" for "1-20-2020" format by uncommenting below
-    # fig.update_xaxes(tickformat="%m-%d-%Y")
+    fig.update_xaxes(tickformat="%b %d, %Y")  # "Jan 10, 2020" format
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text=f"Profit/Loss ({unit_symbol})", row=2, col=1)
     
@@ -488,7 +491,7 @@ if uploaded_file and run_analysis:
 # Display results
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 08:35 PM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 08:44 PM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -569,7 +572,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.9 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 3.0 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
