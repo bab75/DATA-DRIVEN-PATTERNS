@@ -431,7 +431,7 @@ def backtest_strategy(df):
         if df['buy_signal'].iloc[i-1]:
             if position is None:
                 # Use fallback values if stop_loss or take_profit is NaN
-                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.95
+                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.90  # Increased to 10% below close
                 take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1.10
                 position = {
                     'entry_date': df['date'].iloc[i],
@@ -468,20 +468,20 @@ def backtest_strategy(df):
         return {'Win Rate': 0, 'Profit Factor': 0, 'Total Return': 0, 'Trades': 0}
     
     trades_df = pd.DataFrame(trades)
-    win_rate = (trades_df['return'] > 0).mean() * 100
-    gross_profit = trades_df[trades_df['return'] > 0]['return'].sum()
-    gross_loss = -trades_df[trades_df['return'] < 0]['return'].sum()
-    profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
-    total_return = trades_df['return'].sum()
+    win_rate = (trades_df['return'] > 0).mean() * 100 if not trades_df.empty else 0
+    gross_profit = trades_df[trades_df['return'] > 0]['return'].sum() if (trades_df['return'] > 0).any() else 0
+    gross_loss = -trades_df[trades_df['return'] < 0]['return'].sum() if (trades_df['return'] < 0).any() else 0
+    profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf') if gross_profit > 0 else 0
+    total_return = trades_df['return'].sum() if not trades_df.empty else 0
     
     st.write(f"Debug: Number of trades executed: {len(trades)}")
+    st.write(f"Debug: Trade returns: {trades_df['return'].tolist()}")
     return {
         'Win Rate': win_rate,
         'Profit Factor': profit_factor,
         'Total Return': total_return,
         'Trades': len(trades)
     }
-
     
 backtest_results = backtest_strategy(aapl_df)
 
