@@ -436,7 +436,7 @@ def create_year_table(profit_loss_data, compare_days, unit):
         pred_row = pd.DataFrame({'Year': ['2025 (Predicted)']})
         for col in [calendar_columns]:
             pred_row[col] = predicted_pl
-        df = pd.concat([df, pd.DataFrame([pred_row])], ignore_index=True))
+        df = pd.concat([df, pd.DataFrame([pred_row])], ignore_index=True)
     
     styled_df = apply_styling_to_all_data(df)
     validate_calculation_logic(df, compare_days)
