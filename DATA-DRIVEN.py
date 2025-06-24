@@ -94,6 +94,16 @@ def get_trading_days(start_date, end_date, exchange='NYSE'):
     trading_days = mcal.date_range(schedule, frequency='1D').date
     return trading_days
 
+# Function to get the nth trading day from a start date
+def get_nth_trading_day(start_date, n, year, exchange='NYSE'):
+    start_of_year = datetime(year, 1, 1).date()
+    end_of_year = datetime(year, 12, 31).date()
+    trading_days = get_trading_days(start_of_year, end_of_year)
+    start_idx = trading_days.searchsorted(start_date)
+    if start_idx + n - 1 >= len(trading_days):
+        return None
+    return trading_days[start_idx + n - 1]
+
 # Function to load and preprocess data
 def load_data(file):
     with st.spinner("Loading data..."):
@@ -166,10 +176,10 @@ def generate_monthly_periods(compare_days, year=2024, exchange='NYSE'):
         i = 0
         while i < len(trading_days):
             start_trading_date = trading_days[i]
-            end_idx = min(i + compare_days - 1, len(trading_days) - 1)
-            end_trading_date = trading_days[end_idx]
-            periods.append(format_date_range(start_trading_date, end_trading_date))
-            i += compare_days
+            end_trading_date = get_nth_trading_day(start_trading_date, compare_days, year)
+            if end_trading_date:
+                periods.append(format_date_range(start_trading_date, end_trading_date))
+            i += 1
     return periods
 
 # Function to calculate rolling profit/loss within each year
@@ -203,8 +213,9 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
             i = 0
             while i < len(month_trading_days):
                 start_date = month_trading_days[i]
-                end_idx = min(i + compare_days - 1, len(month_trading_days) - 1)
-                end_date = month_trading_days[end_idx]
+                end_date = get_nth_trading_day(start_date, compare_days, year)
+                if not end_date:
+                    break
                 
                 # Find actual data for this period
                 period_data = year_df[
@@ -250,7 +261,7 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                         'Profit/Loss (Value)': profit_loss_value
                     })
                 
-                i += compare_days
+                i += 1
 
     if not profit_loss_data:
         st.warning("No valid periods found for profit/loss calculation. Check data for gaps or insufficient trading days.")
@@ -383,7 +394,9 @@ def create_chart(dframe, profit_loss_data, mode, unit):
             x=1.1, y=1.1
         )]
     )
-    fig.update_xaxes(tickformat="%Y-%m-%d")
+    fig.update_xaxes(tickformat="%b %d, %Y")  # Changed to "Jan 10, 2020" format
+    # Alternative: Use "%m-%d-%Y" for "1-20-2020" format by uncommenting below
+    # fig.update_xaxes(tickformat="%m-%d-%Y")
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text=f"Profit/Loss ({unit_symbol})", row=2, col=1)
     
@@ -475,7 +488,7 @@ if uploaded_file and run_analysis:
 # Display results
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 07:47 PM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 08:35 PM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -556,7 +569,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.8 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.9 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
