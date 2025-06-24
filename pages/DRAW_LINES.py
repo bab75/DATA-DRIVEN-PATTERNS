@@ -32,7 +32,11 @@ st.markdown("""
     h1, h2, h3 { color: #0288d1; font-family: 'Arial', sans-serif; }
     .stExpander { background-color: #f5f5f5; border-radius: 5px; }
     .metric-box { background-color: #e0e0e0; padding: 10px; border-radius: 5px; color: #000000; }
-    .trade-details { background-color: #f0f0f0设置为默认值
+    .trade-details { background-color: #f0f0f0; padding: 10px; border-radius: 5px; color: #000000; }
+    </style>
+""", unsafe_allow_html=True)
+
+# Initialize session state with defaults
 st.session_state.setdefault('trade_details', None)
 st.session_state.setdefault('data_loaded', False)
 st.session_state.setdefault('symbol', 'AAPL')
@@ -514,9 +518,9 @@ def on_click(trace, points, state):
         row = aapl_df.iloc[idx]
         st.session_state.trade_details = {
             'Date': row['date'].strftime('%Y-%m-%d'),
-            'Close': row['close'],
-            'Stop-Loss': row['stop_loss'],
-            'Take-Profit': row['take_profit'],
+            'Close': float(row['close']),
+            'Stop-Loss': float(row['stop_loss']),
+            'Take-Profit': float(row['take_profit']),
             'Buy Signal': 'Yes' if row['buy_signal'] else 'No'
         }
 
@@ -567,19 +571,25 @@ with col3:
     st.markdown(f"<div class='metric-box'><b>RSI</b><br>{aapl_df['rsi'].iloc[-1]:.2f} ({signals['RSI']})</div>", unsafe_allow_html=True)
 
 # Display trade details
-if st.session_state.trade_details:
+if st.session_state.trade_details and all(key in st.session_state.trade_details for key in ['Date', 'Close', 'Stop-Loss', 'Take-Profit', 'Buy Signal']):
     st.header("Selected Trade Details")
     details = st.session_state.trade_details
-    st.markdown(f"""
-    <div class='trade-details'>
-        <b>Date:</b> {details['Date']}<br>
-        <b>Close:</b> ${details['Close']:.2f}<br>
-        <b>Stop-Loss:</b> ${details['Stop-Loss']:.2f}<br>
-        <b>Take-Profit:</b> ${details['Take-Profit']:.2f}<br>
-        <b>Buy Signal:</b> {details['Buy Signal']}<br>
-        <b>Risk-Reward Ratio:</b> {(details['Take-Profit'] - details['Close']) / (details['Close'] - details['Stop-Loss']):.2f}
-    </div>
-    """, unsafe_allow_html=True)
+    try:
+        rr_ratio = (details['Take-Profit'] - details['Close']) / (details['Close'] - details['Stop-Loss']) if (details['Close'] - details['Stop-Loss']) > 0 else 'N/A'
+        st.markdown(f"""
+        <div class='trade-details'>
+            <b>Date:</b> {details['Date']}<br>
+            <b>Close:</b> ${details['Close']:.2f}<br>
+            <b>Stop-Loss:</b> ${details['Stop-Loss']:.2f}<br>
+            <b>Take-Profit:</b> ${details['Take-Profit']:.2f}<br>
+            <b>Buy Signal:</b> {details['Buy Signal']}<br>
+            <b>Risk-Reward Ratio:</b> {rr_ratio:.2f if isinstance(rr_ratio, float) else rr_ratio}
+        </div>
+        """, unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"Error displaying trade details: {str(e)}. Please select a candlestick to view trade details.")
+else:
+    st.info("Click a candlestick on the chart to view trade details.")
 
 # Display candlestick chart
 st.plotly_chart(fig, use_container_width=True)
