@@ -13,6 +13,8 @@ import base64
 import ta
 import json
 from sklearn.linear_model import LinearRegression
+import calendar
+import re
 
 # Check Plotly version
 if plotly.__version__ < '5.0.0':
@@ -164,9 +166,10 @@ def load_data(symbol, start_date, end_date):
             volume = aapl_df['volume']
             
             aapl_df['rsi'] = ta.momentum.RSIIndicator(close, window=14).rsi()
-            aapl_df['macd'] = ta.momentum.MACD(close).macd()
-            aapl_df['macd_diff'] = aapl_df['macd'] - aapl_df['signal']
-            aapl_df['signal'] = ta.momentum.MACD(close).macd_signal()
+            macd = ta.momentum.MACD(close)
+            aapl_df['macd'] = macd.macd()
+            aapl_df['signal'] = macd.macd_signal()
+            aapl_df['macd_diff'] = aapl_df['macd'] - aapl_df['signal']  # Ensure macd_diff is calculated
             aapl_df['stochastic_k'] = ta.momentum.StochasticOscillator(high, low, close, window=14, smooth_window=3).stoch()
             aapl_df['stochastic_d'] = ta.momentum.StochasticOscillator(high, low, close, window=14, smooth_window=3).stoch_signal()
             aapl_df['adx'] = ta.trend.ADXIndicator(high, low, close, window=14).adx()
@@ -384,7 +387,7 @@ def calculate_score(metrics, signals):
     technical_score = sum([10 if s in ['Buy', 'Strong Trend'] else 0 for s in signals.values()])
     volume_score = 20 if st.session_state.aapl_df['volume'].iloc[-1] > st.session_state.aapl_df['volume'].mean() else 10
     total_score = performance_score + risk_score + technical_score + volume_score
-    recommendation = 'Buy' if total_score > 70 else 'Hold' if total_score > 50 else 'Avoid'
+    recommendation = 'Proceed with Confidence' if total_score > 70 else 'Hold Steady' if total_score > 50 else 'Consider a Cautious Approach'
     return {
         'Performance': performance_score,
         'Risk': risk_score,
@@ -491,7 +494,7 @@ def add_rsi_trace(fig, df, row):
     fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=row, col=1)
 
 def add_macd_stochastic_trace(fig, df, row):
-    if "MACD" in show_indicators:
+    if "MACD" in show_indicators and 'macd' in df.columns and 'signal' in df.columns:
         fig.add_trace(go.Scatter(x=df['date'], y=df['macd'], name="MACD", line=dict(color="#0288d1"),
                                  hovertext=[f"MACD: {x:.2f}" for x in df['macd']], hoverinfo='text+x'), row=row, col=1)
         fig.add_trace(go.Scatter(x=df['date'], y=df['signal'], name="Signal Line", line=dict(color="#ff9800"),
@@ -983,8 +986,8 @@ with st.expander("📚 Help: How the Analysis Works"):
 
     #### 6. Scoring System
     - **What**: Combine performance, risk, technical signals, and volume.
-    - **How**: Total = Performance (30) + Risk (20) + Technical (30) + Volume (20). Buy if >70.
-    - **Example**: Total: 75/100, Recommendation: Buy.
+    - **How**: Total = Performance (30) + Risk (20) + Technical (30) + Volume (20). Proceed with Confidence if >70.
+    - **Example**: Total: 75/100, Recommendation: Proceed with Confidence.
 
     #### 7. Price Prediction
     - **What**: Predict next 5 trading days' closing prices.
