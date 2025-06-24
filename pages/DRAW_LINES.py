@@ -44,9 +44,9 @@ st.session_state.setdefault('data_loaded', False)
 st.session_state.setdefault('data_processed', False)
 st.session_state.setdefault('symbol', 'AAPL')
 st.session_state.setdefault('start_date', pd.to_datetime('2025-01-01'))
-st.session_state.setdefault('end_date', pd.to_datetime('2025-06-13'))
+st.session_state.setdefault('end_date', pd.to_datetime('2025-06-24'))  # Updated to current date
 st.session_state.setdefault('report_from', pd.to_datetime('2025-01-01'))
-st.session_state.setdefault('report_to', pd.to_datetime('2025-06-13'))
+st.session_state.setdefault('report_to', pd.to_datetime('2025-06-24'))  # Updated to current date
 if 'aapl_df' not in st.session_state:
     st.session_state.aapl_df = pd.DataFrame()
 if 'pl_df' not in st.session_state:
@@ -80,7 +80,7 @@ secondary_file = st.sidebar.file_uploader(
 
 # Provide sample OHLCV file with 100 trading days
 np.random.seed(42)
-dates = pd.date_range(end='2025-06-13', periods=100, freq='B')
+dates = pd.date_range(end='2025-06-24', periods=100, freq='B')  # Updated to current date
 base_price = 195.00
 prices = base_price + np.cumsum(np.random.randn(100) * 0.5)
 sample_data = pd.DataFrame({
@@ -154,9 +154,9 @@ if clear:
     st.session_state.data_processed = False
     st.session_state.symbol = 'AAPL'
     st.session_state.start_date = pd.to_datetime('2025-01-01')
-    st.session_state.end_date = pd.to_datetime('2025-06-13')
+    st.session_state.end_date = pd.to_datetime('2025-06-24')  # Updated to current date
     st.session_state.report_from = pd.to_datetime('2025-01-01')
-    st.session_state.report_to = pd.to_datetime('2025-06-13')
+    st.session_state.report_to = pd.to_datetime('2025-06-24')  # Updated to current date
     st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
     st.session_state.report_date_range = (st.session_state.report_from, st.session_state.report_to)
     st.session_state.aapl_df = pd.DataFrame()
@@ -265,7 +265,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
             
             if len(aapl_df) < 52:
-                st.error(f"Insufficient data points ({len(aapl_df)}) for {symbol}. Please select a wider date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-13).")
+                st.error(f"Insufficient data points ({len(aapl_df)}) for {symbol}. Please select a wider date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-24).")
                 return pd.DataFrame(), pd.DataFrame()
         
         except Exception as e:
@@ -283,8 +283,10 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             volume = aapl_df['volume']
             
             aapl_df['rsi'] = ta.momentum.RSIIndicator(close, window=14).rsi()
-            aapl_df['macd'] = ta.trend.MACD(close).macd()
-            aapl_df['signal'] = ta.trend.MACD(close).macd_signal()
+            macd = ta.trend.MACD(close)
+            aapl_df['macd'] = macd.macd()
+            aapl_df['signal'] = macd.macd_signal()
+            aapl_df['macd_diff'] = aapl_df['macd'] - aapl_df['signal']  # Added macd_diff
             aapl_df['stochastic_k'] = ta.momentum.StochasticOscillator(high, low, close, window=14, smooth_window=3).stoch()
             aapl_df['stochastic_d'] = ta.momentum.StochasticOscillator(high, low, close, window=14, smooth_window=3).stoch_signal()
             aapl_df['adx'] = ta.trend.ADXIndicator(high, low, close, window=14).adx()
@@ -305,7 +307,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             aapl_df['fib_618'] = recent_high - diff * 0.618
             
             indicator_cols = [
-                'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr',
+                'rsi', 'macd', 'macd_diff', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr',
                 'senkou_span_a', 'senkou_span_b', 'ma20', 'std_dev', 'rvol',
                 'fib_236', 'fib_382', 'fib_50', 'fib_618'
             ]
@@ -581,11 +583,13 @@ def add_rsi_trace(fig, df, row):
     fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=row, col=1)
 
 def add_macd_stochastic_trace(fig, df, row):
-    if "MACD" in show_indicators:
+    if "MACD" in show_indicators and 'macd' in df.columns and 'signal' in df.columns:
         fig.add_trace(go.Scatter(x=df['date'], y=df['macd'], name="MACD", line=dict(color="#0288d1"),
                                  hovertext=[f"MACD: {x:.2f}" for x in df['macd']], hoverinfo='text+x'), row=row, col=1)
         fig.add_trace(go.Scatter(x=df['date'], y=df['signal'], name="Signal Line", line=dict(color="#ff9800"),
                                  hovertext=[f"Signal: {x:.2f}" for x in df['signal']], hoverinfo='text+x'), row=row, col=1)
+        fig.add_trace(go.Bar(x=df['date'], y=df['macd_diff'], name="MACD Histogram", marker_color="#607d8b",
+                             hovertext=[f"MACD Diff: {x:.2f}" for x in df['macd_diff']], hoverinfo='text+x'), row=row, col=1)
     if "Stochastic" in show_indicators:
         fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2",
                                  hovertext=[f"Stochastic %K: {x:.2f}" for x in df['stochastic_k']], hoverinfo='text+x'), row=row, col=1)
@@ -980,7 +984,7 @@ st.download_button("Download HTML Report", html_buffer.getvalue(), file_name=f"{
 with st.expander("📚 Help: How the Analysis Works"):
     help_text = """
     ### Step-by-Step Analysis Explanation
-    This app analyzes {symbol} stock data to identify consolidation, breakouts, and trading setups. Below is the process with a real-time example based on June 13, 2025.
+    This app analyzes {symbol} stock data to identify consolidation, breakouts, and trading setups. Below is the process with a real-time example based on June 24, 2025.
 
     #### 1. Data Collection
     - **What**: Use OHLC, volume, and technical indicators (RSI, MACD, Stochastic, Ichimoku, ADX, ATR, Fibonacci, RVOL) from uploaded file or Yahoo Finance.
@@ -1018,7 +1022,7 @@ with st.expander("📚 Help: How the Analysis Works"):
     #### 5. Breakout Timeframe Prediction
     - **What**: Estimate breakout timing.
     - **How**: Consolidation → 1-5 days; breakout → confirm in 1-3 days.
-    - **Example**: Consolidation on June 13, breakout expected by June 18, 2025.
+    - **Example**: Consolidation on June 24, breakout expected by June 29, 2025.
 
     #### 6. Scoring System
     - **What**: Combine performance, risk, technical signals, and volume.
@@ -1028,7 +1032,7 @@ with st.expander("📚 Help: How the Analysis Works"):
     #### 7. Visualization
     - **What**: Candlestick chart with Bollinger Bands, Ichimoku, RSI, MACD, Stochastic, ADX, RVOL, volume, and win/loss distribution.
     - **How**: Plotly charts with hover text and clickable trade details.
-    - **Example**: Hover shows Date: 06-13-2025, Month: June, Close: $196.45, RSI: 52.30, Volume: 51.4M. Click candlestick for trade setup.
+    - **Example**: Hover shows Date: 06-24-2025, Month: June, Close: $196.45, RSI: 52.30, Volume: 51.4M. Click candlestick for trade setup.
 
     #### 8. Benchmark Comparison
     - **What**: Compare {symbol} to benchmark (if uploaded).
@@ -1046,11 +1050,7 @@ with st.expander("📚 Help: How the Analysis Works"):
     - **Latest Trade Setup**: Displays the most recent trade opportunity based on the latest buy signal. Extracts the date, entry price, stop-loss, and take-profit from the last row with a buy signal.
 
     **Troubleshooting Tips**:
-    - **Real-Time Data Errors**: Ensure a single valid symbol (e.g., AAPL, not AAPL,MSFT) and date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-13). Check internet connectivity.
+    - **Real-Time Data Errors**: Ensure a single valid symbol (e.g., AAPL, not AAPL,MSFT) and date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-24). Check internet connectivity.
     - **Upload Errors**: Verify the file has columns: date, open, high, low, close, volume. Select a date range within the file’s range with at least 52 trading days. Use the sample file provided.
     - **No Trades in Backtesting**: Ensure sufficient data points (at least 52 trading days). Check debug messages for buy signal counts. Try a larger dataset or relax signal conditions in the code.
     - **Indicator Errors**: Ensure sufficient data points and valid numeric data.
-    - **Syntax Errors**: If errors persist, ensure Python 3.13 compatibility and check for indentation issues. Contact support with logs if on Streamlit Cloud.
-    - Click 'Clear' to start a new analysis.
-    """
-    st.markdown(help_text.format(symbol=st.session_state.symbol), unsafe_allow_html=True)
