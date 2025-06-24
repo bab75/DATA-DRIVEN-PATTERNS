@@ -399,23 +399,26 @@ def detect_consolidation_breakout(df):
     rsi_condition = (df['rsi'] > 30) & (df['rsi'] < 80)
     macd_condition = df['macd'] > df['signal']
     stochastic_condition = df['stochastic_k'] > df['stochastic_d']
-    df['buy_signal'] = close_exceeds_resistance & volume_condition & rsi_condition & macd_condition & stochastic_condition
+    # Relaxed condition: Temporarily remove close > resistance.shift(1) for testing
+    df['buy_signal'] = volume_condition & rsi_condition & macd_condition & stochastic_condition
     df['stop_loss'] = df['close'] - 1.5 * df['atr']
     df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']
-    # Debug: Log detailed buy signal conditions
+    # Debug: Log detailed buy signal conditions and resistance comparison
     st.write("Debug: Buy signal condition checks:")
-    st.write(f"- Close > Resistance.shift(1): {close_exceeds_resistance.sum()} True")
+    st.write(f"- Close > Resistance.shift(1): {close_exceeds_resistance.sum()} True (Note: Disabled for testing)")
     st.write(f"- Volume > Mean * 0.8: {volume_condition.sum()} True")
     st.write(f"- 30 < RSI < 80: {rsi_condition.sum()} True")
     st.write(f"- MACD > Signal: {macd_condition.sum()} True")
     st.write(f"- Stochastic K > D: {stochastic_condition.sum()} True")
+    # Compare close and resistance.shift(1) for insight
+    st.write("Debug: Sample comparison of Close vs Resistance.shift(1):")
+    st.write(df[['date', 'close', 'resistance']].tail(10).assign(resistance_shift1=lambda x: x['resistance'].shift(1)))
     num_buy_signals = df['buy_signal'].sum()
     st.write(f"Debug: Number of buy signals detected: {num_buy_signals}")
     if num_buy_signals == 0:
         st.warning("No buy signals detected. Check data or relax conditions further if needed.")
         st.write("Debug: First 5 rows of signal conditions:", df[['close', 'resistance', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d']].head())
     return df
-
 aapl_df = detect_consolidation_breakout(aapl_df)
 
 # Backtesting framework
@@ -427,8 +430,8 @@ def backtest_strategy(df):
         if df['buy_signal'].iloc[i-1]:
             if position is None:
                 # Use fallback values if stop_loss or take_profit is NaN
-                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.95  # 5% below close
-                take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1.10  # 10% above close
+                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.95
+                take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1.10
                 position = {
                     'entry_date': df['date'].iloc[i],
                     'entry_price': df['close'].iloc[i],
@@ -456,7 +459,7 @@ def backtest_strategy(df):
                         'exit_price': position['take_profit'],
                         'return': (position['take_profit'] - position['entry_price']) / position['entry_price'] * 100
                     })
-                    st.write(f"Debug: Exiting trade at {df['date'].iloc[i]} due to take-profit")
+                    st.write(f"Debug: Exiting trade at {df['date].iloc[i]} due to take-profit")
                     position = None
     
     if not trades:
@@ -477,7 +480,7 @@ def backtest_strategy(df):
         'Total Return': total_return,
         'Trades': len(trades)
     }
-
+    
 backtest_results = backtest_strategy(aapl_df)
 
 # Technical signals
