@@ -247,38 +247,51 @@ if data_file:
         # Profit/Loss Analysis
         if benchmark_df is not None:
             benchmark_df = benchmark_df[benchmark_df['Year'].isin(year_filter)]
-            benchmark_df['cumulative_return'] = (1 + benchmark_df['Profit/Loss (Percentage)'] / 100).cumprod() * 100 - 100
-            df['cumulative_return'] = (1 + df['close'].pct_change()).cumprod() * 100 - 100
-            
-            # Profit/Loss Metrics
-            avg_return = benchmark_df['Profit/Loss (Percentage)'].mean()
-            volatility = benchmark_df['Profit/Loss (Percentage)'].std()
-            win_ratio = len(benchmark_df[benchmark_df['Profit/Loss (Percentage)'] > 0]) / len(benchmark_df)
-            max_drawdown = (benchmark_df['cumulative_return'].cummax() - benchmark_df['cumulative_return']).max()
-            
-            st.subheader("Profit/Loss Analysis")
-            st.write(f"Average Return: {avg_return:.2f}%")
-            st.write(f"Volatility: {volatility:.2f}%")
-            st.write(f"Win Ratio: {win_ratio:.2%}")
-            st.write(f"Max Drawdown: {max_drawdown:.2f}%")
-            st.write("**Interesting Fact**: Largest single-period loss was -14.30% in April 2025, indicating a significant market correction.")
-            
-            # Seasonality Heatmap
-            benchmark_df['month_year'] = benchmark_df['Start Date'].dt.strftime('%Y-%m')
-            heatmap_data = benchmark_df.groupby(['Year', benchmark_df['Start Date'].dt.month])['Profit/Loss (Percentage)'].mean().unstack()
-            heatmap_fig = go.Figure(data=go.Heatmap(
-                z=heatmap_data.values,
-                x=heatmap_data.columns,
-                y=heatmap_data.index,
-                colorscale='RdBu',
-                zmid=0,
-                colorbar=dict(title="Return (%)")
-            ))
-            heatmap_fig.update_layout(title="Seasonality Heatmap", xaxis_title="Month", yaxis_title="Year")
-            st.plotly_chart(heatmap_fig, use_container_width=True)
+            if benchmark_df.empty:
+                st.warning("No benchmark data available for the selected years. Seasonality heatmap will not be displayed.")
+            else:
+                benchmark_df['cumulative_return'] = (1 + benchmark_df['Profit/Loss (Percentage)'] / 100).cumprod() * 100 - 100
+                df['cumulative_return'] = (1 + df['close'].pct_change()).cumprod() * 100 - 100
+                
+                # Profit/Loss Metrics
+                avg_return = benchmark_df['Profit/Loss (Percentage)'].mean()
+                volatility = benchmark_df['Profit/Loss (Percentage)'].std()
+                win_ratio = len(benchmark_df[benchmark_df['Profit/Loss (Percentage)'] > 0]) / len(benchmark_df)
+                max_drawdown = (benchmark_df['cumulative_return'].cummax() - benchmark_df['cumulative_return']).max()
+                
+                st.subheader("Profit/Loss Analysis")
+                st.write(f"Average Return: {avg_return:.2f}%")
+                st.write(f"Volatility: {volatility:.2f}%")
+                st.write(f"Win Ratio: {win_ratio:.2%}")
+                st.write(f"Max Drawdown: {max_drawdown:.2f}%")
+                st.write("**Interesting Fact**: Largest single-period loss was -14.30% in April 2025, indicating a significant market correction.")
+                
+                # Seasonality Heatmap
+                try:
+                    # Create a complete year-month matrix
+                    years = list(range(2020, 2026)) if not year_filter else year_filter
+                    months = list(range(1, 13))
+                    heatmap_data = benchmark_df.groupby(['Year', benchmark_df['Start Date'].dt.month])['Profit/Loss (Percentage)'].mean().unstack()
+                    # Reindex to ensure all years and months are present
+                    heatmap_data = heatmap_data.reindex(index=years, columns=months, fill_value=0)
+                    if heatmap_data.empty:
+                        st.warning("No data available for seasonality heatmap after processing.")
+                    else:
+                        heatmap_fig = go.Figure(data=go.Heatmap(
+                            z=heatmap_data.values,
+                            x=[f"Month {m}" for m in months],
+                            y=[str(y) for y in years],
+                            colorscale='RdBu',
+                            zmid=0,
+                            colorbar=dict(title="Return (%)")
+                        ))
+                        heatmap_fig.update_layout(title="Seasonality Heatmap", xaxis_title="Month", yaxis_title="Year")
+                        st.plotly_chart(heatmap_fig, use_container_width=True)
+                except Exception as e:
+                    st.warning(f"Failed to generate seasonality heatmap: {e}")
 
         # Generate HTML Report
-        if benchmark_df is not None:
+        if benchmark_df is not None and not benchmark_df.empty:
             # Save benchmark data as CSV for HTML report
             benchmark_csv = "benchmark_data.csv"
             benchmark_df.to_csv(benchmark_csv, index=False)
