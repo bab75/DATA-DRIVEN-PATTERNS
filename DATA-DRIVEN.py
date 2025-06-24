@@ -499,7 +499,7 @@ if uploaded_file and run_analysis:
 # Display results if data is available
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 09:42 AM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 09:48 AM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -622,6 +622,22 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         """)
 
     with st.expander("Total Functionality Summary"):
+        st.write("""
+        **Overview**: This tool analyzes stock patterns and predicts future trends using historical data. We've worked together to refine its capabilities, focusing on data loading, profit/loss calculations, and visualizations.
+
+        **Steps**:
+        1. Upload a CSV or Excel file with stock data. - ✅ Completed if file uploaded, ⏳ Pending otherwise.
+        2. Load and preprocess the uploaded data. - ✅ Completed after data is processed, ⏳ Pending otherwise.
+        3. Run the analysis to calculate profit/loss. - ✅ Completed after analysis, ⏳ Pending otherwise.
+        4. Visualize and explore the results (charts, tables, predictions). - ✅ Completed after visualization, ⏳ Pending otherwise.
+
+        **Analysis Mode Logic**:
+        - **Raw Data (Open vs. Close)**: Calculates profit/loss based on the difference between the opening and closing prices over a period. The percentage is ((end_price - start_price) / start_price) * 100, and the value is end_price - start_price, reflecting a simple price movement assessment.
+        - **Open/Close/High/Low**: Measures the range of price movement by using the maximum high and minimum low prices. The percentage is ((max_high - min_low) / start_price) * 100, and the value is max_high - min_low, offering insight into volatility.
+        - **Technical Indicators**: Adjusts the open-to-close profit/loss with weights from RSI and MACD. The base percentage is ((end_price - start_price) / start_price) * 100, modified by a weight (e.g., reduced by 20% if RSI > 70, increased by 20% if RSI < 30, and adjusted by 10% based on MACD sign), with the value scaled similarly.
+
+        **Evolution**: We've enhanced the app to handle real-time data, add advanced visualizations, and address issues like weekend data and profit/loss accuracy, ensuring a robust tool for stock analysis.
+        """)
         steps = [
             "1. Upload a CSV or Excel file with stock data.",
             "2. Load and preprocess the uploaded data.",
@@ -634,7 +650,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
             st.write(f"{step} - {status}")
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 3.0 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 3.1 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
