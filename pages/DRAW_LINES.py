@@ -419,6 +419,7 @@ def detect_consolidation_breakout(df):
         st.warning("No buy signals detected. Check data or relax conditions further if needed.")
         st.write("Debug: First 5 rows of signal conditions:", df[['close', 'resistance', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d']].head())
     return df
+    
 aapl_df = detect_consolidation_breakout(aapl_df)
 
 # Backtesting framework
@@ -459,7 +460,7 @@ def backtest_strategy(df):
                         'exit_price': position['take_profit'],
                         'return': (position['take_profit'] - position['entry_price']) / position['entry_price'] * 100
                     })
-                    st.write(f"Debug: Exiting trade at {df['date].iloc[i]} due to take-profit")
+                    st.write(f"Debug: Exiting trade at {df['date'].iloc[i]} due to take-profit")
                     position = None
     
     if not trades:
@@ -480,6 +481,7 @@ def backtest_strategy(df):
         'Total Return': total_return,
         'Trades': len(trades)
     }
+
     
 backtest_results = backtest_strategy(aapl_df)
 
