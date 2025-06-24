@@ -28,37 +28,56 @@ st.markdown("""
     .sidebar .sidebar-content { background-color: #f0f0f0; color: #000000; }
     .stButton>button { background-color: #4CAF50; color: #ffffff; border-radius: 5px; }
     .stFileUploader label { color: #000000; }
+    .stTextInput label { color: #000000; }
     h1, h2, h3 { color: #0288d1; font-family: 'Arial', sans-serif; }
     .stExpander { background-color: #f5f5f5; border-radius: 5px; }
     .metric-box { background-color: #e0e0e0; padding: 10px; border-radius: 5px; color: #000000; }
-    .trade-details { background-color: #f0f0f0; padding: 10px; border-radius: 5px; color: #000000; }
-    </style>
-""", unsafe_allow_html=True)
+    .trade-details { background-color: #f0f0f0设置为默认值
+st.session_state.setdefault('trade_details', None)
+st.session_state.setdefault('data_loaded', False)
+st.session_state.setdefault('symbol', 'AAPL')
+st.session_state.setdefault('start_date', pd.to_datetime('2025-01-01'))
+st.session_state.setdefault('end_date', pd.to_datetime('2025-06-13'))
 
 # Title
-st.title("📊 AAPL Stock Analysis: Consolidation & Breakout")
+st.title("📊 Stock Analysis: Consolidation & Breakout")
 
 # Sidebar for data source and settings
 st.sidebar.header("Data Source")
-data_source = st.sidebar.radio("Select Data Source", ["Upload CSV/XLSX", "Fetch Real-Time (Yahoo Finance)"])
+data_source = st.sidebar.radio("Select Data Source", ["Upload CSV/XLSX", "Fetch Real-Time (Yahoo Finance)"], key="data_source")
+symbol = st.sidebar.text_input("Stock Symbol", value=st.session_state.symbol, key="symbol_input")
+date_range = st.sidebar.date_input("Select Date Range", value=(st.session_state.start_date, st.session_state.end_date), key="date_range_input")
 primary_file = None
 if data_source == "Upload CSV/XLSX":
-    primary_file = st.sidebar.file_uploader("Upload AAPL Data (CSV or XLSX)", type=["csv", "xlsx"])
-secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV or XLSX, Optional)", type=["csv", "xlsx"])
+    primary_file = st.sidebar.file_uploader("Upload Stock Data (CSV or XLSX)", type=["csv", "xlsx"], key="primary_file")
+secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV or XLSX, Optional)", type=["csv", "xlsx"], key="secondary_file")
 
 st.sidebar.header("Chart Settings")
-date_range = st.sidebar.date_input("Select Date Range", value=(pd.to_datetime("2025-01-01"), pd.to_datetime("2025-06-13")))
-show_indicators = st.sidebar.multiselect("Select Indicators", ["Bollinger Bands", "Ichimoku Cloud", "RSI", "MACD", "Stochastic", "ADX", "Fibonacci", "RVOL"], default=["Bollinger Bands", "RSI"])
-subplot_order = st.sidebar.multiselect("Customize Subplot Order", ["Candlestick", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume", "Win/Loss Distribution"], default=["Candlestick", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume", "Win/Loss Distribution"])
-html_report_type = st.sidebar.radio("HTML Report Type", ["Interactive (with Hover)", "Static Images"])
+show_indicators = st.sidebar.multiselect("Select Indicators", ["Bollinger Bands", "Ichimoku Cloud", "RSI", "MACD", "Stochastic", "ADX", "Fibonacci", "RVOL"], default=["Bollinger Bands", "RSI"], key="indicators")
+subplot_order = st.sidebar.multiselect("Customize Subplot Order", ["Candlestick", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume", "Win/Loss Distribution"], default=["Candlestick", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume", "Win/Loss Distribution"], key="subplot_order")
+html_report_type = st.sidebar.radio("HTML Report Type", ["Interactive (with Hover)", "Static Images"], key="html_report_type")
 
-# Initialize session state for trade details
-if 'trade_details' not in st.session_state:
+# Submit and Clear buttons
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    submit = st.button("Submit")
+with col2:
+    clear = st.button("Clear")
+
+# Handle Clear button
+if clear:
+    st.session_state.clear()
+    st.cache_data.clear()
+    st.session_state.data_loaded = False
+    st.session_state.symbol = 'AAPL'
+    st.session_state.start_date = pd.to_datetime('2025-01-01')
+    st.session_state.end_date = pd.to_datetime('2025-06-13')
     st.session_state.trade_details = None
+    st.experimental_rerun()
 
 # Load and validate data
 @st.cache_data
-def load_data(primary_file, data_source, start_date, end_date):
+def load_data(primary_file, data_source, symbol, start_date, end_date):
     aapl_df = pd.DataFrame()
     pl_df = pd.DataFrame()
     
@@ -77,7 +96,7 @@ def load_data(primary_file, data_source, start_date, end_date):
             actual_cols = aapl_df.columns.tolist()
             missing_cols = [col for col in required_cols if col not in actual_cols]
             if missing_cols:
-                st.error(f"Missing required columns in AAPL data: {', '.join(missing_cols)}")
+                st.error(f"Missing required columns in stock data: {', '.join(missing_cols)}")
                 st.write("Available columns:", actual_cols)
                 st.write("Sample data (first 5 rows):", aapl_df.head())
                 st.write("Data types:", aapl_df.dtypes)
@@ -110,7 +129,7 @@ def load_data(primary_file, data_source, start_date, end_date):
             initial_len = len(aapl_df)
             aapl_df = aapl_df.dropna(subset=critical_cols)
             if aapl_df.empty:
-                st.error(f"AAPL data is empty after removing {initial_len} rows with null values in critical columns: {', '.join(critical_cols)}")
+                st.error(f"Stock data is empty after removing {initial_len} rows with null values in critical columns: {', '.join(critical_cols)}")
                 return pd.DataFrame(), pd.DataFrame()
             
             # Check for VWAP
@@ -118,15 +137,15 @@ def load_data(primary_file, data_source, start_date, end_date):
                 st.warning("VWAP column is missing. VWAP plot will be skipped (optional).")
         
         except Exception as e:
-            st.error(f"Error loading AAPL data: {str(e)}. Please check the file format and content.")
+            st.error(f"Error loading stock data: {str(e)}. Please check the file format and content.")
             st.write("Sample data (first 5 rows):", aapl_df.head() if not aapl_df.empty else "No data loaded")
             return pd.DataFrame(), pd.DataFrame()
     
     elif data_source == "Fetch Real-Time (Yahoo Finance)":
         try:
-            aapl_df = yf.download('AAPL', start=start_date, end=end_date + timedelta(days=1), progress=False)
+            aapl_df = yf.download(symbol, start=start_date, end=end_date + timedelta(days=1), progress=False)
             if aapl_df.empty:
-                st.error("Failed to fetch AAPL data from Yahoo Finance. Please check your internet connection or try uploading a file.")
+                st.error(f"Failed to fetch {symbol} data from Yahoo Finance. Please check the symbol or internet connection.")
                 return pd.DataFrame(), pd.DataFrame()
             
             # Normalize column names
@@ -136,12 +155,15 @@ def load_data(primary_file, data_source, start_date, end_date):
             aapl_df['date'] = pd.to_datetime(aapl_df['date'])
         
         except Exception as e:
-            st.error(f"Error fetching AAPL data from Yahoo Finance: {str(e)}. Please try uploading a file.")
+            st.error(f"Error fetching {symbol} data from Yahoo Finance: {str(e)}. Please try uploading a file.")
             return pd.DataFrame(), pd.DataFrame()
     
-    # Compute technical indicators
+    # Compute daily_return and technical indicators
     if not aapl_df.empty:
         try:
+            aapl_df['daily_return'] = aapl_df['close'].pct_change()
+            aapl_df['daily_return'] = aapl_df['daily_return'].replace([np.inf, -np.inf], np.nan).fillna(0)
+            
             aapl_df['rsi'] = ta.momentum.RSIIndicator(aapl_df['close'], window=14).rsi()
             aapl_df['macd'] = ta.trend.MACD(aapl_df['close']).macd()
             aapl_df['signal'] = ta.trend.MACD(aapl_df['close']).macd_signal()
@@ -196,24 +218,30 @@ def load_data(primary_file, data_source, start_date, end_date):
     
     return aapl_df, pl_df
 
-aapl_df, pl_df = load_data(primary_file, data_source, date_range[0], date_range[1])
+# Load data only if Submit is pressed
+if submit:
+    st.session_state.data_loaded = True
+    st.session_state.symbol = st.session_state.symbol_input
+    st.session_state.start_date = pd.to_datetime(st.session_state.date_range_input[0])
+    st.session_state.end_date = pd.to_datetime(st.session_state.date_range_input[1])
+    aapl_df, pl_df = load_data(primary_file, data_source, st.session_state.symbol, st.session_state.start_date, st.session_state.end_date)
+else:
+    st.info("Please enter a symbol, date range, and click 'Submit' to load data.")
+    st.stop()
 
 if aapl_df.empty:
-    st.error("Failed to load valid AAPL data. Please check the file or try real-time data.")
+    st.error(f"Failed to load valid data for {st.session_state.symbol}. Please check the file, symbol, or date range.")
     st.stop()
 
 # Filter by date range
-aapl_df = aapl_df[(aapl_df['date'] >= pd.to_datetime(date_range[0])) & (aapl_df['date'] <= pd.to_datetime(date_range[1]))]
+aapl_df = aapl_df[(aapl_df['date'] >= st.session_state.start_date) & (aapl_df['date'] <= st.session_state.end_date)]
 if aapl_df.empty:
     st.error("No data available for the selected date range. Please adjust the date range or upload a different file.")
     st.stop()
 
-# Calculate returns and metrics
+# Calculate metrics
 @st.cache_data
 def calculate_metrics(df):
-    df['daily_return'] = df['close'].pct_change()
-    df['daily_return'] = df['daily_return'].replace([np.inf, -np.inf], np.nan).fillna(0)
-    
     df['cumulative_return'] = (1 + df['daily_return']).cumprod() - 1
     
     average_return = df['daily_return'].mean() * 100
@@ -448,6 +476,9 @@ def add_volume_trace(fig, df, row):
 
 # Win/Loss Distribution chart
 def add_win_loss_trace(fig, df, row):
+    if 'daily_return' not in df.columns:
+        st.warning("Cannot plot Win/Loss Distribution: 'daily_return' column is missing.")
+        return
     valid_returns = df['daily_return'][df['daily_return'].notna() & ~df['daily_return'].isin([np.inf, -np.inf])]
     if not valid_returns.empty:
         bins = np.histogram_bin_edges(valid_returns * 100, bins=20)
@@ -472,7 +503,7 @@ for i, subplot in enumerate(subplot_order, 1):
     elif subplot == "Win/Loss Distribution":
         add_win_loss_trace(fig, aapl_df, i)
 
-fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white", title_text="AAPL Candlestick Analysis",
+fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white", title_text=f"{st.session_state.symbol} Candlestick Analysis",
                   hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
 fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=len(subplot_order), col=1)
 
@@ -560,11 +591,11 @@ if not pl_df.empty:
     try:
         pl_cum_return = (1 + pl_df['Profit/Loss (Percentage)']).cumprod() - 1
         fig_bench = go.Figure()
-        fig_bench.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['cumulative_return'], name="AAPL", line=dict(color="#0288d1"),
-                                       hovertext=[f"AAPL Return: {x:.2%}" for x in aapl_df['cumulative_return']], hoverinfo='text+x'))
+        fig_bench.add_trace(go.Scatter(x=aapl_df['date'], y=aapl_df['cumulative_return'], name=st.session_state.symbol, line=dict(color="#0288d1"),
+                                       hovertext=[f"{st.session_state.symbol} Return: {x:.2%}" for x in aapl_df['cumulative_return']], hoverinfo='text+x'))
         fig_bench.add_trace(go.Scatter(x=pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800"),
                                        hovertext=[f"Benchmark Return: {x:.2%}" for x in pl_cum_return], hoverinfo='text+x'))
-        fig_bench.update_layout(title="AAPL vs. Benchmark Cumulative Returns", height=400, template="plotly_white",
+        fig_bench.update_layout(title=f"{st.session_state.symbol} vs. Benchmark Cumulative Returns", height=400, template="plotly_white",
                                 hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
         st.plotly_chart(fig_bench, use_container_width=True)
     except Exception as e:
@@ -586,18 +617,18 @@ st.header("Export Data and Reports")
 csv_buffer = io.StringIO()
 aapl_df.to_csv(csv_buffer, index=False)
 csv_buffer.seek(0)
-st.download_button("Download AAPL Data (CSV)", csv_buffer.getvalue(), file_name="aapl_analysis_data.csv", mime="text/csv")
+st.download_button("Download Stock Data (CSV)", csv_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_data.csv", mime="text/csv")
 
 excel_buffer = io.BytesIO()
 aapl_df.to_excel(excel_buffer, index=False, engine='openpyxl')
 excel_buffer.seek(0)
-st.download_button("Download AAPL Data (Excel)", excel_buffer, file_name="aapl_analysis_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+st.download_button("Download Stock Data (Excel)", excel_buffer, file_name=f"{st.session_state.symbol}_analysis_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # Export PDF report
 pdf_buffer = io.BytesIO()
 c = canvas.Canvas(pdf_buffer, pagesize=letter)
 c.setFont("Helvetica", 12)
-c.drawString(50, 750, "Stock Investment Analysis Report")
+c.drawString(50, 750, f"{st.session_state.symbol} Stock Analysis Report")
 c.drawString(50, 730, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
 c.drawString(50, 710, f"Recommendation: {score['Recommendation']}")
 c.drawString(50, 690, "Scores:")
@@ -625,7 +656,7 @@ c.drawString(70, 270, f"- Trades: {backtest_results['Trades']}")
 c.showPage()
 c.save()
 pdf_buffer.seek(0)
-st.download_button("Download PDF Report", pdf_buffer, file_name="investment_report.pdf", mime="application/pdf")
+st.download_button("Download PDF Report", pdf_buffer, file_name=f"{st.session_state.symbol}_investment_report.pdf", mime="application/pdf")
 
 # Export HTML report
 if html_report_type == "Interactive (with Hover)":
@@ -647,7 +678,7 @@ html_content = f"""
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AAPL Stock Analysis Report</title>
+    <title>{st.session_state.symbol} Stock Analysis Report</title>
     <style>
         body {{ font-family: Arial, sans-serif; background-color: #ffffff; color: #000000; margin: 20px; }}
         h1, h2 {{ color: #0288d1; }}
@@ -658,7 +689,7 @@ html_content = f"""
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body>
-    <h1>AAPL Stock Analysis Report</h1>
+    <h1>{st.session_state.symbol} Stock Analysis Report</h1>
     <p><b>Date:</b> {datetime.now().strftime('%Y-%m-%d')}</p>
     
     <div class="section">
@@ -719,13 +750,13 @@ html_content = f"""
 html_buffer = io.StringIO()
 html_buffer.write(html_content)
 html_buffer.seek(0)
-st.download_button("Download HTML Report", html_buffer.getvalue(), file_name="aapl_analysis_report.html", mime="text/html")
+st.download_button("Download HTML Report", html_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_report.html", mime="text/html")
 
 # Help section
 with st.expander("📚 Help: How the Analysis Works"):
-    st.markdown("""
+    st.markdown(f"""
     ### Step-by-Step Analysis Explanation
-    This app analyzes AAPL stock data to identify consolidation, breakouts, and trading setups. Below is the process with a real-time example based on June 13, 2025.
+    This app analyzes {st.session_state.symbol} stock data to identify consolidation, breakouts, and trading setups. Below is the process with a real-time example based on June 13, 2025.
 
     #### 1. Data Collection
     - **What**: Use OHLC, volume, and technical indicators (RSI, MACD, Stochastic, Ichimoku, ADX, ATR, Fibonacci, RVOL) from uploaded file or Yahoo Finance.
@@ -773,13 +804,13 @@ with st.expander("📚 Help: How the Analysis Works"):
     - **Example**: Hover shows Close: $196.45, RSI: 52.30, Volume: 51.4M. Click candlestick for trade setup.
 
     #### 8. Benchmark Comparison
-    - **What**: Compare AAPL to benchmark (if uploaded).
-    - **Example**: AAPL’s 20% outperforms benchmark’s 10%.
+    - **What**: Compare {st.session_state.symbol} to benchmark (if uploaded).
+    - **Example**: {st.session_state.symbol}’s 20% outperforms benchmark’s 10%.
 
     #### 9. Seasonality Analysis
     - **What**: Identify monthly performance trends.
     - **How**: Heatmap of monthly returns.
     - **Example**: April 2025: -9.25% loss.
 
-    Use the interactive charts, HTML report, and backtesting results to monitor breakouts and validate strategies.
+    Use the interactive charts, HTML report, and backtesting results to monitor breakouts and validate strategies. Click 'Clear' to start a new analysis.
     """)
