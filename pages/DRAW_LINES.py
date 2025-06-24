@@ -1015,6 +1015,15 @@ with st.expander("📚 Help: How the Analysis Works"):
     - **How**: Heatmap of monthly returns.
     - **Example**: April 2025: -9.25% loss.
 
+    #### 10. Trade Setups
+    - **Consolidation Detection**: Identifies periods where the stock price is moving sideways with low volatility, indicating a potential buildup before a breakout. Calculated by checking if ATR is less than 80% of its 20-day mean and ADX is below 20.
+    - **Breakout Detection**: Detects when the stock price breaks out of a consolidation range, signaling a potential buying opportunity. Triggered when the close exceeds the 20-day high, volume is above 80% of its 20-day mean, RSI is 30-80, MACD is above its signal, and Stochastic %K exceeds %D.
+    - **Trade Execution Setup**: Defines entry price, stop-loss, and take-profit levels. Entry is the close price, stop-loss is entry minus 1.5 * ATR, and take-profit is entry plus 3 * ATR for a 1:2 risk-reward ratio.
+    - **Latest Trade Setup**: Displays the most recent trade opportunity based on the latest buy signal. Extracts the date, entry price, stop-loss, and take-profit from the last row with a buy signal.
+
+    **Troubleshooting Tips**:
+    [Existing troubleshooting tips remain unchanged]
+
     **Troubleshooting Tips**:
     - **Real-Time Data Errors**: Ensure a single valid symbol (e.g., AAPL, not AAPL,MSFT) and date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-13). Check internet connectivity.
     - **Upload Errors**: Verify the file has columns: date, open, high, low, close, volume. Select a date range within the file’s range with at least 52 trading days. Use the sample file provided.
