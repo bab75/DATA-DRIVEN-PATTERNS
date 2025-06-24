@@ -422,17 +422,19 @@ def detect_consolidation_breakout(df):
     df['is_consolidation'] = (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
     df['resistance'] = df['high'].rolling(20).max()
     df['support'] = df['low'].rolling(20).min()
+    # Relaxed buy_signal conditions: Wider RSI range (30-80) and lower volume threshold (0.8 * mean)
     df['buy_signal'] = (df['close'] > df['resistance'].shift(1)) & \
-                       (df['volume'] > df['volume'].mean() * 1.0) & \
-                       ((df['rsi'] > 40) & (df['rsi'] < 70)) & \
+                       (df['volume'] > df['volume'].mean() * 0.8) & \
+                       ((df['rsi'] > 30) & (df['rsi'] < 80)) & \
                        (df['macd'] > df['signal']) & \
                        (df['stochastic_k'] > df['stochastic_d'])
+    df['stop_loss'] = df['close'] - 1.5 * df['atr']  # Compute stop_loss for all rows, not just buy signals
+    df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']  # Compute take_profit for all rows
     # Debug: Log buy signals
     num_buy_signals = df['buy_signal'].sum()
     st.write(f"Debug: Number of buy signals detected: {num_buy_signals}")
     if num_buy_signals == 0:
-        st.warning("No buy signals detected. Check data or relax conditions (e.g., RSI range, volume threshold).")
-        # Optional: Display first few rows with signal conditions for debugging
+        st.warning("No buy signals detected. Check data or relax conditions further if needed.")
         st.write("Debug: First 5 rows of signal conditions:", df[['close', 'resistance', 'volume', 'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d']].head())
     return df
 
@@ -835,6 +837,7 @@ excel_buffer.seek(0)
 st.download_button("Download Stock Data (Excel)", excel_buffer, file_name=f"{st.session_state.symbol}_analysis_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # Export PDF report
+# Export PDF report
 pdf_buffer = io.BytesIO()
 c = canvas.Canvas(pdf_buffer, pagesize=letter)
 c.setFont("Helvetica", 12)
@@ -855,10 +858,13 @@ c.drawString(70, 490, f"- Max Drawdown: {aapl_metrics['Max Drawdown']:.2f}%")
 c.drawString(70, 470, f"- Largest Loss: {aapl_metrics['Largest Loss']:.2f}% on {aapl_metrics['Largest Loss Date']}")
 c.drawString(70, 450, f"- Largest Gain: {aapl_metrics['Largest Gain']:.2f}% on {aapl_metrics['Largest Gain Date']}")
 c.drawString(50, 430, "Latest Trade Setup:")
+# Check if 'stop_loss' exists and use fallback if missing
+stop_loss_value = aapl_df['stop_loss'].iloc[-1] if 'stop_loss' in aapl_df.columns and not aapl_df['stop_loss'].iloc[-1] is None else 0.0
+take_profit_value = aapl_df['take_profit'].iloc[-1] if 'take_profit' in aapl_df.columns and not aapl_df['take_profit'].iloc[-1] is None else 0.0
 c.drawString(70, 410, f"- Date: {aapl_df['date'].iloc[-1].strftime('%m-%d-%Y')}")
 c.drawString(70, 390, f"- Entry: ${aapl_df['close'].iloc[-1]:.2f}")
-c.drawString(70, 370, f"- Stop-Loss: ${aapl_df['stop_loss'].iloc[-1]:.2f}")
-c.drawString(70, 350, f"- Take-Profit: ${aapl_df['take_profit'].iloc[-1]:.2f}")
+c.drawString(70, 370, f"- Stop-Loss: ${stop_loss_value:.2f}")
+c.drawString(70, 350, f"- Take-Profit: ${take_profit_value:.2f}")
 c.drawString(50, 330, "Backtesting Results:")
 c.drawString(70, 310, f"- Win Rate: {backtest_results['Win Rate']:.2f}%")
 c.drawString(70, 290, f"- Profit Factor: {backtest_results['Profit Factor']:.2f}")
