@@ -270,7 +270,7 @@ if data_file:
                 z=heatmap_data.values,
                 x=heatmap_data.columns,
                 y=heatmap_data.index,
-                colours='RdBu',
+                colorscale='RdBu',
                 zmid=0,
                 colorbar=dict(title="Return (%)")
             ))
