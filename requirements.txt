@@ -11,3 +11,4 @@ kaleido
 datetime 
 openpyxl
 pandas_market_calendars
+letter
