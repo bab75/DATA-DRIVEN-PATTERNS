@@ -141,6 +141,11 @@ if aapl_df.empty:
 # Calculate returns and metrics
 def calculate_metrics(df):
     df['daily_return'] = df['close'].pct_change()
+    # Handle non-finite daily returns
+    if df['daily_return'].isna().any() or np.isinf(df['daily_return']).any():
+        st.warning("Non-finite values (NaN or inf) detected in daily returns. Replacing with 0 for calculations.")
+        df['daily_return'] = df['daily_return'].replace([np.inf, -np.inf], np.nan).fillna(0)
+    
     df['cumulative_return'] = (1 + df['daily_return']).cumprod() - 1
     
     # Average Return (mean daily return)
@@ -166,9 +171,9 @@ def calculate_metrics(df):
     
     # Largest Single-Period Loss and Gain
     largest_loss = df['daily_return'].min() * 100  # in percentage
-    largest_loss_date = df.loc[df['daily_return'].idxmin(), 'date'].strftime('%d %B %Y') if not df['daily_return'].empty else "N/A"
+    largest_loss_date = df.loc[df['daily_return'].idxmin(), 'date'].strftime('%d %B %Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].min()) else "N/A"
     largest_gain = df['daily_return'].max() * 100  # in percentage
-    largest_gain_date = df.loc[df['daily_return'].idxmax(), 'date'].strftime('%d %B %Y') if not df['daily_return'].empty else "N/A"
+    largest_gain_date = df.loc[df['daily_return'].idxmax(), 'date'].strftime('%d %B %Y') if not df['daily_return'].empty and not np.isnan(df['daily_return'].max()) else "N/A"
     
     return {
         'Average Return': average_return,
@@ -357,10 +362,17 @@ if 'vwap' in aapl_df.columns:
                              hovertext=[f"VWAP: ${x:.2f}" for x in aapl_df['vwap']], hoverinfo='text+x'), row=5, col=1)
 
 # Win/Loss Distribution chart
-bins = np.histogram_bin_edges(aapl_df['daily_return'] * 100, bins=20)
-hist_data = np.histogram(aapl_df['daily_return'] * 100, bins=bins)
-fig.add_trace(go.Bar(x=bins[:-1], y=hist_data[0], name="Win/Loss Distribution", marker_color="#607d8b",
-                     hovertext=[f"Return: {x:.2f}% Count: {y}" for x, y in zip(bins[:-1], hist_data[0])], hoverinfo='text'), row=6, col=1)
+try:
+    valid_returns = aapl_df['daily_return'][aapl_df['daily_return'].notna() & ~aapl_df['daily_return'].isin([np.inf, -np.inf])]
+    if not valid_returns.empty:
+        bins = np.histogram_bin_edges(valid_returns * 100, bins=20)
+        hist_data = np.histogram(valid_returns * 100, bins=bins)
+        fig.add_trace(go.Bar(x=bins[:-1], y=hist_data[0], name="Win/Loss Distribution", marker_color="#607d8b",
+                             hovertext=[f"Return: {x:.2f}% Count: {y}" for x, y in zip(bins[:-1], hist_data[0])], hoverinfo='text'), row=6, col=1)
+    else:
+        st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available (all NaN or inf).")
+except Exception as e:
+    st.warning(f"Error plotting Win/Loss Distribution: {str(e)}. Skipping this chart.")
 
 fig.update_layout(height=1200, showlegend=True, template="plotly_white", title_text="AAPL Candlestick Analysis",
                   hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
