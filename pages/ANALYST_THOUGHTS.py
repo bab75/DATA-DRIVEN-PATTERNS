@@ -16,12 +16,13 @@ st.set_page_config(page_title="Stock Investment Analysis", layout="wide", initia
 st.markdown("""
     <style>
     .main { background-color: #1e1e1e; color: #ffffff; }
-    .sidebar .sidebar-content { background-color: #2c2c2c; }
+    .sidebar .sidebar-content { background-color: #2c2c2c; color: #ffffff; }
     .stButton>button { background-color: #4CAF50; color: white; border-radius: 5px; }
-    .stFileUploader label { color: #ffffff; }
-    h1, h2, h3 { color: #00d4ff; font-family: 'Arial', sans-serif; }
-    .stExpander { background-color: #2c2c2c; border-radius: 5px; }
-    .metric-box { background-color: #333333; padding: 10px; border-radius: 5px; }
+    .stFileUploader label, .stFileUploader span { color: #ffffff; }
+    h1, h2, h3, h4, h5, h6 { color: #00d4ff; font-family: 'Arial', sans-serif; }
+    .stExpander { background-color: #2c2c2c; border-radius: 5px; color: #ffffff; }
+    .metric-box { background-color: #333333; padding: 10px; border-radius: 5px; color: #ffffff; }
+    .css-1d391kg p, .css-1cpxqw2 { color: #f0f0f0; }
     </style>
 """, unsafe_allow_html=True)
 
