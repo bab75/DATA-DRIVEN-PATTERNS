@@ -67,6 +67,8 @@ def initialize_session_state():
         st.session_state.file_key = 0
     if 'profit_loss_unit' not in st.session_state:
         st.session_state.profit_loss_unit = "Percentage"
+    if 'steps_completed' not in st.session_state:
+        st.session_state.steps_completed = [False] * 4  # Initialize for 4 steps
 
 # Call initialize_session_state at app startup
 initialize_session_state()
@@ -83,7 +85,7 @@ with st.sidebar:
         st.session_state.clear()
         initialize_session_state()  # Reinitialize session state
         st.session_state.file_key += 1  # Increment after reinitialization
-        st.rerun()  # Replace experimental_rerun with rerun
+        st.rerun()
     if st.button("Mode Description"):
         st.write("""
         - **Raw Data (Open vs. Close)**: Analyzes profit/loss using opening and closing prices.
@@ -484,18 +486,20 @@ if uploaded_file and run_analysis:
     if dframe is None:
         st.stop()
     st.session_state.dframe = dframe
+    st.session_state.steps_completed[1] = True  # Step 2: Data loaded
     progress.progress(50)
 
     # Calculate rolling profit/loss
     with st.spinner("Calculating profit/loss..."):
         profit_loss_data = calculate_rolling_profit_loss(dframe, compare_days, analysis_mode)
     st.session_state.profit_loss_data = pd.DataFrame(profit_loss_data)
+    st.session_state.steps_completed[2] = True  # Step 3: Analysis completed
     progress.progress(100)
 
 # Display results if data is available
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 09:12 AM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 09:42 AM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -507,6 +511,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
     st.subheader("Price and Profit/Loss Visualization")
     fig = create_chart(st.session_state.dframe, st.session_state.profit_loss_data.to_dict('records'), analysis_mode, unit)
     st.plotly_chart(fig, use_container_width=True)
+    st.session_state.steps_completed[3] = True  # Step 4: Visualization displayed
 
     # Display table for all years
     st.subheader("Historical Profit/Loss by Year")
@@ -579,7 +584,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
                     # Recompute profit/loss
                     with st.spinner("Computing predictions..."):
                         st.session_state.profit_loss_data = pd.DataFrame(calculate_rolling_profit_loss(st.session_state.dframe, compare_days, analysis_mode))
-                    st.rerun()  # Replace experimental_rerun with rerun
+                    st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
     # Download all data
@@ -596,7 +601,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
     with st.expander("Download All Data"):
         st.download_button(label="Download as CSV", data=csv_all, file_name="all_profit_loss_data.csv", mime="text/csv")
 
-    # Help section
+    # Help and Total Functionality Summary sections
     with st.expander("Help"):
         st.write("""
         **Usage Guide**:
@@ -616,10 +621,23 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         - Install 'openpyxl' for Excel export: `pip install openpyxl`.
         """)
 
+    with st.expander("Total Functionality Summary"):
+        steps = [
+            "1. Upload a CSV or Excel file with stock data.",
+            "2. Load and preprocess the uploaded data.",
+            "3. Run the analysis to calculate profit/loss.",
+            "4. Visualize and explore the results (charts, tables, predictions)."
+        ]
+        completed = st.session_state.steps_completed
+        for i, step in enumerate(steps):
+            status = "✅ Completed" if completed[i] else "⏳ Pending"
+            st.write(f"{step} - {status}")
+
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 2.9 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 3.0 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
+    st.session_state.steps_completed[0] = True  # Step 1: File uploaded
 else:
     st.info("Please upload a CSV or Excel file to begin analysis.")
