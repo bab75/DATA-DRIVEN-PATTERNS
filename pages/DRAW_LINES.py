@@ -7,7 +7,6 @@ import numpy as np
 from datetime import datetime, timedelta
 import uuid
 import pdfkit
-import warnings
 import os
 
 # Check Plotly version
@@ -113,10 +112,12 @@ if data_file:
         df['stochastic_k'] = 100 * (df['close'] - df['low'].rolling(window=14).min()) / \
                              (df['high'].rolling(window=14).max() - df['low'].rolling(window=14).min())
         df['stochastic_d'] = df['stochastic_k'].rolling(window=3).mean()
-        df['atr'] = df[['high', 'low', 'close']].apply(
+        # Precompute close_shifted for ATR calculation
+        df['close_shifted'] = df['close'].shift()
+        df['atr'] = df[['high', 'low', 'close', 'close_shifted']].apply(
             lambda x: max(x['high'] - x['low'], 
-                          abs(x['high'] - x['close'].shift()), 
-                          abs(x['low'] - x['close'].shift())), axis=1).rolling(window=14).mean()
+                          abs(x['high'] - x['close_shifted']) if pd.notnull(x['close_shifted']) else 0, 
+                          abs(x['low'] - x['close_shifted']) if pd.notnull(x['close_shifted']) else 0), axis=1).rolling(window=14).mean()
         df['adx'] = df['atr'].rolling(window=14).mean() / df['close'] * 100
         df['std_dev'] = df['close'].rolling(window=20).std()
         df['upper_band'] = df['ma20'] + 2 * df['std_dev']
@@ -126,6 +127,8 @@ if data_file:
         df['senkou_span_a'] = ((df['ichimoku_tenkan'] + df['ichimoku_kijun']) / 2).shift(26)
         df['senkou_span_b'] = (df['high'].rolling(window=52).max() + df['low'].rolling(window=52).min()) / 2
         df['chikou_span'] = df['close'].shift(-26)
+        # Drop temporary column
+        df = df.drop(columns=['close_shifted'])
 
         # Consolidation and breakout detection
         def detect_consolidation_breakout(df):
@@ -267,7 +270,7 @@ if data_file:
                 z=heatmap_data.values,
                 x=heatmap_data.columns,
                 y=heatmap_data.index,
-                colorscale='RdBu',
+                colours='RdBu',
                 zmid=0,
                 colorbar=dict(title="Return (%)")
             ))
@@ -319,8 +322,9 @@ if data_file:
 else:
     st.info("Please upload AAPL_raw_data.csv or .xlsx to start analysis.")
 
- #Help section
-with st.expander("📚 Help: How the Analysis Works"):
+
+     #Help section
+    with st.expander("📚 Help: How the Analysis Works"):
     st.markdown("""
     ### Step-by-Step Analysis Explanation
     This app analyzes AAPL stock data to identify consolidation, breakouts, and trading setups, mimicking how analysts draw charts. Below is the process with a real-time example based on June 13, 2025.
