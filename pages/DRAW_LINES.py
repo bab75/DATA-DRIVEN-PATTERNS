@@ -44,9 +44,9 @@ st.session_state.setdefault('data_loaded', False)
 st.session_state.setdefault('data_processed', False)
 st.session_state.setdefault('symbol', 'AAPL')
 st.session_state.setdefault('start_date', pd.to_datetime('2025-01-01'))
-st.session_state.setdefault('end_date', pd.to_datetime('2025-06-24'))  # Updated to current date
+st.session_state.setdefault('end_date', pd.to_datetime('2025-06-13'))
 st.session_state.setdefault('report_from', pd.to_datetime('2025-01-01'))
-st.session_state.setdefault('report_to', pd.to_datetime('2025-06-24'))  # Updated to current date
+st.session_state.setdefault('report_to', pd.to_datetime('2025-06-13'))
 if 'aapl_df' not in st.session_state:
     st.session_state.aapl_df = pd.DataFrame()
 if 'pl_df' not in st.session_state:
@@ -80,7 +80,7 @@ secondary_file = st.sidebar.file_uploader(
 
 # Provide sample OHLCV file with 100 trading days
 np.random.seed(42)
-dates = pd.date_range(end='2025-06-24', periods=100, freq='B')  # Updated to current date
+dates = pd.date_range(end='2025-06-13', periods=100, freq='B')
 base_price = 195.00
 prices = base_price + np.cumsum(np.random.randn(100) * 0.5)
 sample_data = pd.DataFrame({
@@ -154,9 +154,9 @@ if clear:
     st.session_state.data_processed = False
     st.session_state.symbol = 'AAPL'
     st.session_state.start_date = pd.to_datetime('2025-01-01')
-    st.session_state.end_date = pd.to_datetime('2025-06-24')  # Updated to current date
+    st.session_state.end_date = pd.to_datetime('2025-06-13')
     st.session_state.report_from = pd.to_datetime('2025-01-01')
-    st.session_state.report_to = pd.to_datetime('2025-06-24')  # Updated to current date
+    st.session_state.report_to = pd.to_datetime('2025-06-13')
     st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
     st.session_state.report_date_range = (st.session_state.report_from, st.session_state.report_to)
     st.session_state.aapl_df = pd.DataFrame()
@@ -265,7 +265,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
             
             if len(aapl_df) < 52:
-                st.error(f"Insufficient data points ({len(aapl_df)}) for {symbol}. Please select a wider date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-24).")
+                st.error(f"Insufficient data points ({len(aapl_df)}) for {symbol}. Please select a wider date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-13).")
                 return pd.DataFrame(), pd.DataFrame()
         
         except Exception as e:
@@ -283,10 +283,8 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             volume = aapl_df['volume']
             
             aapl_df['rsi'] = ta.momentum.RSIIndicator(close, window=14).rsi()
-            macd = ta.trend.MACD(close)
-            aapl_df['macd'] = macd.macd()
-            aapl_df['signal'] = macd.macd_signal()
-            aapl_df['macd_diff'] = aapl_df['macd'] - aapl_df['signal']  # Added macd_diff
+            aapl_df['macd'] = ta.trend.MACD(close).macd()
+            aapl_df['signal'] = ta.trend.MACD(close).macd_signal()
             aapl_df['stochastic_k'] = ta.momentum.StochasticOscillator(high, low, close, window=14, smooth_window=3).stoch()
             aapl_df['stochastic_d'] = ta.momentum.StochasticOscillator(high, low, close, window=14, smooth_window=3).stoch_signal()
             aapl_df['adx'] = ta.trend.ADXIndicator(high, low, close, window=14).adx()
@@ -307,7 +305,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
             aapl_df['fib_618'] = recent_high - diff * 0.618
             
             indicator_cols = [
-                'rsi', 'macd', 'macd_diff', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr',
+                'rsi', 'macd', 'signal', 'stochastic_k', 'stochastic_d', 'adx', 'atr',
                 'senkou_span_a', 'senkou_span_b', 'ma20', 'std_dev', 'rvol',
                 'fib_236', 'fib_382', 'fib_50', 'fib_618'
             ]
@@ -583,13 +581,11 @@ def add_rsi_trace(fig, df, row):
     fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=row, col=1)
 
 def add_macd_stochastic_trace(fig, df, row):
-    if "MACD" in show_indicators and 'macd' in df.columns and 'signal' in df.columns:
+    if "MACD" in show_indicators:
         fig.add_trace(go.Scatter(x=df['date'], y=df['macd'], name="MACD", line=dict(color="#0288d1"),
                                  hovertext=[f"MACD: {x:.2f}" for x in df['macd']], hoverinfo='text+x'), row=row, col=1)
         fig.add_trace(go.Scatter(x=df['date'], y=df['signal'], name="Signal Line", line=dict(color="#ff9800"),
                                  hovertext=[f"Signal: {x:.2f}" for x in df['signal']], hoverinfo='text+x'), row=row, col=1)
-        fig.add_trace(go.Bar(x=df['date'], y=df['macd_diff'], name="MACD Histogram", marker_color="#607d8b",
-                             hovertext=[f"MACD Diff: {x:.2f}" for x in df['macd_diff']], hoverinfo='text+x'), row=row, col=1)
     if "Stochastic" in show_indicators:
         fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2",
                                  hovertext=[f"Stochastic %K: {x:.2f}" for x in df['stochastic_k']], hoverinfo='text+x'), row=row, col=1)
