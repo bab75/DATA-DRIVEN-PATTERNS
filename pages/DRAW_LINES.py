@@ -14,6 +14,7 @@ import ta
 import uuid
 import openpyxl
 import re
+import calendar  # Added to resolve NameError
 
 # Check Plotly version
 if plotly.__version__ < '5.0.0':
@@ -431,8 +432,8 @@ def backtest_strategy(df):
         if df['buy_signal'].iloc[i-1]:
             if position is None:
                 # Use fallback values with increased buffers
-                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.85  # 15% below close
-                take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1.15  # 15% above close
+                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.80  # 20% below close
+                take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1.20  # 20% above close
                 position = {
                     'entry_date': df['date'].iloc[i],
                     'entry_price': df['close'].iloc[i],
