@@ -12,5 +12,5 @@ datetime
 openpyxl
 pandas_market_calendars
 reportlab
-plotly>=5.0.0
+#plotly>=5.0.0
 pdfkit
