@@ -45,6 +45,8 @@ st.session_state.setdefault('data_processed', False)
 st.session_state.setdefault('symbol', 'AAPL')
 st.session_state.setdefault('start_date', pd.to_datetime('2025-01-01'))
 st.session_state.setdefault('end_date', pd.to_datetime('2025-06-13'))
+st.session_state.setdefault('report_from', pd.to_datetime('2025-01-01'))
+st.session_state.setdefault('report_to', pd.to_datetime('2025-06-13'))
 if 'aapl_df' not in st.session_state:
     st.session_state.aapl_df = pd.DataFrame()
 if 'pl_df' not in st.session_state:
@@ -114,7 +116,13 @@ st.sidebar.download_button(
 date_range_key = "date_range_input_upload" if data_source == "Upload CSV/XLSX" else "date_range_input_realtime"
 if 'date_range' not in st.session_state:
     st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
-date_range = st.sidebar.date_input("Select Date Range", value=st.session_state.date_range, key=date_range_key)
+date_range = st.sidebar.date_input("Select Data Range", value=st.session_state.date_range, key=date_range_key)
+
+# Report date range input
+report_date_range_key = "report_date_range_input"
+if 'report_date_range' not in st.session_state:
+    st.session_state.report_date_range = (st.session_state.report_from, st.session_state.report_to)
+report_date_range = st.sidebar.date_input("Select Report Date Range", value=st.session_state.report_date_range, key=report_date_range_key)
 
 st.sidebar.header("Chart Settings")
 show_indicators = st.sidebar.multiselect(
@@ -147,7 +155,10 @@ if clear:
     st.session_state.symbol = 'AAPL'
     st.session_state.start_date = pd.to_datetime('2025-01-01')
     st.session_state.end_date = pd.to_datetime('2025-06-13')
+    st.session_state.report_from = pd.to_datetime('2025-01-01')
+    st.session_state.report_to = pd.to_datetime('2025-06-13')
     st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
+    st.session_state.report_date_range = (st.session_state.report_from, st.session_state.report_to)
     st.session_state.aapl_df = pd.DataFrame()
     st.session_state.pl_df = pd.DataFrame()
     st.rerun()
@@ -203,16 +214,16 @@ def load_data(primary_file, data_source, symbol, start_date, end_date):
                 st.sidebar.write(f"File date range: {min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}")
                 
                 if start_date < min_date or end_date > max_date:
-                    st.error(f"Selected date range ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}) is outside the file's range ({min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}).")
+                    st.error(f"Selected data range ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}) is outside the file's range ({min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}).")
                     return pd.DataFrame(), pd.DataFrame()
                 
                 aapl_df = aapl_df[(aapl_df['date'] >= start_date) & (aapl_df['date'] <= end_date)]
                 if aapl_df.empty:
-                    st.error(f"No data available for the selected date range ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}). Please adjust the date range.")
+                    st.error(f"No data available for the selected data range ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}). Please adjust the date range.")
                     return pd.DataFrame(), pd.DataFrame()
                 
                 if len(aapl_df) < 52:
-                    st.error(f"Insufficient data points ({len(aapl_df)}) in selected date range. Please select a range with at least 52 trading days.")
+                    st.error(f"Insufficient data points ({len(aapl_df)}) in selected data range. Please select a range with at least 52 trading days.")
                     return pd.DataFrame(), pd.DataFrame()
             
             else:
@@ -331,7 +342,13 @@ if submit and not st.session_state.data_processed:
     st.session_state.start_date = pd.to_datetime(st.session_state[date_range_key][0])
     st.session_state.end_date = pd.to_datetime(st.session_state[date_range_key][1])
     st.session_state.date_range = (st.session_state.start_date, st.session_state.end_date)
+    st.session_state.report_from = pd.to_datetime(st.session_state[report_date_range_key][0])
+    st.session_state.report_to = pd.to_datetime(st.session_state[report_date_range_key][1])
+    st.session_state.report_date_range = (st.session_state.report_from, st.session_state.report_to)
     aapl_df, pl_df = load_data(primary_file, data_source, st.session_state.symbol, st.session_state.start_date, st.session_state.end_date)
+    # Filter data based on report date range
+    if not aapl_df.empty and st.session_state.report_from <= st.session_state.report_to:
+        aapl_df = aapl_df[(aapl_df['date'] >= st.session_state.report_from) & (aapl_df['date'] <= st.session_state.report_to)].copy()
     st.session_state.aapl_df = aapl_df
     st.session_state.pl_df = pl_df
     st.session_state.data_processed = True
@@ -620,7 +637,7 @@ for i, subplot in enumerate(subplot_order, 1):
     elif subplot == "Win/Loss Distribution":
         add_win_loss_trace(fig, st.session_state.aapl_df, i)
 
-fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white", title_text=f"{st.session_state.symbol} Candlestick Analysis",
+fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white", title_text=f"{st.session_state.symbol} Candlestick Analysis (Report: {st.session_state.report_from.strftime('%Y-%m-%d')} to {st.session_state.report_to.strftime('%Y-%m-%d')})",
                   hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
 fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=len(subplot_order), col=1)
 
@@ -642,6 +659,7 @@ for trace in fig.data:
 
 # Profit/Loss Analysis Section
 st.header("Profit/Loss Analysis")
+st.write(f"**Report Date Range:** {st.session_state.report_from.strftime('%Y-%m-%d')} to {st.session_state.report_to.strftime('%Y-%m-%d')}")
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.markdown(f"<div class='metric-box'><b>Average Return</b><br>{st.session_state.aapl_metrics['Average Return']:.2f}%</div>", unsafe_allow_html=True)
@@ -754,7 +772,7 @@ if secondary_file and not st.session_state.pl_df.empty:
                                        hovertext=[f"{st.session_state.symbol} Return: {x:.2%}" for x in st.session_state.aapl_df['cumulative_return']], hoverinfo='text+x'))
         fig_bench.add_trace(go.Scatter(x=st.session_state.pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800"),
                                        hovertext=[f"Benchmark Return: {x:.2%}" for x in pl_cum_return], hoverinfo='text+x'))
-        fig_bench.update_layout(title=f"{st.session_state.symbol} vs. Benchmark Cumulative Returns", height=400, template="plotly_white",
+        fig_bench.update_layout(title=f"{st.session_state.symbol} vs. Benchmark Cumulative Returns (Report: {st.session_state.report_from.strftime('%Y-%m-%d')} to {st.session_state.report_to.strftime('%Y-%m-%d')})", height=400, template="plotly_white",
                                 hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
         st.plotly_chart(fig_bench, use_container_width=True)
     except Exception as e:
@@ -777,7 +795,7 @@ fig_heatmap = go.Figure(data=go.Heatmap(
     hoverinfo='text'
 ))
 fig_heatmap.update_layout(
-    title="Monthly Average Returns Heatmap",
+    title=f"Monthly Average Returns Heatmap (Report: {st.session_state.report_from.strftime('%Y-%m-%d')} to {st.session_state.report_to.strftime('%Y-%m-%d')})",
     height=400,
     template="plotly_white",
     font=dict(family="Arial", size=12, color="#000000"),
@@ -792,18 +810,18 @@ st.header("Export Data and Reports")
 csv_buffer = io.StringIO()
 st.session_state.aapl_df.to_csv(csv_buffer, index=False)
 csv_buffer.seek(0)
-st.download_button("Download Stock Data (CSV)", csv_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_data.csv", mime="text/csv")
+st.download_button("Download Stock Data (CSV)", csv_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_data_{st.session_state.report_from.strftime('%Y-%m-%d')}_to_{st.session_state.report_to.strftime('%Y-%m-%d')}.csv", mime="text/csv")
 
 excel_buffer = io.BytesIO()
 st.session_state.aapl_df.to_excel(excel_buffer, index=False, engine='openpyxl')
 excel_buffer.seek(0)
-st.download_button("Download Stock Data (Excel)", excel_buffer, file_name=f"{st.session_state.symbol}_analysis_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+st.download_button("Download Stock Data (Excel)", excel_buffer, file_name=f"{st.session_state.symbol}_analysis_data_{st.session_state.report_from.strftime('%Y-%m-%d')}_to_{st.session_state.report_to.strftime('%Y-%m-%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # Export PDF report
 pdf_buffer = io.BytesIO()
 c = canvas.Canvas(pdf_buffer, pagesize=letter)
 c.setFont("Helvetica", 12)
-c.drawString(50, 750, f"{st.session_state.symbol} Stock Analysis Report")
+c.drawString(50, 750, f"{st.session_state.symbol} Stock Analysis Report ({st.session_state.report_from.strftime('%Y-%m-%d')} to {st.session_state.report_to.strftime('%Y-%m-%d')})")
 c.drawString(50, 730, f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M %Z')}")
 c.drawString(50, 710, f"Recommendation: {st.session_state.score['Recommendation']}")
 c.drawString(50, 690, "Scores:")
@@ -834,7 +852,7 @@ c.drawString(70, 250, f"- Trades: {st.session_state.backtest_results['Trades']}"
 c.showPage()
 c.save()
 pdf_buffer.seek(0)
-st.download_button("Download PDF Report", pdf_buffer, file_name=f"{st.session_state.symbol}_investment_report.pdf", mime="application/pdf")
+st.download_button("Download PDF Report", pdf_buffer, file_name=f"{st.session_state.symbol}_investment_report_{st.session_state.report_from.strftime('%Y-%m-%d')}_to_{st.session_state.report_to.strftime('%Y-%m-%d')}.pdf", mime="application/pdf")
 
 # Export HTML report
 if html_report_type == "Interactive (with Hover)":
@@ -856,7 +874,7 @@ html_content = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{symbol} Stock Analysis Report</title>
+    <title>{symbol} Stock Analysis Report ({report_from} to {report_to})</title>
     <style>
         body {{ font-family: Arial, sans-serif; background-color: #ffffff; color: #000000; margin: 20px; }}
         h1, h2 {{ color: #0288d1; }}
@@ -867,7 +885,7 @@ html_content = """
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body>
-    <h1>{symbol} Stock Analysis Report</h1>
+    <h1>{symbol} Stock Analysis Report ({report_from} to {report_to})</h1>
     <p><b>Date:</b> {date}</p>
     
     <div class="section">
@@ -927,6 +945,8 @@ html_content = """
 </html>
 """.format(
     symbol=st.session_state.symbol,
+    report_from=st.session_state.report_from.strftime('%Y-%m-%d'),
+    report_to=st.session_state.report_to.strftime('%Y-%m-%d'),
     date=datetime.now().strftime('%Y-%m-%d %H:%M %Z'),
     recommendation=st.session_state.score['Recommendation'],
     total_score=st.session_state.score['Total'],
@@ -954,7 +974,7 @@ html_content = """
 html_buffer = io.StringIO()
 html_buffer.write(html_content)
 html_buffer.seek(0)
-st.download_button("Download HTML Report", html_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_report.html", mime="text/html")
+st.download_button("Download HTML Report", html_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_report_{st.session_state.report_from.strftime('%Y-%m-%d')}_to_{st.session_state.report_to.strftime('%Y-%m-%d')}.html", mime="text/html")
 
 # Help section
 with st.expander("📚 Help: How the Analysis Works"):
@@ -965,8 +985,8 @@ with st.expander("📚 Help: How the Analysis Works"):
     #### 1. Data Collection
     - **What**: Use OHLC, volume, and technical indicators (RSI, MACD, Stochastic, Ichimoku, ADX, ATR, Fibonacci, RVOL) from uploaded file or Yahoo Finance.
     - **How**: 
-      - **Upload Mode**: Upload a CSV/XLSX file with columns: date, open, high, low, close, volume. Select a date range within the file’s data (at least 52 trading days).
-      - **Real-Time Mode**: Fetch data via Yahoo Finance with a single valid symbol (e.g., AAPL) and user-specified date range (at least 52 trading days).
+      - **Upload Mode**: Upload a CSV/XLSX file with columns: date, open, high, low, close, volume. Select a data range within the file’s data (at least 52 trading days).
+      - **Real-Time Mode**: Fetch data via Yahoo Finance with a single valid symbol (e.g., AAPL) and user-specified data range (at least 52 trading days).
     - **Example**: Close: $196.45, RSI: 52.30, Stochastic %K: 7.12, %D: 8.00, ADX: 31.79, Volume: 51.4M, ATR: $4.30, RVOL: 1.2.
 
     #### 2. Candlestick Analysis & Breakout Detection
