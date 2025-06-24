@@ -15,14 +15,13 @@ st.set_page_config(page_title="Stock Investment Analysis", layout="wide", initia
 # Custom CSS for styling
 st.markdown("""
     <style>
-    .main { background-color: #1e1e1e; color: #ffffff; }
-    .sidebar .sidebar-content { background-color: #1a1a1a; color: #E6E6FA; }
-    .stButton>button { background-color: #4CAF50; color: white; border-radius: 5px; }
-    .stFileUploader label, .stFileUploader span { color: #ffffff; }
-    h1, h2, h3, h4, h5, h6 { color: #00d4ff; font-family: 'Arial', sans-serif; }
-    .stExpander { background-color: #2c2c2c; border-radius: 5px; color: #ffffff; }
-    .metric-box { background-color: #333333; padding: 10px; border-radius: 5px; color: #ffffff; }
-    .css-1d391kg p, .css-1cpxqw2 { color: #f0f0f0; }
+    .main { background-color: #ffffff; color: #000000; }
+    .sidebar .sidebar-content { background-color: #f0f0f0; color: #000000; }
+    .stButton>button { background-color: #4CAF50; color: #ffffff; border-radius: 5px; }
+    .stFileUploader label { color: #000000; }
+    h1, h2, h3 { color: #0288d1; font-family: 'Arial', sans-serif; }
+    .stExpander { background-color: #f5f5f5; border-radius: 5px; }
+    .metric-box { background-color: #e0e0e0; padding: 10px; border-radius: 5px; color: #000000; }
     </style>
 """, unsafe_allow_html=True)
 
