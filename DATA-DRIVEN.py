@@ -165,28 +165,25 @@ def get_next_trading_date(df, current_date, trading_days):
 def generate_monthly_periods(compare_days, year=2024, exchange='NYSE'):
     periods = []
     nyse = mcal.get_calendar(exchange)
-    for month in range(1, 13):
-        start_date = datetime(year, month, 1).date()
-        end_date = datetime(year, month, [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month-1]).date()
-        if year % 4 == 0 and month == 2:
-            end_date = datetime(year, month, 29).date()
-        trading_days = get_trading_days(start_date, end_date)
-        if not trading_days.size:
-            continue
-        i = 0
-        while i < len(trading_days):
-            start_trading_date = trading_days[i]
-            end_trading_date = get_nth_trading_day(start_trading_date, compare_days, year)
-            if end_trading_date:
-                periods.append(format_date_range(start_trading_date, end_trading_date))
-            i += 1
+    start_date = datetime(year, 1, 1).date()
+    end_date = datetime(year, 12, 31).date()
+    trading_days = get_trading_days(start_date, end_date)
+    if not trading_days.size:
+        return periods
+    i = 0
+    while i < len(trading_days):
+        start_trading_date = trading_days[i]
+        end_trading_date = get_nth_trading_day(start_trading_date, compare_days, year)
+        if end_trading_date:
+            periods.append(format_date_range(start_trading_date, end_trading_date))
+        i += 1
     return periods
 
 # Function to calculate rolling profit/loss within each year
 def calculate_rolling_profit_loss(dframe, compare_days, mode):
     profit_loss_data = []
     current_year = datetime.now().year  # 2025
-    current_date = datetime.now().date()  # June 23, 2025
+    current_date = datetime.now().date()  # June 23, 2025, 10:00 PM EDT
     years = sorted(set(dframe['date'].apply(lambda x: x.year)))
     
     for year in years:
@@ -229,21 +226,21 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                     (year_df['date'] <= end_date)
                 ]
                 
-                if len(period_data) >= max(1, compare_days // 2):
+                if len(period_data) >= compare_days:  # Require full compare_days
                     start_price = period_data.iloc[0]['open']
                     end_price = period_data.iloc[-1]['close']
                     # Debug output for verification
-                    st.write(f"Debug - {year} {format_date_range(start_date, end_date)}: Open={start_price}, Close={end_price}")
+                    st.write(f"Debug - {year} {format_date_range(start_date, end_date)}: Open={start_price}, Close={end_price}, Data Points={len(period_data)}")
                     
                     # Mode-specific profit/loss calculation
                     if mode == "Raw Data (Open vs. Close)":
-                        profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else 0.0
-                        profit_loss_value = end_price - start_price if not np.isnan(end_price - start_price) else 0.0
+                        profit_loss_percent = ((end_price - start_price) / start_price) * 100 if not np.isnan(end_price - start_price) else None
+                        profit_loss_value = end_price - start_price if not np.isnan(end_price - start_price) else None
                     elif mode == "Open/Close/High/Low":
                         max_high = period_data['high'].max()
                         min_low = period_data['low'].min()
-                        profit_loss_percent = ((max_high - min_low) / start_price) * 100 if not np.isnan(max_high - min_low) else 0.0
-                        profit_loss_value = max_high - min_low if not np.isnan(max_high - min_low) else 0.0
+                        profit_loss_percent = ((max_high - min_low) / start_price) * 100 if not np.isnan(max_high - min_low) else None
+                        profit_loss_value = max_high - min_low if not np.isnan(max_high - min_low) else None
                     elif mode == "Technical Indicators":
                         rsi_avg = period_data['rsi'].mean()
                         macd_avg = period_data['macd'].mean()
@@ -256,16 +253,17 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
                             weight *= 1.1
                         elif macd_avg < 0:
                             weight *= 0.9
-                        profit_loss_percent = ((end_price - start_price) / start_price) * 100 * weight if not np.isnan(end_price - start_price) else 0.0
-                        profit_loss_value = (end_price - start_price) * weight if not np.isnan(end_price - start_price) else 0.0
+                        profit_loss_percent = ((end_price - start_price) / start_price) * 100 * weight if not np.isnan(end_price - start_price) else None
+                        profit_loss_value = (end_price - start_price) * weight if not np.isnan(end_price - start_price) else None
                     
-                    profit_loss_data.append({
-                        'Year': year,
-                        'Start Date': start_date,
-                        'End Date': end_date,
-                        'Profit/Loss (Percentage)': profit_loss_percent,
-                        'Profit/Loss (Value)': profit_loss_value
-                    })
+                    if profit_loss_percent is not None and profit_loss_value is not None:
+                        profit_loss_data.append({
+                            'Year': year,
+                            'Start Date': start_date,
+                            'End Date': end_date,
+                            'Profit/Loss (Percentage)': profit_loss_percent,
+                            'Profit/Loss (Value)': profit_loss_value
+                        })
                     last_end_date = end_date
                 
                 i += 1
@@ -318,107 +316,116 @@ def calculate_rolling_profit_loss(dframe, compare_days, mode):
 
 # Function to create interactive Plotly chart
 def create_chart(dframe, profit_loss_data, mode, unit):
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                        vertical_spacing=0.1, 
-                        subplot_titles=['Price Patterns', f'Profit/Loss ({unit})'],
-                        row_heights=[0.7, 0.3])
-    
-    color_map = {
-        2020: '#FF6B6B', 2021: '#4ECDC4', 2022: '#45B7D1', 2023: '#96CEB4',
-        2024: '#FFEEAD', 2025: '#D4A5A5',
-    }
-    
-    unique_years = set(d['Year'] for d in profit_loss_data)
-    for year in unique_years:
-        year_data = [d for d in profit_loss_data if d['Year'] == year and (not 'Prediction' in d or not d['Prediction'])]
-        if year_data:
-            dates = [d['Start Date'] for d in year_data]
-            valid_dates = [d for d in dates if d in dframe['date'].values]
-            if valid_dates:
-                if mode == "Raw Data (Open vs. Close)":
-                    prices = [dframe[dframe['date'] == d]['open'].iloc[0] for d in valid_dates]
-                    fig.add_trace(go.Scatter(
-                        x=valid_dates,
-                        y=prices,
-                        mode='lines+markers', name=f"Year {year} (Open)",
-                        line=dict(width=2, dash='solid', color=color_map[year]),
-                        hovertemplate='Date: %{x}<br>Price: %{y}<extra></extra>'
-                    ), row=1, col=1)
-                elif mode == "Open/Close/High/Low":
-                    highs = [dframe[dframe['date'] == d]['high'].iloc[0] for d in valid_dates]
-                    lows = [dframe[dframe['date'] == d]['low'].iloc[0] for d in valid_dates]
-                    fig.add_trace(go.Scatter(
-                        x=valid_dates,
-                        y=highs,
-                        mode='lines+markers', name=f"Year {year} (High)",
-                        line=dict(width=2, dash='solid', color=color_map[year]),
-                        hovertemplate='Date: %{x}<br>High: %{y}<extra></extra>'
-                    ), row=1, col=1)
-                    fig.add_trace(go.Scatter(
-                        x=valid_dates,
-                        y=lows,
-                        mode='lines+markers', name=f"Year {year} (Low)",
-                        line=dict(width=1, dash='dot', color=color_map[year]),
-                        hovertemplate='Date: %{x}<br>Low: %{y}<extra></extra>'
-                    ), row=1, col=1)
-                elif mode == "Technical Indicators":
-                    ma20 = [dframe[dframe['date'] == d]['ma20'].iloc[0] for d in valid_dates]
-                    fig.add_trace(go.Scatter(
-                        x=valid_dates,
-                        y=ma20,
-                        mode='lines+markers', name=f"Year {year} (MA20)",
-                        line=dict(width=2, dash='solid', color=color_map[year]),
-                        hovertemplate='Date: %{x}<br>MA20: %{y}<extra></extra>'
-                    ), row=1, col=1)
-    
-    profits = [d[f'Profit/Loss ({unit})'] for d in profit_loss_data]
-    dates = [d['Start Date'] for d in profit_loss_data]
-    unit_symbol = "%" if unit == "Percentage" else ""
-    fig.add_trace(go.Bar(
-        x=dates,
-        y=profits,
-        name=f'Profit/Loss ({unit})',
-        marker_color=['#006400' if p >= 0 else '#8B0000' for p in profits],
-        opacity=0.9,
-        hovertemplate=f'Date: %{{x}}<br>Profit/Loss: %{{y}}{unit_symbol}<extra></extra>'
-    ), row=2, col=1)
-    
-    fig.update_layout(
-        title=f"Stock Price and Profit/Loss Analysis ({mode})",
-        yaxis_title="Price",
-        yaxis2_title=f"Profit/Loss ({unit_symbol})",
-        xaxis_title="Date",
-        hovermode="x unified",
-        showlegend=True,
-        height=900,
-        template="plotly_white",
-        updatemenus=[dict(
-            type="dropdown",
-            direction="down",
-            buttons=list([
-                dict(label="All Years", method="update", args=[{"visible": [True] * len(fig.data)}]),
-                *[dict(label=f"Year {year}", method="update", args=[{"visible": [d.name.startswith(f"Year {year}") for d in fig.data]}]) for year in unique_years]
-            ]),
-            x=1.1, y=1.1
-        )]
-    )
-    fig.update_xaxes(tickformat="%b %d, %Y", tickangle=45)  # "Jan 10, 2020" with angle to avoid overlap
-    fig.update_yaxes(title_text="Price", row=1, col=1)
-    fig.update_yaxes(title_text=f"Profit/Loss ({unit_symbol})", row=2, col=1)
-    
-    # Download chart button
-    chart_div = fig.to_html(include_plotlyjs='cdn', full_html=False)
-    st.download_button(label="Download Chart", data=chart_div, file_name="stock_chart.html", mime="text/html")
-    
-    return fig
+    if not profit_loss_data or not dframe.empty:
+        try:
+            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
+                                vertical_spacing=0.1, 
+                                subplot_titles=['Price Patterns', f'Profit/Loss ({unit})'],
+                                row_heights=[0.7, 0.3])
+            
+            color_map = {
+                2020: '#FF6B6B', 2021: '#4ECDC4', 2022: '#45B7D1', 2023: '#96CEB4',
+                2024: '#FFEEAD', 2025: '#D4A5A5',
+            }
+            
+            unique_years = set(d['Year'] for d in profit_loss_data)
+            for year in unique_years:
+                year_data = [d for d in profit_loss_data if d['Year'] == year and (not 'Prediction' in d or not d['Prediction'])]
+                if year_data:
+                    dates = [d['Start Date'] for d in year_data]
+                    valid_dates = [d for d in dates if d in dframe['date'].values]
+                    if valid_dates:
+                        if mode == "Raw Data (Open vs. Close)":
+                            prices = [dframe[dframe['date'] == d]['open'].iloc[0] for d in valid_dates if not np.isnan(dframe[dframe['date'] == d]['open'].iloc[0])]
+                            fig.add_trace(go.Scatter(
+                                x=valid_dates,
+                                y=prices,
+                                mode='lines+markers', name=f"Year {year} (Open)",
+                                line=dict(width=2, dash='solid', color=color_map[year]),
+                                hovertemplate='Date: %{x}<br>Price: %{y}<extra></extra>'
+                            ), row=1, col=1)
+                        elif mode == "Open/Close/High/Low":
+                            highs = [dframe[dframe['date'] == d]['high'].iloc[0] for d in valid_dates if not np.isnan(dframe[dframe['date'] == d]['high'].iloc[0])]
+                            lows = [dframe[dframe['date'] == d]['low'].iloc[0] for d in valid_dates if not np.isnan(dframe[dframe['date'] == d]['low'].iloc[0])]
+                            fig.add_trace(go.Scatter(
+                                x=valid_dates,
+                                y=highs,
+                                mode='lines+markers', name=f"Year {year} (High)",
+                                line=dict(width=2, dash='solid', color=color_map[year]),
+                                hovertemplate='Date: %{x}<br>High: %{y}<extra></extra>'
+                            ), row=1, col=1)
+                            fig.add_trace(go.Scatter(
+                                x=valid_dates,
+                                y=lows,
+                                mode='lines+markers', name=f"Year {year} (Low)",
+                                line=dict(width=1, dash='dot', color=color_map[year]),
+                                hovertemplate='Date: %{x}<br>Low: %{y}<extra></extra>'
+                            ), row=1, col=1)
+                        elif mode == "Technical Indicators":
+                            ma20 = [dframe[dframe['date'] == d]['ma20'].iloc[0] for d in valid_dates if not np.isnan(dframe[dframe['date'] == d]['ma20'].iloc[0])]
+                            fig.add_trace(go.Scatter(
+                                x=valid_dates,
+                                y=ma20,
+                                mode='lines+markers', name=f"Year {year} (MA20)",
+                                line=dict(width=2, dash='solid', color=color_map[year]),
+                                hovertemplate='Date: %{x}<br>MA20: %{y}<extra></extra>'
+                            ), row=1, col=1)
+            
+            profits = [d[f'Profit/Loss ({unit})'] for d in profit_loss_data if d[f'Profit/Loss ({unit})'] is not None]
+            dates = [d['Start Date'] for d in profit_loss_data if d[f'Profit/Loss ({unit})'] is not None]
+            unit_symbol = "%" if unit == "Percentage" else ""
+            fig.add_trace(go.Bar(
+                x=dates,
+                y=profits,
+                name=f'Profit/Loss ({unit})',
+                marker_color=['#006400' if p >= 0 else '#8B0000' for p in profits],
+                opacity=0.9,
+                hovertemplate=f'Date: %{{x}}<br>Profit/Loss: %{{y}}{unit_symbol}<extra></extra>'
+            ), row=2, col=1)
+            
+            fig.update_layout(
+                title=f"Stock Price and Profit/Loss Analysis ({mode})",
+                yaxis_title="Price",
+                yaxis2_title=f"Profit/Loss ({unit_symbol})",
+                xaxis_title="Date",
+                hovermode="x unified",
+                showlegend=True,
+                height=900,
+                template="plotly_white",
+                updatemenus=[dict(
+                    type="dropdown",
+                    direction="down",
+                    buttons=list([
+                        dict(label="All Years", method="update", args=[{"visible": [True] * len(fig.data)}]),
+                        *[dict(label=f"Year {year}", method="update", args=[{"visible": [d.name.startswith(f"Year {year}") for d in fig.data]}]) for year in unique_years]
+                    ]),
+                    x=1.1, y=1.1
+                )]
+            )
+            fig.update_xaxes(tickformat="%b %d, %Y", tickangle=45)  # "Jan 10, 2020" with angle to avoid overlap
+            fig.update_yaxes(title_text="Price", row=1, col=1)
+            fig.update_yaxes(title_text=f"Profit/Loss ({unit_symbol})", row=2, col=1)
+            
+            # Download chart button
+            chart_div = fig.to_html(include_plotlyjs='cdn', full_html=False)
+            st.download_button(label="Download Chart", data=chart_div, file_name="stock_chart.html", mime="text/html")
+            
+            return fig
+        except Exception as e:
+            st.error(f"Chart rendering failed: {str(e)}. Please check data or try again.")
+            return None
+    else:
+        st.warning("No data available to display chart.")
+        return None
 
 # Function to create styled table for all years
 def create_year_table(profit_loss_data, compare_days, unit):
     if not profit_loss_data:
         return None, None
     
-    # Generate month-aligned trading periods
-    calendar_columns = generate_monthly_periods(compare_days, year=2024)
+    # Generate month-aligned trading periods using trading days
+    current_year = datetime.now().year
+    calendar_columns = generate_monthly_periods(compare_days, year=current_year, exchange='NYSE')
     
     # Create pivot table
     years = sorted(set(d['Year'] for d in profit_loss_data if d['Year'] < datetime.now().year or (d['Year'] == datetime.now().year and not 'Prediction' in d)))
@@ -433,7 +440,7 @@ def create_year_table(profit_loss_data, compare_days, unit):
             year_idx = years.index(d['Year'])
             date_range = format_date_range(d['Start Date'], d['End Date'])
             if date_range in table_data:
-                table_data[date_range][year_idx] = d[f'Profit/Loss ({unit})']
+                table_data[date_range][year_idx] = d[f'Profit/Loss ({unit})'] if d[f'Profit/Loss ({unit})'] is not None else 0
     
     df = pd.DataFrame(table_data)
     
@@ -478,7 +485,7 @@ if uploaded_file and run_analysis:
 # Display results
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 09:43 PM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: June 23, 2025, 10:00 PM EDT")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
@@ -489,7 +496,10 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
     # Create and display chart
     st.subheader("Price and Profit/Loss Visualization")
     fig = create_chart(st.session_state.dframe, st.session_state.profit_loss_data.to_dict('records'), analysis_mode, unit)
-    st.plotly_chart(fig, use_container_width=True)
+    if fig:
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Chart could not be generated. Please check the data or debug output.")
 
     # Display table for all years
     st.subheader("Historical Profit/Loss by Year")
@@ -564,7 +574,7 @@ if st.session_state.dframe is not None and st.session_state.profit_loss_data is 
         """)
 
     # Footer
-    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 3.1 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; padding: 10px; background-color: #F5F5F5; border-radius: 5px;">Version 3.2 | Developed with ❤️ by xAI</div>', unsafe_allow_html=True)
 
 elif uploaded_file:
     st.info("Please click 'Run Analysis' to process the uploaded data.")
