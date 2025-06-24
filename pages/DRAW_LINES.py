@@ -984,7 +984,7 @@ st.download_button("Download HTML Report", html_buffer.getvalue(), file_name=f"{
 with st.expander("📚 Help: How the Analysis Works"):
     help_text = """
     ### Step-by-Step Analysis Explanation
-    This app analyzes {symbol} stock data to identify consolidation, breakouts, and trading setups. Below is the process with a real-time example based on June 24, 2025.
+    This app analyzes {symbol} stock data to identify consolidation, breakouts, and trading setups. Below is the process with a real-time example based on June 13, 2025.
 
     #### 1. Data Collection
     - **What**: Use OHLC, volume, and technical indicators (RSI, MACD, Stochastic, Ichimoku, ADX, ATR, Fibonacci, RVOL) from uploaded file or Yahoo Finance.
@@ -1022,7 +1022,7 @@ with st.expander("📚 Help: How the Analysis Works"):
     #### 5. Breakout Timeframe Prediction
     - **What**: Estimate breakout timing.
     - **How**: Consolidation → 1-5 days; breakout → confirm in 1-3 days.
-    - **Example**: Consolidation on June 24, breakout expected by June 29, 2025.
+    - **Example**: Consolidation on June 13, breakout expected by June 18, 2025.
 
     #### 6. Scoring System
     - **What**: Combine performance, risk, technical signals, and volume.
@@ -1032,7 +1032,7 @@ with st.expander("📚 Help: How the Analysis Works"):
     #### 7. Visualization
     - **What**: Candlestick chart with Bollinger Bands, Ichimoku, RSI, MACD, Stochastic, ADX, RVOL, volume, and win/loss distribution.
     - **How**: Plotly charts with hover text and clickable trade details.
-    - **Example**: Hover shows Date: 06-24-2025, Month: June, Close: $196.45, RSI: 52.30, Volume: 51.4M. Click candlestick for trade setup.
+    - **Example**: Hover shows Date: 06-13-2025, Month: June, Close: $196.45, RSI: 52.30, Volume: 51.4M. Click candlestick for trade setup.
 
     #### 8. Benchmark Comparison
     - **What**: Compare {symbol} to benchmark (if uploaded).
@@ -1050,7 +1050,11 @@ with st.expander("📚 Help: How the Analysis Works"):
     - **Latest Trade Setup**: Displays the most recent trade opportunity based on the latest buy signal. Extracts the date, entry price, stop-loss, and take-profit from the last row with a buy signal.
 
     **Troubleshooting Tips**:
-    - **Real-Time Data Errors**: Ensure a single valid symbol (e.g., AAPL, not AAPL,MSFT) and date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-24). Check internet connectivity.
+    - **Real-Time Data Errors**: Ensure a single valid symbol (e.g., AAPL, not AAPL,MSFT) and date range (at least 52 trading days, e.g., 2024-01-01 to 2025-06-13). Check internet connectivity.
     - **Upload Errors**: Verify the file has columns: date, open, high, low, close, volume. Select a date range within the file’s range with at least 52 trading days. Use the sample file provided.
     - **No Trades in Backtesting**: Ensure sufficient data points (at least 52 trading days). Check debug messages for buy signal counts. Try a larger dataset or relax signal conditions in the code.
     - **Indicator Errors**: Ensure sufficient data points and valid numeric data.
+    - **Syntax Errors**: If errors persist, ensure Python 3.13 compatibility and check for indentation issues. Contact support with logs if on Streamlit Cloud.
+    - Click 'Clear' to start a new analysis.
+    """
+    st.markdown(help_text.format(symbol=st.session_state.symbol), unsafe_allow_html=True)
