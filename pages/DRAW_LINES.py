@@ -588,12 +588,12 @@ def add_candlestick_trace(fig, df, row):
 
 def add_rsi_trace(fig, df, row):
     fig.add_trace(
-        go.Scatter(x=df['index'], y=df['rsi'], 
-                     name="RSI", line=dict(color="#9c27b0"),
-                     hovertext=[f"RSI: {x:.2f}" for x in df['rsi']],
-                     hoverinfo='text+x'), row=row, col=1)
-        fig.add_hline(y=70, line_dash="dash", line_color="#f44336", row=row, col=1)
-        fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=row, col=1)
+        go.Scatter(x=df['date'], y=df['rsi'], 
+                   name="RSI", line=dict(color="#9c27b0"),
+                   hovertext=[f"RSI: {x:.2f}" for x in df['rsi']],
+                   hoverinfo='text+x'), row=row, col=1)
+    fig.add_hline(y=70, line_dash="dash", line_color="#f44336", row=row, col=1)  # Fixed indentation
+    fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=row, col=1)
 
 def add_macd_stochastic_trace(fig, df, row):
     if "MACD" in show_indicators and 'macd' in df.columns:
