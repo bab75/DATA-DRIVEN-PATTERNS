@@ -914,7 +914,7 @@ if not st.session_state.pl_df.empty:
         fig_bench.add_trace(
             go.Scatter(
                 x=st.session_state.aapl_df['date'], y=st.session_state.aapl_df['cumulative_return'],
-                name="Stock"st.session_state['symbol'],
+                name="Stock " + st.session_state['symbol'],  # Fixed line
                 line=dict(color="#4CAF50"),
                 hovertext=[f"{st.session_state['symbol']}: {x:.2%}" for x in st.session_state.aapl_df['cumulative_return']],
                 hoverinfo='text+x'
