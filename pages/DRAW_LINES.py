@@ -773,7 +773,8 @@ if st.session_state.trade_details and all(key in st.session_state.trade_details 
     st.header("Selected Trade Details")
     details = st.session_state.trade_details
     try:
-        rr_ratio = (details['Take-Profit'] - details['Close']) / (details['Close'] - details['Stop-Loss']) if (details['Close'] - details['Close']) > 0 else 'N/A'
+        rr_ratio = (details['Take-Profit'] - details['Close']) / (details['Close'] - details['Stop-Loss']) if (details['Close'] - details['Stop-Loss']) > 0 else 'N/A'
+        rr_ratio_display = f"{rr_ratio:.2f}" if isinstance(rr_ratio, float) else rr_ratio
         st.markdown(
             "<div class='trade-details'>"
             f"<b>Date:</b> {details['Date']}<br>"
@@ -781,7 +782,8 @@ if st.session_state.trade_details and all(key in st.session_state.trade_details 
             f"<b>Stop-Loss:</b> ${details['Stop-Loss']:.2f}<br>"
             f"<b>Take-Profit:</b> ${details['Take-Profit']:.2f}<br>"
             f"<b>Buy Signal:</b> {details['Buy Signal']}<br>"
-            f"<b>Risk-Reward Ratio:</b> {rr_ratio:.2f}" if isinstance(rr_ratio, float) else rr_ratio "</div>",
+            f"<b>Risk-Reward Ratio:</b> {rr_ratio_display}"
+            "</div>",
             unsafe_allow_html=True
         )
     except Exception as e:
