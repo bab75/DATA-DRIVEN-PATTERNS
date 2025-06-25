@@ -119,7 +119,8 @@ def validate_symbol(symbol):
 
 # Load and validate data
 @st.cache_data
-def load_data(primary_file, data_source, symbol, start_date, end_date, secondary_file=None):
+@st.cache_data
+def load_data(primary_file, data_source, symbol, start_date, end_date, secondary_file=None, benchmark_symbol=None):
     aapl_df = pd.DataFrame()
     pl_df = pd.DataFrame()
     
@@ -151,14 +152,17 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 st.write("Data types:", aapl_df.dtypes)
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Convert and validate date column
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', format='%m-%d-%Y')
+            # Flexible date parsing for M-D-YYYY and MM-DD-YYYY
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', infer_datetime_format=True)
             if aapl_df['date'].isna().all():
-                st.error("All dates in the 'date' column are invalid. Ensure dates are in MM-DD-YYYY format (e.g., 01-01-2020).")
+                st.error("All dates in the 'date' column are invalid. Supported formats include M-D-YYYY (e.g., 1-2-2025) and MM-DD-YYYY (e.g., 01-02-2025).")
                 st.write("Sample data (first 5 rows):", aapl_df.head())
                 return pd.DataFrame(), pd.DataFrame()
             
             aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
+            aapl_df['date'] = aapl_df['date'].dt.strftime('%m-%d-%Y')  # Standardize to MM-DD-YYYY
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], format='%m-%d-%Y')  # Re-convert to datetime
+            
             numeric_cols = ['open', 'high', 'low', 'close', 'volume']
             for col in numeric_cols:
                 aapl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
@@ -206,7 +210,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 st.error(f"Invalid symbol '{symbol}'. Use a valid stock symbol (e.g., AAPL, MSFT, BRK.B).")
                 return pd.DataFrame(), pd.DataFrame()
             
-            with st.spinner("Fetching data from Yahoo Finance..."):
+            with st.spinner(f"Fetching data for {symbol} from Yahoo Finance..."):
                 aapl_df = yf.download(symbol, start=start_date, end=end_date + timedelta(days=1), progress=False)
             
             if aapl_df.empty:
@@ -222,22 +226,20 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 try:
                     aapl_df = aapl_df.xs(symbol, level=1, axis=1, drop_level=True)
                 except KeyError:
-                    st.error(f"Unexpected multi-index data for {symbol}. Ensure a single valid symbol is entered (e.g., AAPL, not AAPL,MSFT).")
+                    st.error(f"Unexpected multi-index data for {symbol}. Ensure a single valid symbol is entered.")
                     return pd.DataFrame(), pd.DataFrame()
             
             aapl_df = aapl_df.reset_index().rename(columns={
                 'Date': 'date', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'
             })
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', infer_datetime_format=True)  # Flexible parsing
+            aapl_df['date'] = aapl_df['date'].dt.strftime('%m-%d-%Y')  # Standardize to MM-DD-YYYY
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], format='%m-%d-%Y')  # Re-convert to datetime
+            
             aapl_df = aapl_df.dropna(subset=['date'])
-            
-            if aapl_df.empty:
-                st.error("No valid dates in fetched data. Check the date range or try a different symbol.")
-                return pd.DataFrame(), pd.DataFrame()
-            
             aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
             
-            if len(aapl_df) < 10:
+            if aapl_df.empty or len(aapl_df) < 10:
                 st.error(
                     f"Insufficient data points ({len(aapl_df)}) for {symbol}. Select a wider date range "
                     f"(e.g., 01-01-2020 to {datetime.now().strftime('%m-%d-%Y')})."
@@ -259,8 +261,12 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 pl_df = pd.read_csv(secondary_file)
             elif secondary_file.name.endswith('.xlsx'):
                 pl_df = pd.read_excel(secondary_file)
-            pl_df['Start Date'] = pd.to_datetime(pl_df['Start Date'], errors='coerce', format='%m-%d-%Y')
-            pl_df['End Date'] = pd.to_datetime(pl_df['End Date'], errors='coerce', format='%m-%d-%Y')
+            pl_df['Start Date'] = pd.to_datetime(pl_df['Start Date'], errors='coerce', infer_datetime_format=True)
+            pl_df['Start Date'] = pl_df['Start Date'].dt.strftime('%m-%d-%Y')
+            pl_df['Start Date'] = pd.to_datetime(pl_df['Start Date'], format='%m-%d-%Y')
+            pl_df['End Date'] = pd.to_datetime(pl_df['End Date'], errors='coerce', infer_datetime_format=True)
+            pl_df['End Date'] = pl_df['End Date'].dt.strftime('%m-%d-%Y')
+            pl_df['End Date'] = pd.to_datetime(pl_df['End Date'], format='%m-%d-%Y')
             if pl_df[['Start Date', 'End Date', 'Profit/Loss (Percentage)']].isnull().any().any():
                 st.warning("Benchmark data contains null values. Proceeding without benchmark.")
                 pl_df = pd.DataFrame()
