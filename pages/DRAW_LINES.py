@@ -600,8 +600,8 @@ def add_volume_trace(fig, df, row):
                                     hovertext=[f"Volume: {x:,.0f}" for x in df['volume']], hoverinfo='text+x'), row=row, col=1)
     if 'vwap' in df.columns:
         fig.add_trace(go.Scatter(x=df['date'], y=df['vwap'], name="VWAP", line=dict(color='#0288d1'),
-                                 hovertext=[f"VWAP: ${x:.2f}" for x in df['vwap']], hoverinfo='text+x'), row=row, col=1))
-
+                                 hovertext=[f"VWAP: ${x:.2f}" for x in df['vwap']], hoverinfo='text+x'), row=row, col=1)
+                                
 def add_win_loss_distribution(fig, df, row):
     if 'daily_return' not in df.columns:
         st.warning("Cannot plot Win/Loss Distribution: 'daily_return' column is missing.")
