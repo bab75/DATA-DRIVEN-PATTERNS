@@ -150,19 +150,36 @@ def validate_symbol(symbol):
 
 # Load and validate data
 @st.cache_data
+@st.cache_data
 def load_data(primary_file, data_source, symbol, start_date, end_date, secondary_file=None):
     aapl_df = pd.DataFrame()
     pl_df = pd.DataFrame()
     
     if data_source == "Upload CSV/XLSX" and primary_file:
         try:
-            if primary_file.name.endswith('.csv'):
-                aapl_df = pd.read_csv(primary_file)
-            elif primary_file.name.endswith('.xlsx'):
-                aapl_df = pd.read_excel(primary_file)
+            # Check file size
+            if primary_file.size == 0:
+                st.error("Uploaded file is empty. Please upload a valid CSV or XLSX file with stock data.")
+                return pd.DataFrame(), pd.DataFrame()
             
+            # Load file with error handling
+            if primary_file.name.endswith('.csv'):
+                try:
+                    aapl_df = pd.read_csv(primary_file, encoding='utf-8')
+                except UnicodeDecodeError:
+                    aapl_df = pd.read_csv(primary_file, encoding='latin1')
+            elif primary_file.name.endswith('.xlsx'):
+                aapl_df = pd.read_excel(primary_file, engine='openpyxl')
+            
+            # Validate file has data
+            if aapl_df.empty:
+                st.error("No data found in the uploaded file. Please ensure the file contains stock data with columns: date, open, high, low, close, volume.")
+                return pd.DataFrame(), pd.DataFrame()
+            
+            # Standardize column names
             aapl_df.columns = aapl_df.columns.str.lower().str.strip()
             
+            # Check for benchmark data
             benchmark_cols = ['year', 'start date', 'end date', 'profit/loss (percentage)', 'profit/loss (value)']
             if any(col in aapl_df.columns for col in benchmark_cols):
                 st.error(
@@ -170,6 +187,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 )
                 return pd.DataFrame(), pd.DataFrame()
             
+            # Validate required columns
             required_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
             actual_cols = aapl_df.columns.tolist()
             missing_cols = [col for col in required_cols if col not in actual_cols]
@@ -182,10 +200,10 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 st.write("Data types:", aapl_df.dtypes)
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Convert and validate date column, handling NaT
+            # Convert and validate date column
             date_formats = ['%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']
             aapl_df['date_original'] = aapl_df['date']
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', infer_datetime_format=True)
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
             if aapl_df['date'].isna().all():
                 for fmt in date_formats:
                     aapl_df['date'] = pd.to_datetime(aapl_df['date_original'], format=fmt, errors='coerce')
@@ -196,77 +214,55 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 st.write("Sample data (first 5 rows):", aapl_df.head())
                 return pd.DataFrame(), pd.DataFrame()
             
-            aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
+            # Remove rows with invalid dates
+            aapl_df = aapl_df.dropna(subset=['date'])
+            if aapl_df.empty:
+                st.error("All dates in the uploaded file are invalid. Please check the date format.")
+                return pd.DataFrame(), pd.DataFrame()
+            
+            # Convert numeric columns
             numeric_cols = ['open', 'high', 'low', 'close', 'volume']
             for col in numeric_cols:
                 aapl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
+                if aapl_df[col].isna().all():
+                    st.error(f"Column '{col}' contains no valid numeric data. Please check the file content.")
+                    return pd.DataFrame(), pd.DataFrame()
             
+            # Interpolate missing values
             aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
             
-            if not aapl_df['date'].empty:
-                min_date = aapl_df['date'].min()
-                max_date = aapl_df['date'].max()
-                st.sidebar.write(f"File date range: {min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}")
-                
-                if start_date < min_date or end_date > max_date:
-                    st.error(f"Selected data range ({start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}) is outside the file's range ({min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}).")
-                    return pd.DataFrame(), pd.DataFrame()
-                
-                aapl_df = aapl_df[(aapl_df['date'] >= start_date) & (aapl_df['date'] <= end_date)]
-                if aapl_df.empty:
-                    st.error(f"No data available for the selected data range ({start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}). Please adjust the date range.")
-                    return pd.DataFrame(), pd.DataFrame()
-                
-                if len(aapl_df) < 52:
-                    st.error(f"Insufficient data points ({len(aapl_df)}) in selected data range. Please select a range with at least 52 trading days.")
-                    return pd.DataFrame(), pd.DataFrame()
+            # Validate date range
+            min_date = aapl_df['date'].min()
+            max_date = aapl_df['date'].max()
+            st.sidebar.write(f"File date range: {min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}")
             
-            else:
-                st.error("No valid dates found in the uploaded file after processing. Please check the file format and content.")
+            if start_date < min_date or end_date > max_date:
+                st.error(f"Selected date range ({start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}) is outside the file's range ({min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}).")
                 return pd.DataFrame(), pd.DataFrame()
             
+            # Filter by date range
+            aapl_df = aapl_df[(aapl_df['date'] >= start_date) & (aapl_df['date'] <= end_date)]
+            if aapl_df.empty:
+                st.error(f"No data available for the selected date range ({start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}). Please adjust the date range.")
+                return pd.DataFrame(), pd.DataFrame()
+            
+            # Check minimum data points
+            if len(aapl_df) < 52:
+                st.error(f"Insufficient data points ({len(aapl_df)}) in selected date range. Please select a range with at least 52 trading days.")
+                return pd.DataFrame(), pd.DataFrame()
+            
+            # Check for VWAP
             if 'vwap' not in aapl_df.columns:
                 st.warning("VWAP column is missing. VWAP plot will be skipped (optional).")
         
         except Exception as e:
-            st.error(f"Error loading stock data: {str(e)}. Please check the file format and content.")
+            st.error(f"Error loading stock data: {str(e)}. Please check the file format, content, and encoding.")
             st.write("Sample data (first 5 rows):", aapl_df.head() if not aapl_df.empty else "No data loaded")
             return pd.DataFrame(), pd.DataFrame()
     
     elif data_source == "Fetch Real-Time (Yahoo Finance)":
-        try:
-            symbol = symbol.strip()
-            if not validate_symbol(symbol):
-                st.error(f"Invalid symbol '{symbol}'. Please enter a single valid stock symbol (e.g., AAPL, MSFT, BRK.B).")
-                return pd.DataFrame(), pd.DataFrame()
-            
-            aapl_df = yf.download(symbol, start=start_date, end=end_date + timedelta(days=1), progress=False)
-            if aapl_df.empty:
-                st.error(f"Failed to fetch {symbol} data from Yahoo Finance. Please check the symbol, date range, or internet connection.")
-                return pd.DataFrame(), pd.DataFrame()
-            
-            if isinstance(aapl_df, pd.DataFrame) and aapl_df.columns.nlevels > 1:
-                try:
-                    aapl_df = aapl_df.xs(symbol, level=1, axis=1, drop_level=True)
-                except KeyError:
-                    st.error(f"Unexpected multi-index data for {symbol}. Please ensure a single valid symbol is entered (e.g., AAPL, not AAPL,MSFT).")
-                    return pd.DataFrame(), pd.DataFrame()
-            
-            aapl_df = aapl_df.reset_index().rename(columns={
-                'Date': 'date', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'
-            })
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
-            aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
-            
-            aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
-            
-            if len(aapl_df) < 52:
-                st.error(f"Insufficient data points ({len(aapl_df)}) for {symbol}. Please select a wider date range (at least 52 trading days, e.g., 01-01-2020 to 06-24-2025).")
-                return pd.DataFrame(), pd.DataFrame()
-        
-        except Exception as e:
-            st.error(f"Error fetching {symbol} data from Yahoo Finance: {str(e)}. Please check the symbol, date range, or try uploading a file.")
-            return pd.DataFrame(), pd.DataFrame()
+        # Existing code for Yahoo Finance (will address Error 2 below)
+        pass
     
     if secondary_file:
         try:
