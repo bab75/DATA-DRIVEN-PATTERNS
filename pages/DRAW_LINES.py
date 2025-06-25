@@ -63,24 +63,23 @@ symbol = st.sidebar.text_input("Stock Symbol (e.g., AAPL)", value=st.session_sta
 # File uploaders
 primary_file = st.sidebar.file_uploader("Upload Stock Data (CSV/XLSX)", type=["csv", "xlsx"], key="primary_file")
 secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV/XLSX)", type=["csv", "xlsx"], key="secondary_file")
-
 # Auto-update date range for uploaded files
-if primary_file and data_source == "Upload CSV/XLSX":
-    # Load file temporarily to get date range
-    temp_df = pd.read_csv(primary_file) if primary_file.name.endswith('.csv') else pd.read_excel(primary_file)
-    temp_df['date'] = pd.to_datetime(temp_df['date'], errors='coerce')
-    if not temp_df['date'].isna().all():
-        file_min_date = temp_df['date'].min()
-        file_max_date = temp_df['date'].max()
-        # Update session state with file dates
-        st.session_state['auto_min_date'] = file_min_date
-        st.session_state['auto_max_date'] = file_max_date
-    else:
-        st.session_state['auto_min_date'] = pd.to_datetime('2020-01-01')
-        st.session_state['auto_max_date'] = pd.to_datetime('2025-06-24')
-else:
-    st.session_state['auto_min_date'] = pd.to_datetime('2020-01-01')
-    st.session_state['auto_max_date'] = pd.to_datetime('2025-06-24')
+	if primary_file and data_source == "Upload CSV/XLSX":
+	# Load file temporarily to get date range
+	temp_df = pd.read_csv(primary_file) if primary_file.name.endswith('.csv') else pd.read_excel(primary_file)
+	temp_df['date'] = pd.to_datetime(temp_df['date'], errors='coerce')
+	if not temp_df['date'].isna().all():
+	file_min_date = temp_df['date'].min()
+	file_max_date = temp_df['date'].max()
+	# Update session state with file dates
+	st.session_state['auto_min_date'] = file_min_date
+	st.session_state['auto_max_date'] = file_max_date
+	else:
+	st.session_state['auto_min_date'] = pd.to_datetime('2020-01-01')
+	st.session_state['auto_max_date'] = pd.to_datetime('2025-06-24')
+	else:
+	st.session_state['auto_min_date'] = pd.to_datetime('2020-01-01')
+	st.session_state['auto_max_date'] = pd.to_datetime('2025-06-24')
 
 # Dynamic date inputs based on loaded data
 if 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
@@ -89,11 +88,11 @@ if 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
         min_date = valid_dates.min()
         max_date = valid_dates.max()
     else:
-        min_date = st.session_state['auto_min_date']
-        max_date = st.session_state['auto_max_date']
+        min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
+        max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
 else:
-    min_date = st.session_state['auto_min_date']
-    max_date = st.session_state['auto_max_date']
+    min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
+    max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
 
 from_date = st.sidebar.date_input("From Date", value=min_date, min_value=min_date, max_value=max_date, key="from_date_input", format="MM-DD-YYYY")
 to_date = st.sidebar.date_input("To Date", value=max_date, min_value=min_date, max_value=max_date, key="to_date_input", format="MM-DD-YYYY")
