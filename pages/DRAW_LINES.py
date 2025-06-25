@@ -110,6 +110,7 @@ def validate_symbol(symbol):
     return bool(re.match(r'^[A-Za-z0-9.]+$', symbol.strip()))
 
 # Load and validate data
+
 @st.cache_data
 def load_data(primary_file, data_source, symbol, start_date, end_date, secondary_file=None):
     aapl_df = pd.DataFrame()
@@ -143,7 +144,13 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 st.write("Data types:", aapl_df.dtypes)
                 return pd.DataFrame(), pd.DataFrame()
             
+            # Convert and validate date column, handling NaT
             aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', format='%m-%d-%Y')
+            if aapl_df['date'].isna().all():
+                st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates in MM-DD-YYYY format.")
+                return pd.DataFrame(), pd.DataFrame()
+            
+            aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
             numeric_cols = ['open', 'high', 'low', 'close', 'volume']
             for col in numeric_cols:
                 aapl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
@@ -169,7 +176,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                     return pd.DataFrame(), pd.DataFrame()
             
             else:
-                st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates.")
+                st.error("No valid dates found in the uploaded file after processing. Please check the file format and content.")
                 return pd.DataFrame(), pd.DataFrame()
             
             if 'vwap' not in aapl_df.columns:
@@ -202,7 +209,8 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
             aapl_df = aapl_df.reset_index().rename(columns={
                 'Date': 'date', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'
             })
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], format='%m-%d-%Y')
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
+            aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
             
             aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
             
@@ -421,7 +429,7 @@ def calculate_score(metrics, signals):
     technical_score = sum([10 if s in ['Buy', 'Strong Trend'] else 0 for s in signals.values()])
     volume_score = 20 if st.session_state.aapl_df['volume'].iloc[-1] > st.session_state.aapl_df['volume'].mean() else 10
     total_score = performance_score + risk_score + technical_score + volume_score
-    recommendation = 'Buy' if total_score > 70 else 'Hold' if total_score > 50 else 'Avoid'
+    recommendation = 'Buy' if total_score > 70 else 'Hold' if total_score > 50 else 'Market'
     return {
         'Performance': performance_score,
         'Risk': risk_score,
@@ -631,8 +639,12 @@ st.markdown(
 
 # Alerts Section
 st.header("Price Movement Alerts")
-for alert in st.session_state.alerts:
-    st.markdown(f"<div class='alert-box'>{alert}</div>", unsafe_allow_html=True)
+with st.expander("View Alerts"):
+    if 'alerts' in st.session_state and st.session_state.alerts:
+        alerts_df = pd.DataFrame(st.session_state.alerts, columns=['Alert'])
+        st.table(alerts_df)
+    else:
+        st.write("No significant price movements (>2%) detected.")
 
 # Backtesting Results
 st.header("Backtesting Results")
@@ -1008,12 +1020,12 @@ if not st.session_state.aapl_df.empty:
     json.dump(json_data, json_buffer)
     json_buffer.seek(0)
     st.download_button("Download JSON Report", json_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_report_{min_date}_to_{max_date}.json", mime="application/json")
-    
+
 # Help section
 with st.expander("📚 Help: How the Analysis Works"):
     help_text = """
     ### Step-by-Step Analysis Explanation
-    This app analyzes {symbol} stock data to identify consolidation, breakouts, and trading setups. Below is the process with a real-time example based on 06:13 PM EDT, June 24, 2025.
+    This app analyzes {symbol} stock data to identify consolidation, breakouts, and trading setups. Below is the process with a real-time example based on current data.
 
     #### 1. Data Collection
     - **What**: Use OHLC, volume, and technical indicators (RSI, MACD, Stochastic, Ichimoku, ADX, ATR, Fibonacci, RVOL) from uploaded file or Yahoo Finance.
@@ -1054,9 +1066,9 @@ with st.expander("📚 Help: How the Analysis Works"):
     - **How**: Consolidation → 1-5 days; breakout → confirm in 1-3 days.
     - **Example**: Consolidation on 06-24-2025, breakout expected by 06-29-2025.
 
-    #### 6. Scoring System
-    - **What**: Combine performance, risk, technical signals, and volume.
-    - **How**: Total = Performance (30) + Risk (20) + Technical (30) + Volume (20). Buy if >70.
+    #### 6. Scoring System & Recommendation
+    - **What**: Combine performance, risk, technical signals, and volume to determine a recommendation.
+    - **How**: Total = Performance (30) + Risk (20) + Technical (30) + Volume (20). Recommendation: Buy if >70, Hold if >50, Market if ≤50.
     - **Example**: Total: 75/100, Recommendation: Buy.
 
     #### 7. Price Prediction
@@ -1084,14 +1096,6 @@ with st.expander("📚 Help: How the Analysis Works"):
     - **Example**: April 2025: -9.25% loss.
 
     #### 12. Trade Setups
-    - **Consolidation Detection**: Identifies periods where the stock price is moving sideways with low volatility, indicating a potential buildup before a breakout. Calculated by checking if ATR is less than 80% of its 20-day mean and ADX is below 20.
-    - **Breakout Detection**: Detects when the stock price breaks out of a consolidation range, signaling a potential buying opportunity. Triggered when the close exceeds the 20-day high, volume is above 80% of its 20-day mean, RSI is 30-80, MACD is above its signal, and Stochastic %K exceeds %D.
-    - **Trade Execution Setup**: Defines entry price, stop-loss, and take-profit levels. Entry is the close price, stop-loss is entry minus 1.5 * ATR, and take-profit is entry plus 3 * ATR for a 1:2 risk-reward ratio.
-    - **Latest Trade Setup**: Displays the most recent trade opportunity based on the latest buy signal. Extracts the date, entry price, stop-loss, and take-profit from the last row with a buy signal.
-
-    **Troubleshooting Tips**:
-    - **Real-Time Data Errors**: Ensure a single valid symbol (e.g., AAPL, not AAPL,MSFT) and date range (at least 52 trading days, e.g., 01-01-2010 to 06-24-2025). Check internet connectivity.
-    - **Upload Errors**: Verify the file has columns: date, open, high, low, close, volume. Select a date range within the file’s range with at least 52 trading days. Use the sample file provided.
-    - **No Trades in Backtesting**: Ensure sufficient data points (at least 52 trading days). Check debug messages for buy signal counts. Try a larger dataset or relax signal conditions in the code.
-    - **"""
+    - **Consolidation Detection**: Identifies periods where the stock price is moving sideways with low volatility, indicating a potential buildup before a breakout. Calculated by checking if ATR is less than 80% of its 20-day mean and ADX < 20.
+    """
     st.write(help_text.format(symbol=st.session_state.symbol))
