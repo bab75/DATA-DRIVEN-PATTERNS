@@ -64,18 +64,42 @@ symbol = st.sidebar.text_input("Stock Symbol (e.g., AAPL)", value=st.session_sta
 primary_file = st.sidebar.file_uploader("Upload Stock Data (CSV/XLSX)", type=["csv", "xlsx"], key="primary_file")
 secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV/XLSX)", type=["csv", "xlsx"], key="secondary_file")
 
-# Dynamic date inputs based on loaded data
-if 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
+# Dynamic date inputs based on loaded data or data source
+if data_source == "Upload CSV/XLSX" and primary_file:
+    # Read file temporarily to get date range
+    try:
+        if primary_file.name.endswith('.xlsx'):
+            temp_df = pd.read_excel(primary_file)
+        else:
+            temp_df = pd.read_csv(primary_file)
+        temp_df.columns = temp_df.columns.str.lower().str.strip()
+        if 'date' in temp_df.columns:
+            # Try multiple date formats
+            temp_df['date'] = pd.to_datetime(temp_df['date'], errors='coerce')
+            valid_dates = temp_df['date'].dropna()
+            if not valid_dates.empty:
+                min_date = valid_dates.min()
+                max_date = valid_dates.max()
+            else:
+                min_date = pd.to_datetime('01-01-2020')
+                max_date = pd.to_datetime('06-24-2025').tz_localize('America/New_York')
+        else:
+            min_date = pd.to_datetime('01-01-2020')
+            max_date = pd.to_datetime('06-24-2025').tz_localize('America/New_York')
+    except Exception:
+        min_date = pd.to_datetime('01-01-2020')
+        max_date = pd.to_datetime('06-24-2025').tz_localize('America/New_York')
+elif 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
     valid_dates = st.session_state.aapl_df['date'].dropna()
     if not valid_dates.empty:
         min_date = valid_dates.min()
         max_date = valid_dates.max()
     else:
-        min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-        max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+        min_date = pd.to_datetime('01-01-2020')
+        max_date = pd.to_datetime('06-24-2025').tz_localize('America/New_York')
 else:
-    min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-    max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+    min_date = pd.to_datetime('01-01-2020')
+    max_date = pd.to_datetime('06-24-2025').tz_localize('America/New_York')
 
 from_date = st.sidebar.date_input("From Date", value=min_date, min_value=min_date, max_value=max_date, key="from_date_input", format="MM-DD-YYYY")
 to_date = st.sidebar.date_input("To Date", value=max_date, min_value=min_date, max_value=max_date, key="to_date_input", format="MM-DD-YYYY")
@@ -151,14 +175,16 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 st.write("Data types:", aapl_df.dtypes)
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Convert and validate date column, handling NaT
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', format='%m-%d-%Y')
+            # Enhanced date parsing for multiple formats
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
             if aapl_df['date'].isna().all():
-                st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates in MM-DD-YYYY format.")
+                st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates (e.g., m/d/yyyy, mm/dd/yyyy, yyyy-mm-dd).")
                 st.write("Sample data (first 5 rows):", aapl_df.head())
                 return pd.DataFrame(), pd.DataFrame()
             
-            aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
+            aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with invalid dates
+            # Convert dates to mm-dd-yyyy format
+            aapl_df['date'] = aapl_df['date'].dt.strftime('%m-%d-%Y').apply(lambda x: pd.to_datetime(x, format='%m-%d-%Y'))
             numeric_cols = ['open', 'high', 'low', 'close', 'volume']
             for col in numeric_cols:
                 aapl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
@@ -168,19 +194,19 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
             if not aapl_df['date'].empty:
                 min_date = aapl_df['date'].min()
                 max_date = aapl_df['date'].max()
-                st.sidebar.write(f"File date range: {min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}")
+                st.sidebar.write(f"File date: range {min_date:.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y'))}")
                 
                 if start_date < min_date or end_date > max_date:
-                    st.error(f"Selected data range ({start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}) is outside the file's range ({min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}).")
+                    st.error(f"Selected data range ({start_date.strftime('%m-%d-%Y')}) to {end_date.strftime('%m-%d-%d')) is outside the file's range ({min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')).}"))
                     return pd.DataFrame(), pd.DataFrame()
                 
                 aapl_df = aapl_df[(aapl_df['date'] >= start_date) & (aapl_df['date'] <= end_date)]
                 if aapl_df.empty:
-                    st.error(f"No data available for the selected data range ({start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}). Please adjust the date range.")
+                    st.error(f"No data available for the selected date range ({start_date.strftime('%m-%d-%Y')}) to {end_date.strftime('%m-%d-%Y')). Please adjust the date range."})
                     return pd.DataFrame(), pd.DataFrame()
                 
                 if len(aapl_df) < 52:
-                    st.error(f"Insufficient data points ({len(aapl_df)}) in selected data range. Please select a range with at least 52 trading days.")
+                    st.error(f"Insufficient data points ({len(aapl_df)}) in selected date range. Please select a range with at least 52 trading days."})
                     return pd.DataFrame(), pd.DataFrame()
             
             else:
@@ -236,8 +262,8 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 pl_df = pd.read_csv(secondary_file)
             elif secondary_file.name.endswith('.xlsx'):
                 pl_df = pd.read_excel(secondary_file)
-            pl_df['Start Date'] = pd.to_datetime(pl_df['Start Date'], errors='coerce', format='%m-%d-%Y')
-            pl_df['End Date'] = pd.to_datetime(pl_df['End Date'], errors='coerce', format='%m-%d-%Y')
+            pl_df['Start Date'] = pd.to_datetime(pl_df['Start Date'], errors='coerce')
+            pl_df['End Date'] = pd.to_datetime(pl_df['End Date'], errors='coerce')
             if pl_df[['Start Date', 'End Date', 'Profit/Loss (Percentage)']].isnull().any().any():
                 st.warning("Benchmark data contains null values. Proceeding without benchmark.")
                 pl_df = pd.DataFrame()
@@ -250,8 +276,8 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
 if submit and not st.session_state.data_processed:
     st.session_state.data_loaded = True
     st.session_state.symbol = st.session_state.symbol_input
-    st.session_state.start_date = pd.to_datetime(from_date, format='%m-%d-%Y')
-    st.session_state.end_date = pd.to_datetime(to_date, format='%m-%d-%Y')
+    st.session_state.start_date = pd.to_datetime(from_date)
+    st.session_state.end_date = pd.to_datetime(to_date)
     aapl_df, pl_df = load_data(primary_file, data_source, st.session_state.symbol, st.session_state.start_date, st.session_state.end_date, secondary_file)
     st.session_state.aapl_df = aapl_df
     st.session_state.pl_df = pl_df
@@ -461,7 +487,7 @@ def predict_price(df):
     predicted_prices = model.predict(next_days)
     last_date = df['date'].iloc[-1]
     if pd.isna(last_date):
-        last_date = pd.Timestamp.now(tz='America/New_York')  # Fallback to current date/time if last date is NaT
+        last_date = pd.Timestamp.now(tz='America/New_York')
     date_range = pd.date_range(start=last_date, periods=5, freq='B')
     return pd.DataFrame({
         'date': date_range,
@@ -490,15 +516,18 @@ fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical
 
 def add_candlestick_trace(fig, df, row):
     if not pd.api.types.is_datetime64_any_dtype(df['date']):
-        df['date'] = pd.to_datetime(df['date'], errors='coerce', format='%m-%d-%Y')
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
     df['date'] = df['date'].fillna(pd.NaT)
 
+    # Enhanced hover text with buy signal highlighting
     hover_texts = [
-        "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}".format(
-            date=getattr(r, 'date').strftime('%m-%d-%Y') if pd.notna(getattr(r, 'date')) else 'N/A',
-            month=getattr(r, 'date').strftime('%B') if pd.notna(getattr(r, 'date')) else 'N/A',
-            open=getattr(r, 'open'), high=getattr(r, 'high'), low=getattr(r, 'low'),
-            close=getattr(r, 'close'), volume=getattr(r, 'volume'), rsi=getattr(r, 'rsi'), rvol=getattr(r, 'rvol')
+        "<span style='color: {}'><b>{}</b></span><br>Date: {}<br>Month: {}<br>Open: ${:.2f}<br>High: ${:.2f}<br>Low: ${:.2f}<br>Close: ${:.2f}<br>Volume: {:,.0f}<br>RSI: {:.2f}<br>RVOL: {:.2f}".format(
+            '#006400' if getattr(r, 'buy_signal') else '#000000',
+            'Buy Signal' if getattr(r, 'buy_signal') else 'No Signal',
+            getattr(r, 'date').strftime('%m-%d-%Y') if pd.notna(getattr(r, 'date')) else 'N/A',
+            getattr(r, 'date').strftime('%B') if pd.notna(getattr(r, 'date')) else 'N/A',
+            getattr(r, 'open'), getattr(r, 'high'), getattr(r, 'low'),
+            getattr(r, 'close'), getattr(r, 'volume'), getattr(r, 'rsi'), getattr(r, 'rvol')
         )
         for r in df.itertuples()
     ]
@@ -581,8 +610,8 @@ def add_win_loss_trace(fig, df, row):
     if not valid_returns.empty:
         bins = np.histogram_bin_edges(valid_returns * 100, bins=20)
         hist_data = np.histogram(valid_returns * 100, bins=bins)
-        fig.add_trace(go.Bar(x=bins[:-1], y=hist_data[0], name="Win/Loss Distribution", marker_color="#607d8b",
-                             hovertext=[f"Return: {x:.2f}% Count: {y}" for x, y in zip(bins[:-1], hist_data[0])], hoverinfo='text'), row=row, col=1)
+        fig.add_trace(go.Bar(x=df, bins[:-1], y=df, hist_data[0], name="Win/Loss Distribution", marker_color="blue",
+                                                                                 hover_text=[f"Return: {x}:.2f}% Count: {y}" for x, y in zip(bins[:-1:], hist_data[0])], hoverinfo='text'), row=row, col=1)
     else:
         st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available.")
 
@@ -600,7 +629,8 @@ for i, subplot in enumerate(subplot_order, 1):
     elif subplot == "Win/Loss Distribution":
         add_win_loss_trace(fig, st.session_state.aapl_df, i)
 
-fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white", title_text=f"{st.session_state.symbol} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
+fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white",
+                  title_text=f"{st.session_state.symbol} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
                   hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
 fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=len(subplot_order), col=1)
 
@@ -622,7 +652,7 @@ for trace in fig.data:
 
 # Profit/Loss Analysis Section
 st.header("Profit/Loss Analysis")
-st.write(f"**Date Range:** {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')}")
+st.write(f"**Date Range**: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')}")
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.markdown(f"<div class='metric-box'><b>Average Return</b><br>{st.session_state.aapl_metrics['Average Return']:.2f}%</div>", unsafe_allow_html=True)
@@ -635,7 +665,9 @@ with col4:
 st.markdown(
     "<div class='metric-box'><b>Significant Events</b><br>"
     "Largest single-period loss was {largest_loss:.2f}% on {largest_loss_date}, indicating a significant market correction.<br>"
-    "Largest single-period gain was {largest_gain:.2f}% on {largest_gain_date}.</div>".format(
+    "<br>Largest single-period gain was {largest_gain:.2f}% on {largest_gain_date}."
+    "</div>",
+    format=(
         largest_loss=st.session_state.aapl_metrics['Largest Loss'],
         largest_loss_date=st.session_state.aapl_metrics['Largest Loss Date'],
         largest_gain=st.session_state.aapl_metrics['Largest Gain'],
@@ -648,29 +680,30 @@ st.markdown(
 st.header("Price Movement Alerts")
 with st.expander("View Alerts"):
     if 'alerts' in st.session_state and st.session_state.alerts:
-        # Parse alerts into a DataFrame with date and percentage change
+        # Parse alerts into DataFrame
         alerts_df = pd.DataFrame({
             'Date': [alert.split(': ')[0] for alert in st.session_state.alerts],
             'Change (%)': [float(alert.split(': ')[1].replace('% change', '')) for alert in st.session_state.alerts]
         })
         # Add filters for min and max percentage change
-        min_change = st.slider("Minimum % Change", -100.0, 100.0, -100.0, 0.1)
-        max_change = st.slider("Maximum % Change", -100.0, 100.0, 100.0, 0.1)
+        min_change = st.slider("Minimum % Change", min_value=-100.0, max_value=100.0, value=-100.0, step=0.1)
+        max_change = st.slider("Maximum % Change", min_value=-100.0, max_value=100.0, value=100.0, step=0.0.1)
         filtered_alerts = alerts_df[(alerts_df['Change (%)'] >= min_change) & (alerts_df['Change (%)'] <= max_change)]
         
         if not filtered_alerts.empty:
             # Split into two columns for two-row display
             col1, col2 = st.columns(2)
             with col1:
-                st.table(filtered_alerts.iloc[:len(filtered_alerts)//2])
+                st.table(filtered_alerts.iloc[:len(filtered_alerts)]//2])
             with col2:
-                st.table(filtered_alerts.iloc[len(filtered_alerts)//2:])
+                st.table(filtered_alerts.iloc[len(filtered_alerts)//2:])])
         else:
             st.write("No alerts match the selected percentage change range.")
     else:
         st.write("No significant price movements (>2%) detected.")
 
 # Backtesting Results
+st.header("Backtesting Results')
 st.header("Backtesting Results")
 col1, col2, col3, col4 = st.columns(4)
 with col1:
@@ -686,17 +719,17 @@ with col4:
 st.header("Price Prediction (Next 5 Trading Days)")
 prediction_df = st.session_state.price_prediction
 fig_pred = go.Figure()
-fig_pred.add_trace(go.Scatter(x=prediction_df['date'], y=prediction_df['predicted_close'], mode='lines+markers', name="Predicted Close", line=dict(color="#0288d1"),
-                              hovertext=[f"Date: {d.strftime('%m-%d-%Y')}<br>Predicted Close: ${p:.2f}" for d, p in zip(prediction_df['date'], prediction_df['predicted_close'])], hoverinfo='text+x'))
-fig_pred.update_layout(title=f"{st.session_state.symbol} Price Prediction", height=400, template="plotly_white",
-                       hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
+fig_pred.add_trace(go.Scatter(x=dfprediction['date'], y=df['predicted_close'], mode='lines+markers', name="Predicted Close", line=dict(color='#0288d1'),
+                              hovertext=[f"{x:.strftime('%Y-%m-%d')}: ${y:.2f}" for x, y in zip(prediction_df['date'], ['predicted_close'])], hoverinfo='text'))
+fig_pred.update_layout(title_text=f"{st.session_state['symbol']}: Price Prediction", height=400, template="plotly_white",
+                             hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
 st.plotly_chart(fig_pred, use_container_width=True)
 
 # Decision Dashboard
 st.header("Decision Dashboard")
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.markdown(f"<div class='metric-box'><b>Recommendation</b><br>{st.session_state.score['Recommendation']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box'><b>Recommendation</b> {st.session_state.score['Recommendation']}</div>", unsafe_allow_html=True)
 with col2:
     st.markdown(f"<div class='metric-box'><b>Total Score</b><br>{st.session_state.score['Total']:.1f}/100</div>", unsafe_allow_html=True)
 with col3:
@@ -711,10 +744,10 @@ with col3:
 
 # Display trade details
 if st.session_state.trade_details and all(key in st.session_state.trade_details for key in ['Date', 'Close', 'Stop-Loss', 'Take-Profit', 'Buy Signal']):
-    st.header("Selected Trade Details")
+    st.header("Trade Details")
     details = st.session_state.trade_details
     try:
-        rr_ratio = (details['Take-Profit'] - details['Close']) / (details['Close'] - details['Stop-Loss']) if (details['Close'] - details['Stop-Loss']) > 0 else 'N/A'
+        rr_ratio = (details['Take-Profit'] - details['Close']) / (details['Close'] - details['Stop-Loss']) if (details['Close'] - details['Stop-Loss']) > 0 else float('inf')
         st.markdown(
             "<div class='trade-details'>"
             "<b>Date:</b> {date}<br>"
@@ -723,7 +756,8 @@ if st.session_state.trade_details and all(key in st.session_state.trade_details 
             "<b>Take-Profit:</b> ${take_profit:.2f}<br>"
             "<b>Buy Signal:</b> {buy_signal}<br>"
             "<b>Risk-Reward Ratio:</b> {rr_ratio}"
-            "</div>".format(
+            "</div>",
+            format=(
                 date=details['Date'],
                 close=details['Close'],
                 stop_loss=details['Stop-Loss'],
@@ -748,7 +782,8 @@ if latest_buy is not None:
         "<b>Entry:</b> ${entry:.2f}<br>"
         "<b>Stop-Loss:</b> ${stop_loss:.2f}<br>"
         "<b>Take-Profit:</b> ${take_profit:.2f}"
-        "</div>".format(
+        "</div>",
+        format=(
             date=latest_buy['date'].strftime('%m-%d-%Y'),
             entry=latest_buy['close'],
             stop_loss=latest_buy['stop_loss'],
@@ -762,271 +797,272 @@ st.plotly_chart(fig, use_container_width=True)
 
 # Benchmark comparison
 fig_bench = None
-if st.session_state.get('secondary_file') and not st.session_state.pl_df.empty:
+if st.session_state.get('secondary_file') and not st.session_state['pl_df'].empty:
     st.header("Benchmark Comparison")
     try:
         pl_cum_return = (1 + st.session_state.pl_df['Profit/Loss (Percentage)'] / 100).cumprod() - 1
         fig_bench = go.Figure()
-        fig_bench.add_trace(go.Scatter(x=st.session_state.aapl_df['date'], y=st.session_state.aapl_df['cumulative_return'], name=st.session_state.symbol, line=dict(color="#0288d1"),
-                                       hovertext=[f"{st.session_state.symbol} Return: {x:.2%}" for x in st.session_state.aapl_df['cumulative_return']], hoverinfo='text+x'))
-        fig_bench.add_trace(go.Scatter(x=st.session_state.pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800"),
-                                       hovertext=[f"Benchmark Return: {x:.4f}" for x in pl_cum_return], hoverinfo='text+x'))
-        fig_bench.update_layout(title=f"{st.session_state.symbol} vs. Benchmark Cumulative Returns (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})", height=400, template="plotly_white",
-                                hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
+        fig_bench.add_trace(go.Scatter(x=dfst.session_state.aapl_df['date'], y=df['cumulative_return'], name="Benchmark", st.session_state.symbol], line=dict(color="#0288d1"),
+                                                               hovertext=[f"{st.session_state.symbol}: {x:.2%}" for x in st.session_state.aapl_df['cumulative_return']], hoverinfo='text+x'))
+        fig_bench.add_trace(go.Scatter(x=dfst.session_state.pl_df['End Date'], y=dfpl_cum_return, name="Benchmark", line=dict(color="#ff9800"),
+                                                               hovertext=[f"Benchmark Return: {x:.4f}" for x in plpl_cum_return], hoverinfo='text+x'))
+        fig_bench.update_layout(title_text=f"{st.session_state.symbol} vs {Benchmark}. Total Returns (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%d')})", height=400, template="plotly_white",
+                                                               hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis='xaxis_tickformat', "%m-%d-%Y")
         st.plotly_chart(fig_bench, use_container_width=True)
     except Exception as e:
         st.warning(f"Error plotting benchmark comparison: {str(e)}. Skipping benchmark chart.")
+        pass
 
 # Seasonality heatmap
-st.header("Seasonality Analysis")
+st.header("Analysis Seasonality Analysis")
 if not pd.api.types.is_datetime64_any_dtype(st.session_state.aapl_df['date']):
     st.session_state.aapl_df['date'] = pd.to_datetime(st.session_state.aapl_df['date'], errors='coerce', format='%m-%d-%Y')
 st.session_state.aapl_df['month'] = st.session_state.aapl_df['date'].dt.month
 st.session_state.aapl_df['year'] = st.session_state.aapl_df['date'].dt.year
-monthly_returns = st.session_state.aapl_df.groupby(['year', 'month'])['daily_return'].mean().unstack() * 100
-month_names = {i: calendar.month_name[i] for i in range(1, 13)}
+monthly_returns = st.session_state.aapl_df.groupby(['year', 'month'])['daily_return'].mean().unstack(level=-1) * 100
+month_names = {i: calendar.month_names[i] for i in range(1, 13)}
 fig_heatmap = go.Figure(data=go.Heatmap(
-    z=monthly_returns.values,
-    x=[month_names[col] for col in monthly_returns.columns],
-    y=monthly_returns.index,
-    colorscale="RdYlGn",
-    hovertext=[[f"Return: {x:.2f}%" for x in row] for row in monthly_returns.values],
-    hoverinfo='text'
-))
+        z=monthly_returns.values,
+        x=[month_names[i] for i in range(month_names)],
+        y=monthly_returns.index,
+        colorscale="RdYlGn",
+        hovertext=[[f'{x:.2f}%' for x in row] for row in monthly_returns.values],
+        hoverinfo='text'
+    ))
 fig_heatmap.update_layout(
-    title=f"Monthly Average Returns Heatmap (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
-    height=400,
-    template="plotly_white",
-    font=dict(family="Arial", size=12, color="#000000"),
-    xaxis_title="Month",
-    yaxis_title="Year",
-    xaxis=dict(tickmode='array', tickvals=list(month_names.values()), ticktext=list(month_names.values()))
-)
+        title_text=f"Monthly Average Returns (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%Y-%m-%d')})",
+        height=400,
+        template="plotly_white",
+        font=dict(family="Arial", size=12, color="#000000"),
+        xaxis_title="Month",
+        yaxis_title="Year",
+        xaxis=dict(xaxis=dict(tickmode='array', titlevals=list(month_names.values()), titletext=list(month_names.values())))
+    ))
 st.plotly_chart(fig_heatmap, use_container_width=True)
 
 # Export data as CSV and Excel
 st.header("Export Data and Reports")
 if not st.session_state.aapl_df.empty:
-    # Filter out NaT values and get valid min/max dates
+    # Filter out NaT values and get valid dates
     valid_dates = st.session_state.aapl_df['date'].dropna()
-    if not valid_dates.empty:
+    if valid_dates.empty:
         min_date = valid_dates.min().strftime('%m-%d-%Y')
-        max_date = valid_dates.max().strftime('%m-%d-%Y')
+        max_date = valid_dates.max().strftime('%Y-%m-%d')
     else:
-        min_date = '01-01-2020'  # Fallback if no valid dates
-        max_date = '06-24-2025'  # Current date as fallback
+        min_date = '01-01-2020'
+        max_date = '06-24-2025'
     csv_buffer = io.StringIO()
     st.session_state.aapl_df.to_csv(csv_buffer, index=False)
     csv_buffer.seek(0)
-    st.download_button("Download Stock Data (CSV)", csv_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_data_{min_date}_to_{max_date}.csv", mime="text/csv")
+    st.download_button("Download Stock Data", csv_buffer.getvalue(), file_name=f"{st.session_state.symbol}_data_{min_date}_to_{max_date}.csv", mime="text/csv")
 
     excel_buffer = io.BytesIO()
     st.session_state.aapl_df.to_excel(excel_buffer, index=False, engine='openpyxl')
     excel_buffer.seek(0)
-    st.download_button("Download Stock Data (Excel)", excel_buffer, file_name=f"{st.session_state.symbol}_analysis_data_{min_date}_to_{max_date}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    st.download_button("Download Stock Excel", excel_buffer.getvalue(), file_name=f"{st.session_state.symbol}_data_{min_date}_to_{max_date}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # Export PDF report
 if not st.session_state.aapl_df.empty:
     valid_dates = st.session_state.aapl_df['date'].dropna()
     if not valid_dates.empty:
         min_date = valid_dates.min().strftime('%m-%d-%Y')
-        max_date = valid_dates.max().strftime('%m-%d-%Y')
+        max_date = valid_dates.max().strftime('%Y-%m-%d')
     else:
         min_date = '01-01-2020'
-        max_date = '06-24-2025'
+        max_date = '06-25-2025'
     pdf_buffer = io.BytesIO()
     c = canvas.Canvas(pdf_buffer, pagesize=letter)
-    c.setFont("Helvetica", 12)
+    c.setFont(fontName="Helvetica", size=12)
     c.drawString(50, 750, f"{st.session_state.symbol} Stock Analysis Report ({min_date} to {max_date})")
-    c.drawString(50, 730, f"Date: {datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y %I:%M %p EDT')}")
+    c.drawString(50, 730, f"Date: {datetime.now(pytz.timezone('America/New_York')).strftime('%Y-%m-%d %I:%M %p EDT')}")
     c.drawString(50, 710, f"Recommendation: {st.session_state.score['Recommendation']}")
     c.drawString(50, 690, "Scores:")
-    c.drawString(70, 670, f"- Performance: {st.session_state.score['Performance']:.1f}/30")
-    c.drawString(70, 650, f"- Risk: {st.session_state.score['Risk']:.1f}/20")
-    c.drawString(70, 630, f"- Technical: {st.session_state.score['Technical']:.1f}/30")
-    c.drawString(70, 610, f"- Volume: {st.session_state.score['Volume']:.1f}/20")
-    c.drawString(70, 590, f"- Total: {st.session_state.score['Total']:.1f}/100")
+    c.drawString(70, 670, f"- Performance: {st.session_state.score['Performance']:.1f}")
+    c.drawString(70, 650, f"- Risk Score: {st.session_state.score['Risk']:.1f}")
+    c.drawString(70, 630, f"- Technical Score: {st.session_state.score['Technical']:.1f}")
+    c.drawString(70, 610, f"- Volume Score: {st.session_state.score['Volume']:.1f}")
+    c.drawString(70, 590, f"- Total Score: {st.session_state.score['Total']:.1f}/100")
     c.drawString(50, 570, "Key Metrics:")
-    c.drawString(70, 550, f"- Average Return: {st.session_state.aapl_metrics['Average Return']:.2f}%")
-    c.drawString(70, 530, f"- Volatility: {st.session_state.aapl_metrics['Volatility']:.2f}%")
-    c.drawString(70, 510, f"- Win Ratio: {st.session_state.aapl_metrics['Win Ratio']:.2f}%")
+    c.drawString(70, 550, f"- Average: {avg_return:.2f}%")
+    c.drawString(70, 530, f"- Volatility: {st.session_state.avg_metrics['Volatility']:.2f}%")
+    c.drawString(70, 510, f"-Win Ratio: {st.session_state.aapl_metrics['Win Ratio']:.2f}%")
     c.drawString(70, 490, f"- Max Drawdown: {st.session_state.aapl_metrics['Max Drawdown']:.2f}%")
-    c.drawString(70, 470, f"- Largest Loss: {st.session_state.aapl_metrics['Largest Loss']:.2f}% on {st.session_state.aapl_metrics['Largest Loss Date']}")
-    c.drawString(70, 450, f"- Largest Gain: {st.session_state.aapl_metrics['Largest Gain']:.2f}% on {st.session_state.aapl_metrics['Largest Gain Date']}")
+    c.drawString(70, 470, f"- Largest Loss: {st.session_state.largest_loss:.2f}% on {st.session_state.largest_loss_date}")
+    c.drawString(70, 450, f"- Largest Gain: {st.session_state.largest_gain:.2f}% on {st.session_state.largest_gain_date}")
     c.drawString(50, 430, "Latest Trade Setup:")
-    stop_loss_value = st.session_state.aapl_df['stop_loss'].iloc[-1] if 'stop_loss' in st.session_state.aapl_df.columns and not st.session_state.aapl_df['stop_loss'].iloc[-1] is None else 0.0
-    take_profit_value = st.session_state.aapl_df['take_profit'].iloc[-1] if 'take_profit' in st.session_state.aapl_df.columns and not st.session_state.aapl_df['take_profit'].iloc[-1] is None else 0.0
-    c.drawString(70, 410, f"- Date: {st.session_state.aapl_df['date'].iloc[-1].strftime('%m-%d-%Y')}")
-    c.drawString(70, 390, f"- Entry: ${st.session_state.aapl_df['close'].iloc[-1]:.2f}")
-    c.drawString(70, 370, f"- Stop-Loss: ${stop_loss_value:.2f}")
-    c.drawString(70, 350, f"- Take-Profit: ${take_profit_value:.2f}")
+    stop_loss_value = st.session_state.aapl_df['stop_loss'].iloc[-1] if 'stop_loss' in st.session_state.aapl_df.columns and pd.notna(st.session_state.aapl_df['stop_loss'].iloc[-1]) else 0.0
+    take_profit_value = st.session_state.aapl_df['take_profit'].iloc[-1] if 'take_profit' in st.session_state.aapl_df.columns and pd.notna(st.session_state.aapl_df['take_profit'].iloc[-1]) else 0.0
+    c.drawString(70, 410, f"- Date: {st.session_state.date.strftime('%Y-%m-%d')}")
+    c.drawString(70, 390, f"- Entry: ${st.session_state.entry:.2f}")
+    c.drawString(70, 370, f"- Stop-Loss: ${stop_loss:.2f}")
+    c.drawString(70, 350, f"- Take-Profit: ${take_profit:.2f}")
     c.drawString(50, 330, "Backtesting Results:")
-    c.drawString(70, 310, f"- Win Rate: {st.session_state.backtest_results['Win Rate']:.2f}%")
-    c.drawString(70, 290, f"- Profit Factor: {st.session_state.backtest_results['Profit Factor']:.2f}")
-    c.drawString(70, 270, f"- Total Return: {st.session_state.backtest_results['Total Return']:.2f}%")
-    c.drawString(70, 250, f"- Trades: {st.session_state.backtest_results['Trades']}")
+    c.drawString(70, 310, f"- Win Rate: {rate:.2f}%")
+    c.drawString(70, 290, f"- Profit Factor: {st.session_state.profit_factor:.2f}")
+    c.drawString(70, 270, f"- Total Return: {total_return:.2f}%")
+    c.drawString(70, 250, f"- Trades: {st.session_state.trades}")
     c.showPage()
     c.save()
-    pdf_buffer.seek(0)
-    st.download_button("Download PDF Report", pdf_buffer, file_name=f"{st.session_state.symbol}_investment_report_{min_date}_to_{max_date}.pdf", mime="application/pdf")
+    st.download_button("Download PDF Report", data=pdf_buffer.getvalue(), file_name=f"{st.session_state.symbol}_report_{min_date}_to_{max_date}.pdf", mime="application/pdf")
 
 # Export HTML report
 if not st.session_state.aapl_df.empty:
     valid_dates = st.session_state.aapl_df['date'].dropna()
     if not valid_dates.empty:
-        min_date = valid_dates.min().strftime('%m-%d-%Y')
-        max_date = valid_dates.max().strftime('%m-%d-%Y')
+        min_date = valid_dates.min().strftime('%m-%Y-%Y')
+        max_date = valid_dates.max().strftime('%Y-%m-%d')
     else:
         min_date = '01-01-2020'
-        max_date = '06-24-2025'
+        max_date = '2025-06-25'
     if html_report_type == "Interactive (with Hover)":
         candlestick_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
-        bench_html = fig_bench.to_html(include_plotlyjs='cdn', full_html=False) if fig_bench else ""
+        bench_html = fig_bench.to_html(include_plotlyjs='cdn', full_html=False) if fig_bench else None
         heatmap_html = fig_heatmap.to_html(include_plotlyjs='cdn', full_html=False)
         pred_html = fig_pred.to_html(include_plotlyjs='cdn', full_html=False)
     else:
         candlestick_img = fig.to_image(format="png")
-        candlestick_img_b64 = base64.b64encode(candlestick_img).decode()
-        bench_img_b64 = fig_bench.to_image(format="png") if fig_bench else None
-        bench_img_b64 = base64.b64encode(bench_img_b64).decode() if bench_img_b64 else ""
+        candlestick_img_b64 = base64.b64encode(candlestick_img).decode('utf-8')
+        bench_img_b64 = base64.b64encode(fig_bench.to_png()).decode('utf-8') if fig_bench else None
         heatmap_img = fig_heatmap.to_image(format="png")
-        heatmap_img_b64 = base64.b64encode(heatmap_img).decode()
+        heatmap_img_b64 = base64.b64encode(heatmap_img).decode('utf-8')
         pred_img = fig_pred.to_image(format="png")
-        pred_img_b64 = base64.b64encode(pred_img).decode()
+        pred_img_b64 = base64.b64encode(pred_img).decode('utf-8')
         candlestick_html = f'<img src="data:image/png;base64,{candlestick_img_b64}" alt="Candlestick Chart">'
-        bench_html = f'<img src="data:image/png;base64,{bench_img_b64}" alt="Benchmark Chart">' if bench_img_b64 else ""
-        heatmap_html = f'<img src="data:image/png;base64,{heatmap_img_b64}" alt="Seasonality Heatmap">'
-        pred_html = f'<img src="data:image/png;base64,{pred_img_b64}" alt="Price Prediction">'
+        bench_html = f'<img src="data:image/png;base64,'}{bench_img_b64}" alt="Benchmark Chart">' if bench_img_b64 else ""
+        heatmap_html = f"<img src='data:image/svg;base64,{heatmap_img_b64}' alt='Seasonality Heatmap'>"
+        pred_html = f"<img src='data:image/png;base64,{pred_img_b64}' alt='Price Prediction'>"
 
     html_content = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>{symbol} Stock Analysis Report ({start_date} to {end_date})</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; background-color: #ffffff; color: #000000; margin: 20px; }}
-            h1, h2 {{ color: #0288d1; }}
-            .metric-box {{ background-color: #e0e0e0; padding: 10px; margin: 10px 0; border-radius: 5px; }}
-            .section {{ margin-bottom: 20px; }}
-            .plotly-graph-div {{ max-width: 100%; }}
-            .alert-box {{ background-color: #fff3e0; padding: 10px; margin: 10px 0; border-radius: 5px; }}
-        </style>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    </head>
-    <body>
-        <h1>{symbol} Stock Analysis Report ({start_date} to {end_date})</h1>
-        <p><b>Date:</b> {date}</p>
-        
-        <div class="section">
-            <h2>Recommendation</h2>
-            <div class="metric-box">
-                <p><b>Recommendation:</b> {recommendation}</p>
-                <p><b>Total Score:</b> {total_score:.1f}/100</p>
-                <p><b>Breakout Timeframe:</b> {breakout_timeframe}</p>
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>{symbol} Stock Analysis Report ({start_date} to {end_date})</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; background-color: '#ffffff'; color: black; margin: 20px; }}
+                    h1, h2 {{ color: '#0288d1'; }}
+                    .metric-box {{ background-color: '#e0e0'; padding: 10px; margin: 10px 0; }}
+                    .section {{ margin-bottom: 20px; }}
+                    .plotly-graph-div {{ max-width: 100%; }}
+                    .alert-box {{ background-color: '#fff3e0'; padding: 10px; margin: 10px; }}
+                </style>
+                <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+            </head>
+            <body>
+                <h1>{symbol} Stock Analysis Report ({start_date} to {end_date})</h1>
+                <p><b>Date:</b> {date}</p>}
+                
+                <div class="section">
+                    <h2>Recommendation</h2>
+                    <div class="metric-box">
+                        <p><b>Recommendation:</b> {recommendation}</p>
+                        <p><b>Total Score:</b> {total_score:.1f}%</p>
+                        <p><b>Breakout Timeframe:</b> {breakout_timeframe}</p>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Key Metrics</h2>
+                    <div class="metric-box">
+                        <p><b>Average Return:</b> {average_return:.2f}%</p>
+                        <p><b>Volatility:</b> {volatility:.2f}%</p>
+                        <p><b>Win Ratio:</b> {win_ratio:.2f}%</p>
+                        <p><b>Max Drawdown:</b> {max_drawdown:.2f}%</p>
+                        <p><b>Largest Loss:</b> {largest_loss:.2f}% on {largest_loss_date}</p>
+                        <p><b>Largest Gain:</b> {largest_gain:.2f}% on {largest_gain_date}</p>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Price Movement Alerts</h2>
+                    {alerts_html}
+                </div>
+                
+                <div class="section">
+                    <h2>Backtesting Results</h2>
+                    <div class="metric-box">
+                        <p><b>Win Rate:</b> {win_rate:.2f}%</p>
+                        <p><b>Profit Factor:</b> {profit_factor:.2f}</p>
+                        <p><b>Total Return:</b> {total_return:.2f}%</p>
+                        <p><b>Trades:</b> {trades}</p>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Latest Trade Setup</h2>
+                    <div class="metric-box">
+                        <p><b>Date:</b> {latest_date}</p>
+                        <p><b>Entry:</b> ${entry:.2f}</p>
+                        <p><b>Stop-Loss:</b> ${stop_loss:.2f}</p>
+                        <p><b>Take-Profit:</b> ${take_profit:.2f}</p>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Price Prediction</h2>
+                    {pred_html}
+                </div>
+                
+                <div class="section">
+                    <h2>Candlestick & Technical Analysis</h2>
+                    {candlestick_html}
+                </div>
+                <div class="section">
+                    <h2>Benchmark Comparison</h2>
+                    {bench_html}
+                </div>
+                <div class="section">
+                    <h2>Seasonality Analysis</h2>
+                    {heatmap_html}
+                </div>
+            </body>
             </div>
-        </div>
-        
-        <div class="section">
-            <h2>Key Metrics</h2>
-            <div class="metric-box">
-                <p><b>Average Return:</b> {average_return:.2f}%</p>
-                <p><b>Volatility:</b> {volatility:.2f}%</p>
-                <p><b>Win Ratio:</b> {win_ratio:.2f}%</p>
-                <p><b>Max Drawdown:</b> {max_drawdown:.2f}%</p>
-                <p><b>Largest Loss:</b> {largest_loss:.2f}% on {largest_loss_date}</p>
-                <p><b>Largest Gain:</b> {largest_gain:.2f}% on {largest_gain_date}</p>
-            </div>
-        </div>
-        
-        <div class="section">
-            <h2>Price Movement Alerts</h2>
-            {alerts_html}
-        </div>
-        
-        <div class="section">
-            <h2>Backtesting Results</h2>
-            <div class="metric-box">
-                <p><b>Win Rate:</b> {win_rate:.2f}%</p>
-                <p><b>Profit Factor:</b> {profit_factor:.2f}</p>
-                <p><b>Total Return:</b> {total_return:.2f}%</p>
-                <p><b>Trades:</b> {trades}</p>
-            </div>
-        </div>
-        
-        <div class="section">
-            <h2>Latest Trade Setup</h2>
-            <div class="metric-box">
-                <p><b>Date:</b> {latest_date}</p>
-                <p><b>Entry:</b> ${entry:.2f}</p>
-                <p><b>Stop-Loss:</b> ${stop_loss:.2f}</p>
-                <p><b>Take-Profit:</b> ${take_profit:.2f}</p>
-            </div>
-        </div>
-        
-        <div class="section">
-            <h2>Price Prediction</h2>
-            {pred_html}
-        </div>
-        
-        <div class="section">
-            <h2>Candlestick & Technical Analysis</h2>
-            {candlestick_html}
-        </div>
-        <div class="section">
-            <h2>Benchmark Comparison</h2>
-            {bench_html}
-        </div>
-        <div class="section">
-            <h2>Seasonality Analysis</h2>
-            {heatmap_html}
-        </div>
-    </body>
-    </html>
-    """.format(
-        symbol=st.session_state.symbol,
-        start_date=min_date,
-        end_date=max_date,
-        date=datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y %I:%M %p EDT'),
-        recommendation=st.session_state.score['Recommendation'],
-        total_score=st.session_state.score['Total'],
-        breakout_timeframe=st.session_state.breakout_timeframe,
-        average_return=st.session_state.aapl_metrics['Average Return'],
-        volatility=st.session_state.aapl_metrics['Volatility'],
-        win_ratio=st.session_state.aapl_metrics['Win Ratio'],
-        max_drawdown=st.session_state.aapl_metrics['Max Drawdown'],
-        largest_loss=st.session_state.aapl_metrics['Largest Loss'],
-        largest_loss_date=st.session_state.aapl_metrics['Largest Loss Date'],
-        largest_gain=st.session_state.aapl_metrics['Largest Gain'],
-        largest_gain_date=st.session_state.aapl_metrics['Largest Gain Date'],
-        win_rate=st.session_state.backtest_results['Win Rate'],
-        profit_factor=st.session_state.backtest_results['Profit Factor'],
-        total_return=st.session_state.backtest_results['Total Return'],
-        trades=st.session_state.backtest_results['Trades'],
-        latest_date=st.session_state.aapl_df['date'].iloc[-1].strftime('%m-%d-%Y') if not st.session_state.aapl_df.empty else 'N/A',
-        entry=st.session_state.aapl_df['close'].iloc[-1] if not st.session_state.aapl_df.empty else 0,
-        stop_loss=stop_loss_value,
-        take_profit=take_profit_value,
-        alerts_html=''.join([f"<div class='alert-box'>{alert}</div>" for alert in st.session_state.alerts]),
-        candlestick_html=candlestick_html,
-        bench_html=bench_html,
-        heatmap_html=heatmap_html,
-        pred_html=pred_html
-    )
+            </html>
+            """
+            .format(
+                symbol=st.session_state.symbol,
+                start_date=min_date,
+                end_date=max_date,
+                date=datetime.now(pytz.timezone('America/New_York')).strftime('%Y-%m-%d %I:%M %p EDT'),
+                recommendation=attrs.session_state.score['Recommendation'],
+                total_score=st.session_state.score['Total'],
+                breakout_timeframe=st.session_state.breakout_timeframe,
+                average_return=st.session_state.avg_metrics['Average Return'],
+                volatility=st.session_state.avg_metrics['Volatility'],
+                win_ratio=st.session_state.avg_metrics['Win Ratio'],
+                max_drawdown=st.session_state.avg_metrics['Max Drawdown'],
+                largest_loss=st.session_state.largest_loss,
+                largest_loss_date=st.session_state.largest_loss_date,
+                largest_gain=st.session_state.largest_gain,
+                largest_gain_date=st.session_state.largest_gain_date,
+                win_rate=st.session_state.win_rate,
+                profit_factor=st.session_state.profit_factor,
+                total_return=st.session_state.total_return,
+                trades=st.session_state.trades,
+                latest_date=st.session_state.latest_date.strftime('%Y-%m-%d') if not st.session_state.aapl_df.empty else 'N/A',
+                entry=st.session_state.entry if not st.session_state.aapl_df.empty else 0,
+                stop_loss=stop_loss_value,
+                take_profit=take_profit_value,
+                alerts_html=''.join([f"<div class='alert-box'>{alert}</div>" for alert in st.session_state.alerts]),
+                candlestick_html=candlestick_html,
+                bench_html=bench_html,
+                heatmap_html=heatmap_html,
+                pred_html=pred_html
+            )
     html_buffer = io.StringIO()
     html_buffer.write(html_content)
     html_buffer.seek(0)
-    st.download_button("Download HTML Report", html_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_report_{min_date}_to_{max_date}.html", mime="text/html")
+    st.download_button("Download HTML Report", data=html_buffer.getvalue(), file_name=f"{st.session_state.symbol}_report_{min_date}_to_{max_date}.html", mime="text/html")
 
 # Export JSON report
 if not st.session_state.aapl_df.empty:
     valid_dates = st.session_state.aapl_df['date'].dropna()
     if not valid_dates.empty:
-        min_date = valid_dates.min().strftime('%m-%d-%Y')
-        max_date = valid_dates.max().strftime('%m-%d-%Y')
+        min_date = valid_dates.min().strftime('%m-%Y-%Y')
+        max_date = valid_dates.max().strftime('%Y-%m-%d')
     else:
         min_date = '01-01-2020'
-        max_date = '06-24-2025'
-    # Convert price_prediction DataFrame to a JSON-serializable format
+        max_date = '2025-06-25'
+    # Convert price_prediction DataFrame to JSON-serializable format
     price_prediction_dict = st.session_state.price_prediction.to_dict(orient='records')
     for pred in price_prediction_dict:
         pred['date'] = pred['date'].isoformat()  # Convert Timestamp to ISO string
@@ -1037,13 +1073,13 @@ if not st.session_state.aapl_df.empty:
         "backtest_results": st.session_state.backtest_results,
         "signals": st.session_state.signals,
         "score": st.session_state.score,
-        "price_prediction": price_prediction_dict,  # Use converted dictionary
+        "price_prediction": price_prediction_dict,
         "alerts": st.session_state.alerts
     }
     json_buffer = io.StringIO()
     json.dump(json_data, json_buffer)
     json_buffer.seek(0)
-    st.download_button("Download JSON Report", json_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_report_{min_date}_to_{max_date}.json", mime="application/json")
+    st.download_button("Download JSON Report", data=json_buffer.getvalue(), file_name=f"{st.session_state.symbol}_json_{min_date}_to_{max_date}.json", mime="application/json")
 
 # Help section
 with st.expander("📚 Help: How the Analysis Works"):
