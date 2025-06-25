@@ -725,7 +725,7 @@ with st.expander("View Alerts"):
                  max_change = st.slider("Maximum % Change", -100.0, 100.0, 100.0, 0.0)
                  filtered_alerts = alerts_df[(alerts_df['Change (%)'] >= min_change) & (alerts_df['Change (%)'] <= max_change)]
             
-     if not filtered_alerts.empty:
+      if not filtered_alerts.empty:
                 # Split into two columns for two-row display
                 col1, col2 = st.columns(2)
                 with col1:
