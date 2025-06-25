@@ -628,7 +628,7 @@ for i, subplot in enumerate(subplot_order, 1):
     elif subplot == "Volume":
         add_volume_trace(fig, st.session_state.aapl_df, row=i)
     elif subplot == "Win/Loss Distribution":
-        add_win_loss_distribution(fig, st.session_state.aapl_df, i])
+        add_win_loss_distribution(fig, st.session_state.aapl_df, i)
 
 fig.update_layout(height=200 * len(subplot_order)), showlegend=True, template="plotly_white",
                   title_text=f"{st.session_state.symbol}.title() Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
