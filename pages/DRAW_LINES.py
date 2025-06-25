@@ -603,10 +603,23 @@ def add_macd_stochastic_trace(fig, df, row):
             go.Scatter(x=df['date'], y=df['signal'], name="Signal Line", line=dict(color="#ff9800"),
                        hovertext=[f"Signal: {x:.2f}" for x in df['signal']], hoverinfo='text+x'), row=row, col=1)
         fig.add_trace(
-            go.Bar(x=df['index'], y=df['macd_diff'], 
-                     name="MACD Histogram", marker_color="#607d8b",
-                     hovertext=[f'MACD Diff: {x:.2f}" for x in df['macd_diff']],
-                     hoverinfo='text+x'), row=row, col=1)
+            go.Bar(x=df['date'], y=df['macd_diff'], 
+                   name="MACD Histogram", marker_color="#607d8b",
+                   hovertext=[f"MACD Diff: {x:.2f}" for x in df['macd_diff']],  # Fixed line
+                   hoverinfo='text+x'), row=row, col=1)
+    
+    if "Stochastic" in show_indicators:
+        fig.add_trace(
+            go.Scatter(x=df['date'], y=df['stochastic_k'], 
+                       name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2",
+                       hovertext=[f"Stochastic %K: {x:.2f}" for x in df['stochastic_k']],
+                       hoverinfo='text+x'), row=row, col=1)
+        fig.add_trace(
+            go.Scatter(x=df['date'], y=df['stochastic_d'], 
+                       name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y2",
+                       hovertext=[f"Stochastic %D: {x:.2f}" for x in df['stochastic_d']],
+                       hoverinfo='text+x'), row=row, col=1)
+        fig.update_layout(yaxis2=dict(overlaying='y', side='right', range=[0, 100]))
     
     if "Stochastic" in show_indicators:
         fig.add_trace(
