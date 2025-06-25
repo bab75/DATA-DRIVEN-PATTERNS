@@ -327,8 +327,8 @@ if 'aapl_metrics' not in st.session_state or submit:
 # Detect consolidation and breakout
 @st.cache_data
 def detect_consolidation_breakout(df):
-    df['ma20'] = df['close'].rolling(window=20').mean()
-    df['std_dev'] = df['close'].rolling(window=20').std()
+    df['ma20'] = df['close'].rolling(window=20).mean()
+    df['std_dev'] = df['close'].rolling(window=20).std()
     df['atr'] = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close']).average_true_range()
     df['rsi'] = ta.momentum.RSIIndicator(close=df['close']).rsi()
     macd = ta.trend.MACD(close=df['close'])
