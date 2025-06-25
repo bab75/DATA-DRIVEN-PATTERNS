@@ -793,13 +793,13 @@ st.session_state.aapl_df['month'] = st.session_state.aapl_df['date'].dt.month
 st.session_state.aapl_df['year'] = st.session_state.aapl_df['date'].dt.year
 monthly_returns = st.session_state.aapl_df.groupby(['year', 'month'])['daily_return'].mean().unstack() * 100
 month_names = {i: calendar.month_name[i] for i in range(1, 13)}
-fig_heatmap = go.Figure(data=month_names=go.Heatmap(
-    z=df.values,
+fig_heatmap = go.Figure(data=go.Heatmap(
+    z=monthly_returns.values,
     x=[month_names[col] for col in monthly_returns.columns],
-    y=monthly_returns.iloc[0],
+    y=monthly_returns.index,
     colorscale='RdYlGn',
-    hovertext=[f"Return: {x:.2f}%" for x in row] for row in monthly_returns.values],
-    ['hoverinfo='text']
+    hovertext=[[f"Year: {year}<br>Month: {month_names[month]}<br>Return: {x:.2f}%" for month, x in enumerate(row, 1)] for year, row in monthly_returns.iterrows()],
+    hoverinfo='text'
 ))
 fig_heatmap.update_layout(
     title=f"Monthly Average Returns Heatmap (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
@@ -807,7 +807,7 @@ fig_heatmap.update_layout(
     font=dict(family="Arial", size=12, color="#000000"),
     xaxis_title="Month",
     yaxis_title="Year",
-    xaxis=dict(tickmode='array', tickvals=list(month_names.values()), ticktext=list(month_names.values()))
+    xaxis=dict(tickmode='array', tickvals=list(range(12)), ticktext=list(month_names.values()))
 )
 st.plotly_chart(fig_heatmap, use_container_width=True)
 
