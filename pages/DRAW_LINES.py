@@ -982,6 +982,7 @@ if not st.session_state.aapl_df.empty:
     st.download_button("Download HTML Report", html_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_report_{min_date}_to_{max_date}.html", mime="text/html")
 
 # Export JSON report
+ Export JSON report
 if not st.session_state.aapl_df.empty:
     valid_dates = st.session_state.aapl_df['date'].dropna()
     if not valid_dates.empty:
@@ -990,6 +991,10 @@ if not st.session_state.aapl_df.empty:
     else:
         min_date = '01-01-2020'
         max_date = '06-24-2025'
+    # Convert price_prediction DataFrame to a JSON-serializable format
+    price_prediction_dict = st.session_state.price_prediction.to_dict(orient='records')
+    for pred in price_prediction_dict:
+        pred['date'] = pred['date'].isoformat()  # Convert Timestamp to ISO string
     json_data = {
         "symbol": st.session_state.symbol,
         "date_range": {"from": min_date, "to": max_date},
@@ -997,13 +1002,14 @@ if not st.session_state.aapl_df.empty:
         "backtest_results": st.session_state.backtest_results,
         "signals": st.session_state.signals,
         "score": st.session_state.score,
-        "price_prediction": st.session_state.price_prediction.to_dict(),
+        "price_prediction": price_prediction_dict,  # Use converted dictionary
         "alerts": st.session_state.alerts
     }
     json_buffer = io.StringIO()
     json.dump(json_data, json_buffer)
     json_buffer.seek(0)
     st.download_button("Download JSON Report", json_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_report_{min_date}_to_{max_date}.json", mime="application/json")
+    
 # Help section
 with st.expander("📚 Help: How the Analysis Works"):
     help_text = """
