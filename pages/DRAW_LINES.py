@@ -47,8 +47,6 @@ st.session_state.setdefault('trade_details', None)
 st.session_state.setdefault('data_loaded', False)
 st.session_state.setdefault('data_processed', False)
 st.session_state.setdefault('symbol', 'AAPL')
-st.session_state.setdefault('start_date', pd.to_datetime('01-01-2020', format='%m-%d-%Y'))  # Default From Date
-st.session_state.setdefault('end_date', pd.to_datetime('06-24-2025 20:39:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York'))  # Current date/time
 if 'aapl_df' not in st.session_state:
     st.session_state.aapl_df = pd.DataFrame()
 if 'pl_df' not in st.session_state:
@@ -66,9 +64,21 @@ symbol = st.sidebar.text_input("Stock Symbol (e.g., AAPL)", value=st.session_sta
 primary_file = st.sidebar.file_uploader("Upload Stock Data (CSV/XLSX)", type=["csv", "xlsx"], key="primary_file")
 secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV/XLSX)", type=["csv", "xlsx"], key="secondary_file")
 
-# Two separate date fields with MM-DD-YYYY format
-from_date = st.sidebar.date_input("From Date", value=st.session_state.start_date, key="from_date_input", format="MM-DD-YYYY")
-to_date = st.sidebar.date_input("To Date", value=st.session_state.end_date, key="to_date_input", format="MM-DD-YYYY")
+# Dynamic date inputs based on loaded data
+if 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
+    valid_dates = st.session_state.aapl_df['date'].dropna()
+    if not valid_dates.empty:
+        min_date = valid_dates.min()
+        max_date = valid_dates.max()
+    else:
+        min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
+        max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+else:
+    min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
+    max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+
+from_date = st.sidebar.date_input("From Date", value=min_date, min_value=min_date, max_value=max_date, key="from_date_input", format="MM-DD-YYYY")
+to_date = st.sidebar.date_input("To Date", value=max_date, min_value=min_date, max_value=max_date, key="to_date_input", format="MM-DD-YYYY")
 
 st.sidebar.header("Chart Settings")
 show_indicators = st.sidebar.multiselect(
@@ -99,8 +109,6 @@ if clear:
     st.session_state.data_loaded = False
     st.session_state.data_processed = False
     st.session_state.symbol = 'AAPL'
-    st.session_state.start_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-    st.session_state.end_date = pd.to_datetime('06-24-2025 20:39:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
     st.session_state.aapl_df = pd.DataFrame()
     st.session_state.pl_df = pd.DataFrame()
     st.rerun()
@@ -110,7 +118,6 @@ def validate_symbol(symbol):
     return bool(re.match(r'^[A-Za-z0-9.]+$', symbol.strip()))
 
 # Load and validate data
-
 @st.cache_data
 def load_data(primary_file, data_source, symbol, start_date, end_date, secondary_file=None):
     aapl_df = pd.DataFrame()
@@ -148,6 +155,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
             aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', format='%m-%d-%Y')
             if aapl_df['date'].isna().all():
                 st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates in MM-DD-YYYY format.")
+                st.write("Sample data (first 5 rows):", aapl_df.head())
                 return pd.DataFrame(), pd.DataFrame()
             
             aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
@@ -429,7 +437,7 @@ def calculate_score(metrics, signals):
     technical_score = sum([10 if s in ['Buy', 'Strong Trend'] else 0 for s in signals.values()])
     volume_score = 20 if st.session_state.aapl_df['volume'].iloc[-1] > st.session_state.aapl_df['volume'].mean() else 10
     total_score = performance_score + risk_score + technical_score + volume_score
-    recommendation = 'Buy' if total_score > 70 else 'Hold' if total_score > 50 else 'Underperform'
+    recommendation = 'Buy' if total_score > 70 else 'Hold' if total_score > 50 else 'Market'
     return {
         'Performance': performance_score,
         'Risk': risk_score,
@@ -442,7 +450,7 @@ def calculate_score(metrics, signals):
 if 'score' not in st.session_state or submit:
     st.session_state.score = calculate_score(st.session_state.aapl_metrics, st.session_state.signals)
 
-# Price prediction with linear regression (corrected)
+# Price prediction with linear regression
 @st.cache_data
 def predict_price(df):
     X = np.arange(len(df['close'])).reshape(-1, 1)
@@ -451,7 +459,6 @@ def predict_price(df):
     model.fit(X, y)
     next_days = np.arange(len(df['close']), len(df['close']) + 5).reshape(-1, 1)
     predicted_prices = model.predict(next_days)
-    # Generate dates for the next 5 business days without format parameter
     last_date = df['date'].iloc[-1]
     if pd.isna(last_date):
         last_date = pd.Timestamp.now(tz='America/New_York')  # Fallback to current date/time if last date is NaT
@@ -637,12 +644,29 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Alerts Section
+# Price Movement Alerts Section
 st.header("Price Movement Alerts")
 with st.expander("View Alerts"):
     if 'alerts' in st.session_state and st.session_state.alerts:
-        alerts_df = pd.DataFrame(st.session_state.alerts, columns=['Alert'])
-        st.table(alerts_df)
+        # Parse alerts into a DataFrame with date and percentage change
+        alerts_df = pd.DataFrame({
+            'Date': [alert.split(': ')[0] for alert in st.session_state.alerts],
+            'Change (%)': [float(alert.split(': ')[1].replace('% change', '')) for alert in st.session_state.alerts]
+        })
+        # Add filters for min and max percentage change
+        min_change = st.slider("Minimum % Change", -100.0, 100.0, -100.0, 0.1)
+        max_change = st.slider("Maximum % Change", -100.0, 100.0, 100.0, 0.1)
+        filtered_alerts = alerts_df[(alerts_df['Change (%)'] >= min_change) & (alerts_df['Change (%)'] <= max_change)]
+        
+        if not filtered_alerts.empty:
+            # Split into two columns for two-row display
+            col1, col2 = st.columns(2)
+            with col1:
+                st.table(filtered_alerts.iloc[:len(filtered_alerts)//2])
+            with col2:
+                st.table(filtered_alerts.iloc[len(filtered_alerts)//2:])
+        else:
+            st.write("No alerts match the selected percentage change range.")
     else:
         st.write("No significant price movements (>2%) detected.")
 
