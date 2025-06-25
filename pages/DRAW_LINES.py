@@ -192,8 +192,8 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
             elif primary_file.name.endswith('.xlsx'):
                 try:
                     aapl_df = pd.read_excel(primary_file, engine='openpyxl')
-                except ValueError:
-                    st.error("Uploaded XLSX file is empty or corrupted. Please check the file.")
+                except ValueError as e:
+                    st.error(f"Uploaded XLSX file is invalid or corrupted: {str(e)}. Please check the file.")
                     return pd.DataFrame(), pd.DataFrame()
             
             # Validate file has data
@@ -691,7 +691,6 @@ def add_candlestick_trace(fig, df, row):
             name="Candlestick",
             increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
             text=hover_texts,
-            hovertemplate='%{text}<extra></extra>',
             hoverinfo='text'
         ), row=row, col=1)
     except Exception as e:
@@ -786,6 +785,9 @@ def add_win_loss_trace(fig, df, row):
 if st.session_state.aapl_df.empty:
     st.error("DataFrame is empty before plotting. Please check data source and try again.")
     st.stop()
+st.write("DataFrame info before plotting:")
+st.write(st.session_state.aapl_df.info())
+st.write("Sample data (first 5 rows):", st.session_state.aapl_df.head())
 
 for i, subplot in enumerate(subplot_order, 1):
     if subplot == "Candlestick":
@@ -1118,6 +1120,62 @@ if not st.session_state.aapl_df.empty:
         file_name=f"{st.session_state.symbol}_investment_report_{min_date}_to_{max_date}.pdf",
         mime="application/pdf"
     )
+
+# Export HTML report
+def generate_alerts_table_html(alerts_data):
+    if not alerts_data or alerts_data[0]['description'] == "No significant price movements (>2%) detected.":
+        return "<p>No significant price movements detected.</p>"
+
+    html = """
+    <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+        <thead style="background-color: #f0f0f0;">
+            <tr>
+                <th>Date</th>
+                <th>Alert Type</th>
+                <th>Price</th>
+                <th>Volume</th>
+                <th>Signal Strength</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+    """
+    for alert in alerts_data:
+        row_color = "#e8f5e8" if alert['type'] == 'BUY' else '#ffe8e8' if alert['type'] == 'SELL' else '#f0f0f0'
+        html += f"""
+            <tr style="background-color: {row_color};">
+                <td>{alert['date']}</td>
+                <td><strong>{alert['type']}</strong></td>
+                <td>${alert['price']:.2f}</td>
+                <td>{alert['volume']:,}</td>
+                <td>{alert['strength']}</td>
+                <td>{alert['description']}</td>
+            </tr>
+        """
+    
+    html += """
+        </tbody>
+    </table>
+    """
+    return html
+
+if not st.session_state.aapl_df.empty:
+    valid_dates = st.session_state.aapl_df['date'].dropna()
+    if not valid_dates.empty:
+        min_date = valid_dates.min().strftime('%m-%d-%Y')
+        max_date = valid_dates.max().strftime('%m-%d-%Y')
+    else:
+        min_date = '01-01-2020'
+        max_date = '06-25-2025'
+    
+    if html_report_type == "Interactive (with Hover)":
+        candlestick_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
+        bench_html = fig_bench.to_html(include_plotlyjs=False, full_html=False) if fig_bench else ""
+        heatmap_html = fig_heatmap.to_html(include_plotlyjs=False, full_html=False)
+        pred_html = fig_pred.to_html(include_plotlyjs=False, full_html=False)
+    else:
+        candlestick_img = fig.to_image(format="png")
+        candlestick_img_b64 = base64.b64encode(candlestick_img).decode
 
 # Export HTML report
 def generate_alerts_table_html(alerts_data):
