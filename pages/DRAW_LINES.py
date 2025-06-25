@@ -721,9 +721,9 @@ with st.expander("View Alerts"):
                 'Change (%)': [float(alert.split(': ')[1].replace('% change', '')) for alert in st.session_state.alerts if ': ' in alert]
             })
             # Add filters for min and max percentage
-            min_change = st.slider("Minimum % Change", -100.0, 100.0, -100.0, 0.0)
-            max_change = st.slider("Maximum % Change", -100.0, 100.0, 100.0, 0.0)
-            filtered_alerts = alerts_df[(alerts_df['Change (%)'] >= min_change) & (alerts_df['Change (%)'] <= max_change)]
+                 min_change = st.slider("Minimum % Change", -100.0, 100.0, -100.0, 0.0)
+                 max_change = st.slider("Maximum % Change", -100.0, 100.0, 100.0, 0.0)
+                 filtered_alerts = alerts_df[(alerts_df['Change (%)'] >= min_change) & (alerts_df['Change (%)'] <= max_change)]
             
             if not filtered_alerts.empty:
                 # Split into two columns for two-row display
