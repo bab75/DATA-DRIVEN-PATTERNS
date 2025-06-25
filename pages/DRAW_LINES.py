@@ -907,7 +907,7 @@ if not st.session_state.aapl_df.empty:
         max_date = valid_dates.max().strftime('%m-%d-%Y')
     else:
         min_date = '01-01-2020'
-        max_date = '06-24-2025'
+        max_date = '06-25-2025'
     if html_report_type == "Interactive (with Hover)":
         candlestick_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
         bench_html = fig_bench.to_html(include_plotlyjs='cdn', full_html=False) if fig_bench else ""
@@ -1031,25 +1031,26 @@ if not st.session_state.aapl_df.empty:
     </html>
     """.format(
         symbol=st.session_state.symbol,
-        max_date=max_date,
-        date=datetime.now(pytz='America/New_York').strftime('%m-%d-%Y %I:%M %p EDT'),
-        recommendation=session_state.score['Recommendation'],
+        start_date=min_date,
+        end_date=max_date,
+        date=datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y %I:%M %p EDT'),
+        recommendation=st.session_state.score['Recommendation'],
         total_score=st.session_state.score['Total'],
-        breakout_timeframe=session_state.breakout_timeframe,
-        average_return=session_state.aapl_metrics['Average Return'],
-        volatility=session_state.aapl_metrics['Volatility'],
-        win_ratio=session_state.aapl_metrics['Win Ratio'],
-        max_drawdown=session_state.aapl_metrics['Max Drawdown'],
-        largest_loss=session_state.aapl_metrics['Largest Loss'],
-        largest_loss_date=session_state.aapl_metrics['Largest Loss Date'],
-        largest_gain=session_state.aapl_metrics['Largest Gain'],
-        largest_gain_date=session_state.aapl_metrics['Largest Gain Date'],
-        win_rate=session_state.backtest_results['Win Rate'],
-        profit_factor=session_state.backtest_results['Profit Factor'],
-        total_return=session_state.backtest_results['Total Return'],
-        trades=session_state.backtest_results['Trades'],
-        latest_date=session_state.aapl_df['date'].iloc[-1].strftime('%m-%d-%Y') if not st.session_state.aapl_df.empty else 'N/A',
-        entry=session_state.aapl_df['close'].iloc[-1] if not st.session_state.aapl_df.empty else 0,
+        breakout_timeframe=st.session_state.breakout_timeframe,
+        average_return=st.session_state.aapl_metrics['Average Return'],
+        volatility=st.session_state.aapl_metrics['Volatility'],
+        win_ratio=st.session_state.aapl_metrics['Win Ratio'],
+        max_drawdown=st.session_state.aapl_metrics['Max Drawdown'],
+        largest_loss=st.session_state.aapl_metrics['Largest Loss'],
+        largest_loss_date=st.session_state.aapl_metrics['Largest Loss Date'],
+        largest_gain=st.session_state.aapl_metrics['Largest Gain'],
+        largest_gain_date=st.session_state.aapl_metrics['Largest Gain Date'],
+        win_rate=st.session_state.backtest_results['Win Rate'],
+        profit_factor=st.session_state.backtest_results['Profit Factor'],
+        total_return=st.session_state.backtest_results['Total Return'],
+        trades=st.session_state.backtest_results['Trades'],
+        latest_date=st.session_state.aapl_df['date'].iloc[-1].strftime('%m-%d-%Y') if not st.session_state.aapl_df.empty else 'N/A',
+        entry=st.session_state.aapl_df['close'].iloc[-1] if not st.session_state.aapl_df.empty else 0,
         stop=stop_loss_value,
         take=take_profit_value,
         alerts_html=alerts_html,
