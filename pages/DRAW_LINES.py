@@ -425,13 +425,14 @@ if 'backtest_results' not in st.session_state or submit:
     st.session_state.backtest_results = backtest_strategy(st.session_state.aapl_df)
 
 # Technical signals
+
 @st.cache_data
 def get_signals(df):
     signals = {
         'RSI': 'Buy' if df['rsi'].iloc[-1] < 40 else 'Sell' if df['rsi'].iloc[-1] > 70 else 'Neutral',
         'MACD': 'Buy' if df['macd'].iloc[-1] > df['signal'].iloc[-1] else 'Sell',
         'Stochastic': 'Buy' if (df['stochastic_k'].iloc[-1] < 20 and df['stochastic_k'].iloc[-1] > df['stochastic_d'].iloc[-1]) else 'Sell' if (df['stochastic_k'].iloc[-1] > 80) else 'Neutral',
-        'Ichimoku': 'Buy' if (df['close'].iloc[-1] > df['senkou_span_a'].iloc[-1] + and df['close'].iloc[-1] > df['senkou_span_b'].iloc[-1]) else 'Sell',
+        'Ichimoku': 'Buy' if (df['close'].iloc[-1] > df['senkou_span_a'].iloc[-1] and df['close'].iloc[-1] > df['senkou_span_b'].iloc[-1]) else 'Sell',
         'ADX': 'Strong Trend' if df['adx'].iloc[-1] > 25 else 'Weak Trend'
     }
     return signals
