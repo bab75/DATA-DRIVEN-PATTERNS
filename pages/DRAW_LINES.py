@@ -582,7 +582,7 @@ def add_win_loss_trace(fig, df, row):
     if not valid_returns.empty:
         bins = np.histogram_bin_edges(valid_returns * 100, bins=20)
         hist_data = np.histogram(valid_returns * 100, bins=bins)
-        fig.add_trace(go.Bar(x=df, bins[:-1], y=df_hist_data[0]], 'name="Win/Loss Distribution", marker_color="#607d8b",
+        fig.add_trace(go.Bar(x=df, bins[:-1], y=df_hist_data[0], 'name="Win/Loss Distribution", marker_color="#607d8b",
                              hovertext=[f"Return: {x:.2f}%f Count: {y}" for x, y in zip(bins[:-1], hist_data[0])], hoverinfo='text'), row=row, col=1)
     else:
         st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available.")
