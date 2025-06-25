@@ -169,20 +169,12 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 st.write("Data types:", aapl_df.dtypes)
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Enhanced date parsing
-            aapl_df['date_original'] = aapl_df['date']  # Preserve original for retry
-            date_formats = ['%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
+            # Convert and validate date column, handling NaT
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', format='%m-%d-%Y')
             if aapl_df['date'].isna().all():
-                # Try specific formats if auto-detection fails
-                for fmt in date_formats:
-                    aapl_df['date'] = pd.to_datetime(aapl_df['date_original'], format=fmt, errors='coerce')
-                    if not aapl_df['date'].isna().all():
-                        break
-                if aapl_df['date'].isna().all():
-                    st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates (e.g., MM-DD-YYYY, YYYY-MM-DD).")
-                    st.write("Sample data (first 5 rows):", aapl_df.head())
-                    return pd.DataFrame(), pd.DataFrame()
+                st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates in MM-DD-YYYY format.")
+                st.write("Sample data (first 5 rows):", aapl_df.head())
+                return pd.DataFrame(), pd.DataFrame()
             
             aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
             numeric_cols = ['open', 'high', 'low', 'close', 'volume']
@@ -262,8 +254,8 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 pl_df = pd.read_csv(secondary_file)
             elif secondary_file.name.endswith('.xlsx'):
                 pl_df = pd.read_excel(secondary_file)
-            pl_df['Start Date'] = pd.to_datetime(pl_df['Start Date'], errors='coerce')
-            pl_df['End Date'] = pd.to_datetime(pl_df['End Date'], errors='coerce')
+            pl_df['Start Date'] = pd.to_datetime(pl_df['Start Date'], errors='coerce', format='%m-%d-%Y')
+            pl_df['End Date'] = pd.to_datetime(pl_df['End Date'], errors='coerce', format='%m-%d-%Y')
             if pl_df[['Start Date', 'End Date', 'Profit/Loss (Percentage)']].isnull().any().any():
                 st.warning("Benchmark data contains null values. Proceeding without benchmark.")
                 pl_df = pd.DataFrame()
