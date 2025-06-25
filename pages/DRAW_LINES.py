@@ -494,11 +494,12 @@ def add_candlestick_trace(fig, df, row):
     df['date'] = df['date'].fillna(pd.NaT)
 
     hover_texts = [
-        "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}".format(
+        "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}<br><b style='color:#006400'>Buy Signal: {buy_signal}</b>".format(
             date=getattr(r, 'date').strftime('%m-%d-%Y') if pd.notna(getattr(r, 'date')) else 'N/A',
             month=getattr(r, 'date').strftime('%B') if pd.notna(getattr(r, 'date')) else 'N/A',
             open=getattr(r, 'open'), high=getattr(r, 'high'), low=getattr(r, 'low'),
-            close=getattr(r, 'close'), volume=getattr(r, 'volume'), rsi=getattr(r, 'rsi'), rvol=getattr(r, 'rvol')
+            close=getattr(r, 'close'), volume=getattr(r, 'volume'), rsi=getattr(r, 'rsi'), rvol=getattr(r, 'rvol'),
+            buy_signal='Yes' if getattr(r, 'buy_signal') else 'No'
         )
         for r in df.itertuples()
     ]
@@ -581,8 +582,8 @@ def add_win_loss_trace(fig, df, row):
     if not valid_returns.empty:
         bins = np.histogram_bin_edges(valid_returns * 100, bins=20)
         hist_data = np.histogram(valid_returns * 100, bins=bins)
-        fig.add_trace(go.Bar(x=bins[:-1], y=hist_data[0], name="Win/Loss Distribution", marker_color="#607d8b",
-                             hovertext=[f"Return: {x:.2f}% Count: {y}" for x, y in zip(bins[:-1], hist_data[0])], hoverinfo='text'), row=row, col=1)
+        fig.add_trace(go.Bar(x=df, bins[:-1], y=df_hist_data[0]], 'name="Win/Loss Distribution", marker_color="#607d8b",
+                             hovertext=[f"Return: {x:.2f}%f Count: {y}" for x, y in zip(bins[:-1], hist_data[0])], hoverinfo='text'), row=row, col=1)
     else:
         st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available.")
 
@@ -592,13 +593,13 @@ for i, subplot in enumerate(subplot_order, 1):
     elif subplot == "RSI":
         add_rsi_trace(fig, st.session_state.aapl_df, i)
     elif subplot == "MACD & Stochastic":
-        add_macd_stochastic_trace(fig, st.session_state.aapl_df, i)
+        add_macd_stochastic_trace(fig_df, st.session_state.aapl_df, i)
     elif subplot == "ADX & Volatility":
-        add_adx_volatility_trace(fig, st.session_state.aapl_df, i)
+        add_adx_volatility_trace(fig_df, st.session_state.aapl_df, i)
     elif subplot == "Volume":
-        add_volume_trace(fig, st.session_state.aapl_df, i)
+        add_volume_trace(fig_df, st.session_state.aapl_df, i)
     elif subplot == "Win/Loss Distribution":
-        add_win_loss_trace(fig, st.session_state.aapl_df, i)
+        add_win_loss_trace(fig_df, st.session_state.aapl_df, i)
 
 fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white", title_text=f"{st.session_state.symbol} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
                   hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
@@ -606,7 +607,7 @@ fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=len(subplo
 
 def on_click(trace, points, state):
     if points.point_inds:
-        idx = points.point_inds[0]
+        idx = points[0].point_inds[0]
         row = st.session_state.aapl_df.iloc[idx]
         st.session_state.trade_details = {
             'Date': row['date'].strftime('%m-%d-%Y'),
@@ -686,7 +687,7 @@ with col4:
 st.header("Price Prediction (Next 5 Trading Days)")
 prediction_df = st.session_state.price_prediction
 fig_pred = go.Figure()
-fig_pred.add_trace(go.Scatter(x=prediction_df['date'], y=prediction_df['predicted_close'], mode='lines+markers', name="Predicted Close", line=dict(color="#0288d1"),
+fig_pred.add_trace(go.Scatter(x=prediction_df['date'], y=prediction_df['predicted_close'], mode='lines+markers', name="USD", line=dict(color="#0288d1"),
                               hovertext=[f"Date: {d.strftime('%m-%d-%Y')}<br>Predicted Close: ${p:.2f}" for d, p in zip(prediction_df['date'], prediction_df['predicted_close'])], hoverinfo='text+x'))
 fig_pred.update_layout(title=f"{st.session_state.symbol} Price Prediction", height=400, template="plotly_white",
                        hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
@@ -767,10 +768,10 @@ if st.session_state.get('secondary_file') and not st.session_state.pl_df.empty:
     try:
         pl_cum_return = (1 + st.session_state.pl_df['Profit/Loss (Percentage)'] / 100).cumprod() - 1
         fig_bench = go.Figure()
-        fig_bench.add_trace(go.Scatter(x=st.session_state.aapl_df['date'], y=st.session_state.aapl_df['cumulative_return'], name=st.session_state.symbol, line=dict(color="#0288d1"),
-                                       hovertext=[f"{st.session_state.symbol} Return: {x:.2%}" for x in st.session_state.aapl_df['cumulative_return']], hoverinfo='text+x'))
-        fig_bench.add_trace(go.Scatter(x=st.session_state.pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800"),
-                                       hovertext=[f"Benchmark Return: {x:.4f}" for x in pl_cum_return], hoverinfo='text+x'))
+        fig_bench.add_trace(go.Scatter(x=st.session_state.aapl_df['date'], y=st.session_state.aapl_df['cumulative_return'], name=st.session_state['symbol'], line=dict(color="#0288d1"),
+                                                                                   hovertext=[f"{st.session_state.symbol} Return: {x:.2%}" for x in st.session_state.aapl_df['cumulative_return']], hoverinfo='text+x'))
+        fig_bench.add_trace(go.Scatter(x=st.session_state.pl_df['End Date'], y=df_cum_return, name="Benchmark", line=dict(color="#ff9800"),
+                                                                                   hovertext=[f"Benchmark Return: {x:.4f}" for x in pl_cum_return], hoverinfo='text+x'))
         fig_bench.update_layout(title=f"{st.session_state.symbol} vs. Benchmark Cumulative Returns (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})", height=400, template="plotly_white",
                                 hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
         st.plotly_chart(fig_bench, use_container_width=True)
@@ -785,18 +786,17 @@ st.session_state.aapl_df['month'] = st.session_state.aapl_df['date'].dt.month
 st.session_state.aapl_df['year'] = st.session_state.aapl_df['date'].dt.year
 monthly_returns = st.session_state.aapl_df.groupby(['year', 'month'])['daily_return'].mean().unstack() * 100
 month_names = {i: calendar.month_name[i] for i in range(1, 13)}
-fig_heatmap = go.Figure(data=go.Heatmap(
-    z=monthly_returns.values,
+fig_heatmap = go.Figure(data=month_names=go.Heatmap(
+    z=df.values,
     x=[month_names[col] for col in monthly_returns.columns],
-    y=monthly_returns.index,
-    colorscale="RdYlGn",
-    hovertext=[[f"Return: {x:.2f}%" for x in row] for row in monthly_returns.values],
-    hoverinfo='text'
+    y=monthly_returns.iloc[0],
+    colorscale='RdYlGn',
+    hovertext=[f"Return: {x:.2f}%" for x in row] for row in monthly_returns.values],
+    ['hoverinfo='text']
 ))
 fig_heatmap.update_layout(
     title=f"Monthly Average Returns Heatmap (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
-    height=400,
-    template="plotly_white",
+    height=400, template="plotly_white",
     font=dict(family="Arial", size=12, color="#000000"),
     xaxis_title="Month",
     yaxis_title="Year",
@@ -897,7 +897,19 @@ if not st.session_state.aapl_df.empty:
         bench_html = f'<img src="data:image/png;base64,{bench_img_b64}" alt="Benchmark Chart">' if bench_img_b64 else ""
         heatmap_html = f'<img src="data:image/png;base64,{heatmap_img_b64}" alt="Seasonality Heatmap">'
         pred_html = f'<img src="data:image/png;base64,{pred_img_b64}" alt="Price Prediction">'
-     
+
+    # Generate alerts table for HTML report
+    alerts_html = "<div class='alert-box'>No significant price movements (>2%) detected.</div>"
+    if st.session_state.alerts and st.session_state.alerts[0] != "No significant price movements (>2%) detected.":
+        alerts_data = [
+            {"Date": alert.split(': ')[0], "Change (%)": float(alert.split(': ')[1].replace('% change', ''))}
+            for alert in st.session_state.alerts
+        ]
+        alerts_table = "<table style='width:100%; border-collapse: collapse; margin: 10px 0;'><tr><th style='border: 1px solid #ddd; padding: 8px; background-color: #f0f0f0;'>Date</th><th style='border: 1px solid #ddd; padding: 8px; background-color: #f0f0f0;'>Change (%)</th></tr>"
+        for alert in alerts_data:
+            alerts_table += f"<tr><td style='border: 1px solid #ddd; padding: 8px;'>{alert['Date']}</td><td style='border: 1px solid #ddd; padding: 8px;'>{alert['Change (%)']:.2f}</td></tr>"
+        alerts_table += "</table>"
+        alerts_html = f"<div class='alert-box'>{alerts_table}</div>"
 
     html_content = """
     <!DOCTYPE html>
@@ -911,6 +923,9 @@ if not st.session_state.aapl_df.empty:
             .section {{ margin-bottom: 20px; }}
             .plotly-graph-div {{ max-width: 100%; }}
             .alert-box {{ background-color: #fff3e0; padding: 10px; margin: 10px 0; border-radius: 5px; }}
+            table {{ width: 100%; border-collapse: collapse; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #f0f0f0; }}
         </style>
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     </head>
@@ -959,8 +974,8 @@ if not st.session_state.aapl_df.empty:
             <div class="metric-box">
                 <p><b>Date:</b> {latest_date}</p>
                 <p><b>Entry:</b> ${entry:.2f}</p>
-                <p><b>Stop-Loss:</b> ${stop_loss:.2f}</p>
-                <p><b>Take-Profit:</b> ${take_profit:.2f}</p>
+                <p><b>Stop-Loss:</b> ${stop:.2f}</p>
+                <p><b>Take-Profit:</b> ${take:.2f}</p>
             </div>
         </div>
         
@@ -973,10 +988,12 @@ if not st.session_state.aapl_df.empty:
             <h2>Candlestick & Technical Analysis</h2>
             {candlestick_html}
         </div>
+        
         <div class="section">
             <h2>Benchmark Comparison</h2>
             {bench_html}
         </div>
+        
         <div class="section">
             <h2>Seasonality Analysis</h2>
             {heatmap_html}
@@ -985,29 +1002,28 @@ if not st.session_state.aapl_df.empty:
     </html>
     """.format(
         symbol=st.session_state.symbol,
-        start_date=min_date,
-        end_date=max_date,
-        date=datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y %I:%M %p EDT'),
-        recommendation=st.session_state.score['Recommendation'],
+        max_date=max_date,
+        date=datetime.now(pytz='America/New_York').strftime('%m-%d-%Y %I:%M %p EDT'),
+        recommendation=session_state.score['Recommendation'],
         total_score=st.session_state.score['Total'],
-        breakout_timeframe=st.session_state.breakout_timeframe,
-        average_return=st.session_state.aapl_metrics['Average Return'],
-        volatility=st.session_state.aapl_metrics['Volatility'],
-        win_ratio=st.session_state.aapl_metrics['Win Ratio'],
-        max_drawdown=st.session_state.aapl_metrics['Max Drawdown'],
-        largest_loss=st.session_state.aapl_metrics['Largest Loss'],
-        largest_loss_date=st.session_state.aapl_metrics['Largest Loss Date'],
-        largest_gain=st.session_state.aapl_metrics['Largest Gain'],
-        largest_gain_date=st.session_state.aapl_metrics['Largest Gain Date'],
-        win_rate=st.session_state.backtest_results['Win Rate'],
-        profit_factor=st.session_state.backtest_results['Profit Factor'],
-        total_return=st.session_state.backtest_results['Total Return'],
-        trades=st.session_state.backtest_results['Trades'],
-        latest_date=st.session_state.aapl_df['date'].iloc[-1].strftime('%m-%d-%Y') if not st.session_state.aapl_df.empty else 'N/A',
-        entry=st.session_state.aapl_df['close'].iloc[-1] if not st.session_state.aapl_df.empty else 0,
-        stop_loss=stop_loss_value,
-        take_profit=take_profit_value,
-        alerts_html=''.join([f"<div class='alert-box'>{alert}</div>" for alert in st.session_state.alerts]),
+        breakout_timeframe=session_state.breakout_timeframe,
+        average_return=session_state.aapl_metrics['Average Return'],
+        volatility=session_state.aapl_metrics['Volatility'],
+        win_ratio=session_state.aapl_metrics['Win Ratio'],
+        max_drawdown=session_state.aapl_metrics['Max Drawdown'],
+        largest_loss=session_state.aapl_metrics['Largest Loss'],
+        largest_loss_date=session_state.aapl_metrics['Largest Loss Date'],
+        largest_gain=session_state.aapl_metrics['Largest Gain'],
+        largest_gain_date=session_state.aapl_metrics['Largest Gain Date'],
+        win_rate=session_state.backtest_results['Win Rate'],
+        profit_factor=session_state.backtest_results['Profit Factor'],
+        total_return=session_state.backtest_results['Total Return'],
+        trades=session_state.backtest_results['Trades'],
+        latest_date=session_state.aapl_df['date'].iloc[-1].strftime('%m-%d-%Y') if not st.session_state.aapl_df.empty else 'N/A',
+        entry=session_state.aapl_df['close'].iloc[-1] if not st.session_state.aapl_df.empty else 0,
+        stop=stop_loss_value,
+        take=take_profit_value,
+        alerts_html=alerts_html,
         candlestick_html=candlestick_html,
         bench_html=bench_html,
         heatmap_html=heatmap_html,
@@ -1038,7 +1054,7 @@ if not st.session_state.aapl_df.empty:
         "backtest_results": st.session_state.backtest_results,
         "signals": st.session_state.signals,
         "score": st.session_state.score,
-        "price_prediction": price_prediction_dict,  # Use converted dictionary
+        "price_prediction": price_prediction_dict,
         "alerts": st.session_state.alerts
     }
     json_buffer = io.StringIO()
