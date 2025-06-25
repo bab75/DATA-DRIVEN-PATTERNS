@@ -617,7 +617,8 @@ def add_win_loss_distribution(fig, df, row):
 
 for i, subplot in enumerate(subplot_order, 1):
     if subplot == "Candlestick":
-        add_candlestick_trace(fig, st.session_state.aapl_df'], row=i)
+        #add_candlestick_trace(fig, st.session_state.aapl_df'], row=i)
+        add_candlestick_trace(fig, st.session_state.aapl_df, i)
     elif subplot == "RSI":
         add_rsi_trace(fig, st.session_state.aapl_df, i)
     elif subplot == "MACD & Stochastic":
