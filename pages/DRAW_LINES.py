@@ -534,18 +534,24 @@ def add_candlestick_trace(fig, df, row):
     df['date'] = df['date'].fillna(pd.NaT)
 
     # Enhanced hover text for buy/sell signals
-    customdata = []
+    signal_labels = []
     hovertemplate_custom = []
     for _, row in df.iterrows():
         if row.get('buy_signal', False):
-            customdata.append('Buy Signal')
+            signal_labels.append('Buy Signal')
             hovertemplate_custom.append('<b style="color:darkgreen">🟢 BUY SIGNAL</b><br>')
         elif row.get('sell_signal', False):
-            customdata.append('Sell Signal')
+            signal_labels.append('Sell Signal')
             hovertemplate_custom.append('<b style="color:darkred">🔴 SELL SIGNAL</b><br>')
         else:
-            customdata.append('')
+            signal_labels.append('')
             hovertemplate_custom.append('')
+
+    # Combine signal labels with volume, rsi, and rvol into a single customdata array
+    customdata = np.array(
+        [signal_labels, df['volume'], df['rsi'], df['rvol']],
+        dtype=object
+    ).T
 
     fig.add_trace(go.Candlestick(
         x=df['date'],
@@ -557,19 +563,19 @@ def add_candlestick_trace(fig, df, row):
         increasing_line_color='#4CAF50',
         decreasing_line_color='#f44336',
         customdata=customdata,
-        hovertemplate='%{customdata}' +
+        hovertemplate='%{customdata[0]}' +
                       'Date: %{x|%m-%d-%Y}<br>' +
                       'Month: %{x|%B}<br>' +
                       'Open: $%{open:.2f}<br>' +
                       'High: $%{high:.2f}<br>' +
                       'Low: $%{low:.2f}<br>' +
                       'Close: $%{close:.2f}<br>' +
-                      'Volume: %{customdata[0]:,.0f}<br>' +
-                      'RSI: %{customdata[1]:.2f}<br>' +
-                      'RVOL: %{customdata[2]:.2f}<extra></extra>',
-        customdata=np.array([df['volume'], df['rsi'], df['rvol']]).T
+                      'Volume: %{customdata[1]:,.0f}<br>' +
+                      'RSI: %{customdata[2]:.2f}<br>' +
+                      'RVOL: %{customdata[3]:.2f}<extra></extra>'
     ), row=row, col=1)
 
+    # Rest of the function remains unchanged
     if "Bollinger Bands" in show_indicators and 'ma20' in df.columns and 'std_dev' in df.columns:
         fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] + 2*df['std_dev'], name="Bollinger Upper", line=dict(color="#0288d1")), row=row, col=1)
         fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] - 2*df['std_dev'], name="Bollinger Lower", line=dict(color="#0288d1"), fill='tonexty', fillcolor='rgba(2,136,209,0.1)'), row=row, col=1)
