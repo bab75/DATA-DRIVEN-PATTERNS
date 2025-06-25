@@ -66,21 +66,21 @@ secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV/XLSX)", ty
 
 # Auto-update date range for uploaded files
 if primary_file and data_source == "Upload CSV/XLSX":
-# Load file temporarily to get date range
- temp_df = pd.read_csv(primary_file) if primary_file.name.endswith('.csv') else pd.read_excel(primary_file)
- temp_df['date'] = pd.to_datetime(temp_df['date'], errors='coerce')
-if not temp_df['date'].isna().all():
-file_min_date = temp_df['date'].min()
-file_max_date = temp_df['date'].max()
-# Update session state with file dates
-st.session_state['auto_min_date'] = file_min_date
-st.session_state['auto_max_date'] = file_max_date
+    # Load file temporarily to get date range
+    temp_df = pd.read_csv(primary_file) if primary_file.name.endswith('.csv') else pd.read_excel(primary_file)
+    temp_df['date'] = pd.to_datetime(temp_df['date'], errors='coerce')
+    if not temp_df['date'].isna().all():
+        file_min_date = temp_df['date'].min()
+        file_max_date = temp_df['date'].max()
+        # Update session state with file dates
+        st.session_state['auto_min_date'] = file_min_date
+        st.session_state['auto_max_date'] = file_max_date
+    else:
+        st.session_state['auto_min_date'] = pd.to_datetime('2020-01-01')
+        st.session_state['auto_max_date'] = pd.to_datetime('2025-06-24')
 else:
-st.session_state['auto_min_date'] = pd.to_datetime('2020-01-01')
-st.session_state['auto_max_date'] = pd.to_datetime('2025-06-24')
-else:
-st.session_state['auto_min_date'] = pd.to_datetime('2020-01-01')
-st.session_state['auto_max_date'] = pd.to_datetime('2025-06-24')
+    st.session_state['auto_min_date'] = pd.to_datetime('2020-01-01')
+    st.session_state['auto_max_date'] = pd.to_datetime('2025-06-24')
 
 # Dynamic date inputs based on loaded data
 if 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
