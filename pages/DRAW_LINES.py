@@ -38,7 +38,7 @@ st.markdown("""
     .stExpander { background-color: #f5f5f5; border-radius: 5px; }
     .metric-box { background-color: #e0e0e0; padding: 10px; border-radius: 5px; color: #000000; }
     .trade-details { background-color: #f0f0f0; padding: 10px; border-radius: 5px; color: #000000; }
-    .alert-box { background-color: #fff3e0; padding: 10px; border-radius: 5px; color: #000000; }
+    .alert-box { background-color: #fff3e0; padding: 10px; margin: 10px 0; border-radius: 5px; color: #000000; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -61,24 +61,29 @@ data_source = st.sidebar.radio("Select Data Source", ["Upload CSV/XLSX", "Fetch 
 symbol = st.sidebar.text_input("Stock Symbol (e.g., AAPL)", value=st.session_state.symbol, key="symbol_input")
 
 # File uploaders
-primary_file = st.sidebar.file_uploader("Upload Stock Data (CSV/XLSX)", type=["csv", "xlsx"], key="primary_file")
+primary_file = st.sidebar.file_uploader("Upload Stock Data (CSV/XLSX)", type=["csv", "xlsx"], key="primary_file") if data_source == "Upload CSV/XLSX" else None
 secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV/XLSX)", type=["csv", "xlsx"], key="secondary_file")
 
-# Dynamic date inputs based on loaded data
-if 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
-    valid_dates = st.session_state.aapl_df['date'].dropna()
-    if not valid_dates.empty:
-        min_date = valid_dates.min()
-        max_date = valid_dates.max()
+# Dynamic date inputs based on data source
+if data_source == "Upload CSV/XLSX" and primary_file:
+    if 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
+        valid_dates = st.session_state.aapl_df['date'].dropna()
+        if not valid_dates.empty:
+            min_date = valid_dates.min()
+            max_date = valid_dates.max()
+        else:
+            min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
+            max_date = pd.to_datetime('06-24-2025', format='%m-%d-%Y')
     else:
         min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-        max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
-else:
+        max_date = pd.to_datetime('06-24-2025', format='%m-%d-%Y')
+    from_date = st.sidebar.date_input("From Date (Upload)", value=min_date, min_value=min_date, max_value=max_date, key="upload_from_date", format="MM-DD-YYYY")
+    to_date = st.sidebar.date_input("To Date (Upload)", value=max_date, min_value=min_date, max_value=max_date, key="upload_to_date", format="MM-DD-YYYY")
+elif data_source == "Fetch Real-Time (Yahoo Finance)":
     min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-    max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
-
-from_date = st.sidebar.date_input("From Date", value=min_date, min_value=min_date, max_value=max_date, key="from_date_input", format="MM-DD-YYYY")
-to_date = st.sidebar.date_input("To Date", value=max_date, min_value=min_date, max_value=max_date, key="to_date_input", format="MM-DD-YYYY")
+    max_date = pd.to_datetime('06-24-2025', format='%m-%d-%Y')
+    from_date = st.sidebar.date_input("From Date (Live)", value=min_date, min_value=min_date, max_value=max_date, key="live_from_date", format="MM-DD-YYYY")
+    to_date = st.sidebar.date_input("To Date (Live)", value=max_date, min_value=min_date, max_value=max_date, key="live_to_date", format="MM-DD-YYYY")
 
 st.sidebar.header("Chart Settings")
 show_indicators = st.sidebar.multiselect(
@@ -151,10 +156,12 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 st.write("Data types:", aapl_df.dtypes)
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Convert and validate date column, handling NaT
+            # Convert and validate date column with detailed error handling
             aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', format='%m-%d-%Y')
-            if aapl_df['date'].isna().all():
-                st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates in MM-DD-YYYY format.")
+            invalid_dates = aapl_df[aapl_df['date'].isna()]['date']
+            if not invalid_dates.empty:
+                st.error("Invalid dates found in the 'date' column. Please ensure all dates are in MM-DD-YYYY format.")
+                st.write("Sample invalid dates:", invalid_dates.head().tolist())
                 st.write("Sample data (first 5 rows):", aapl_df.head())
                 return pd.DataFrame(), pd.DataFrame()
             
@@ -250,9 +257,9 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
 if submit and not st.session_state.data_processed:
     st.session_state.data_loaded = True
     st.session_state.symbol = st.session_state.symbol_input
-    st.session_state.start_date = pd.to_datetime(from_date, format='%m-%d-%Y')
-    st.session_state.end_date = pd.to_datetime(to_date, format='%m-%d-%Y')
-    aapl_df, pl_df = load_data(primary_file, data_source, st.session_state.symbol, st.session_state.start_date, st.session_state.end_date, secondary_file)
+    start_date = pd.to_datetime(from_date, format='%m-%d-%Y')
+    end_date = pd.to_datetime(to_date, format='%m-%d-%Y')
+    aapl_df, pl_df = load_data(primary_file, data_source, st.session_state.symbol, start_date, end_date, secondary_file)
     st.session_state.aapl_df = aapl_df
     st.session_state.pl_df = pl_df
     st.session_state.data_processed = True
@@ -437,7 +444,7 @@ def calculate_score(metrics, signals):
     technical_score = sum([10 if s in ['Buy', 'Strong Trend'] else 0 for s in signals.values()])
     volume_score = 20 if st.session_state.aapl_df['volume'].iloc[-1] > st.session_state.aapl_df['volume'].mean() else 10
     total_score = performance_score + risk_score + technical_score + volume_score
-    recommendation = 'Buy' if total_score > 70 else 'Hold' if total_score > 50 else 'Underperformance'
+    recommendation = 'Buy' if total_score > 70 else 'Hold' if total_score > 50 else 'Market'
     return {
         'Performance': performance_score,
         'Risk': risk_score,
@@ -807,14 +814,15 @@ st.plotly_chart(fig_heatmap, use_container_width=True)
 # Export data as CSV and Excel
 st.header("Export Data and Reports")
 if not st.session_state.aapl_df.empty:
-    # Filter out NaT values and get valid min/max dates
+    # Use validated date range from loaded data
     valid_dates = st.session_state.aapl_df['date'].dropna()
     if not valid_dates.empty:
         min_date = valid_dates.min().strftime('%m-%d-%Y')
         max_date = valid_dates.max().strftime('%m-%d-%Y')
     else:
-        min_date = '01-01-2020'  # Fallback if no valid dates
-        max_date = '06-24-2025'  # Current date as fallback
+        min_date = st.session_state.start_date.strftime('%m-%d-%Y')
+        max_date = st.session_state.end_date.strftime('%m-%d-%Y')
+    
     csv_buffer = io.StringIO()
     st.session_state.aapl_df.to_csv(csv_buffer, index=False)
     csv_buffer.seek(0)
@@ -832,8 +840,8 @@ if not st.session_state.aapl_df.empty:
         min_date = valid_dates.min().strftime('%m-%d-%Y')
         max_date = valid_dates.max().strftime('%m-%d-%Y')
     else:
-        min_date = '01-01-2020'
-        max_date = '06-24-2025'
+        min_date = st.session_state.start_date.strftime('%m-%d-%Y')
+        max_date = st.session_state.end_date.strftime('%m-%d-%Y')
     pdf_buffer = io.BytesIO()
     c = canvas.Canvas(pdf_buffer, pagesize=letter)
     c.setFont("Helvetica", 12)
@@ -877,8 +885,8 @@ if not st.session_state.aapl_df.empty:
         min_date = valid_dates.min().strftime('%m-%d-%Y')
         max_date = valid_dates.max().strftime('%m-%d-%Y')
     else:
-        min_date = '01-01-2020'
-        max_date = '06-24-2025'
+        min_date = st.session_state.start_date.strftime('%m-%d-%Y')
+        max_date = st.session_state.end_date.strftime('%m-%d-%Y')
     if html_report_type == "Interactive (with Hover)":
         candlestick_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
         bench_html = fig_bench.to_html(include_plotlyjs='cdn', full_html=False) if fig_bench else ""
@@ -1024,8 +1032,8 @@ if not st.session_state.aapl_df.empty:
         min_date = valid_dates.min().strftime('%m-%d-%Y')
         max_date = valid_dates.max().strftime('%m-%d-%Y')
     else:
-        min_date = '01-01-2020'
-        max_date = '06-24-2025'
+        min_date = st.session_state.start_date.strftime('%m-%d-%Y')
+        max_date = st.session_state.end_date.strftime('%m-%d-%Y')
     # Convert price_prediction DataFrame to a JSON-serializable format
     price_prediction_dict = st.session_state.price_prediction.to_dict(orient='records')
     for pred in price_prediction_dict:
