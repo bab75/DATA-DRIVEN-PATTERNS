@@ -896,7 +896,9 @@ if not st.session_state.aapl_df.empty:
         candlestick_html = f'<img src="data:image/png;base64,{candlestick_img_b64}" alt="Candlestick Chart">'
         bench_html = f'<img src="data:image/png;base64,{bench_img_b64}" alt="Benchmark Chart">' if bench_img_b64 else ""
         heatmap_html = f'<img src="data:image/png;base64,{heatmap_img_b64}" alt="Seasonality Heatmap">'
-        pred_html = f'<img src="data:image/png;base64,{pred_img_b64}" alt="Price Prediction">'
+       # pred_html = f'<img src="data:image/png;base64,{pred_img_b64}" alt="Price Prediction">'
+        df_pred = pd.DataFrame({"Date": [...], "Predicted Price": [...] })
+
 
     html_content = """
     <!DOCTYPE html>
