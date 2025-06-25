@@ -715,8 +715,8 @@ st.header("Price Movement Alerts")
 with st.expander("View Alerts"):
     if 'alerts' in st.session_state and st.session_state.alerts:
         try:
-            # Parse alerts into a DataFrame with date and percentage
- change            alerts_df = pd.DataFrame({
+            # Parse alerts into a DataFrame with date and percentage change
+                 alerts_df = pd.DataFrame({
                 'Date': [alert.split(': ')[0] for alert in st.session_state.alerts if ': ' in alert],
                 'Change (%)': [float(alert.split(': ')[1].replace('% change', '')) for alert in st.session_state.alerts if ': ' in alert]
             })
