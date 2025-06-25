@@ -982,7 +982,6 @@ if not st.session_state.aapl_df.empty:
     st.download_button("Download HTML Report", html_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_report_{min_date}_to_{max_date}.html", mime="text/html")
 
 # Export JSON report
- Export JSON report
 if not st.session_state.aapl_df.empty:
     valid_dates = st.session_state.aapl_df['date'].dropna()
     if not valid_dates.empty:
