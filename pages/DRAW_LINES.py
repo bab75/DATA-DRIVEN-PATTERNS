@@ -655,16 +655,16 @@ def add_adx_volatility_trace(fig, df, row):
 def add_volume_trace(fig, df, row):
     fig.add_trace(
         go.Bar(x=df['date'], y=df['volume'], 
-                   name="Volume", marker_color="#607d8b",
-                   hovertext=[f"Volume: {x:,.0f}" for x in df['volume']],
-                   hoverinfo='text+x'), row=row, col=1)
+               name="Volume", marker_color="#607d8b",
+               hovertext=[f"Volume: {x:,.0f}" for x in df['volume']],
+               hoverinfo='text+x'), row=row, col=1)
     if 'vwap' in df.columns:
         fig.add_trace(
-            go.Scatter(x=df['date'], y=df ['vwap'], 
-                     name="VWAP", line=dict(color="#0288d1"),
-                     hovertext=[f"VWAP: ${x:.2f}" for x in x df['vwap']],
-                     hoverinfo='text+x'), row=row, col=1)
-
+            go.Scatter(x=df['date'], y=df['vwap'], 
+                       name="VWAP", line=dict(color="#0288d1"),
+                       hovertext=[f"VWAP: ${x:.2f}" for x in df['vwap']],  # Fixed line
+                       hoverinfo='text+x'), row=row, col=1)
+        
 def add_win_loss_trace(fig, df, row):
     if 'daily_return' not in df.columns:
         st.warning("Cannot plot Win/Loss Distribution: missing 'daily_return'.")
