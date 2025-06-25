@@ -781,8 +781,7 @@ if st.session_state.trade_details and all(key in st.session_state.trade_details 
             f"<b>Stop-Loss:</b> ${details['Stop-Loss']:.2f}<br>"
             f"<b>Take-Profit:</b> ${details['Take-Profit']:.2f}<br>"
             f"<b>Buy Signal:</b> {details['Buy Signal']}<br>"
-            f"<b>Risk-Reward Ratio:</b> {rr_ratio:.2f}" if isinstance(rr_ratio, float) else rr_ratio
-            #"</div>",
+            f"<b>Risk-Reward Ratio:</b> {rr_ratio:.2f}" if isinstance(rr_ratio, float) else rr_ratio "</div>",
             unsafe_allow_html=True
         )
     except Exception as e:
