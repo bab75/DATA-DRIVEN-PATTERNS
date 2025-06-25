@@ -72,13 +72,30 @@ if 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
         max_date = valid_dates.max()
     else:
         min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-        max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+        max_date = pd.to_datetime('06-24-2025 23:05:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
 else:
     min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-    max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+    max_date = pd.to_datetime('06-24-2025 23:05:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
 
 from_date = st.sidebar.date_input("From Date", value=min_date, min_value=min_date, max_value=max_date, key="from_date_input", format="MM-DD-YYYY")
 to_date = st.sidebar.date_input("To Date", value=max_date, min_value=min_date, max_value=max_date, key="to_date_input", format="MM-DD-YYYY")
+
+# Adjust dates if uploading data
+if data_source == "Upload CSV/XLSX" and primary_file:
+    try:
+        if primary_file.name.endswith('.csv'):
+            temp_df = pd.read_csv(primary_file)
+        elif primary_file.name.endswith('.xlsx'):
+            temp_df = pd.read_excel(primary_file)
+        temp_df['date'] = pd.to_datetime(temp_df['date'], errors='coerce', format='%m/%d/%Y', dayfirst=False).dt.strftime('%m-%d-%Y')
+        valid_dates = temp_df['date'].dropna()
+        if not valid_dates.empty:
+            from_date = pd.to_datetime(valid_dates.min(), format='%m-%d-%Y')
+            to_date = pd.to_datetime(valid_dates.max(), format='%m-%d-%Y')
+            st.session_state.from_date = from_date
+            st.session_state.to_date = to_date
+    except Exception:
+        pass
 
 st.sidebar.header("Chart Settings")
 show_indicators = st.sidebar.multiselect(
@@ -151,10 +168,13 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 st.write("Data types:", aapl_df.dtypes)
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Convert and validate date column, handling NaT
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', format='%m-%d-%Y')
+            # Preprocess and convert date column to MM-DD-YYYY format
+            aapl_df['date'] = aapl_df['date'].astype(str).str.strip()
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], format='%m/%d/%Y', errors='coerce', dayfirst=False).dt.strftime('%m-%d-%Y')
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], format='%m-%d-%Y', errors='coerce')
+            
             if aapl_df['date'].isna().all():
-                st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates in MM-DD-YYYY format.")
+                st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates in M/D/YYYY or MM-DD-YYYY format.")
                 st.write("Sample data (first 5 rows):", aapl_df.head())
                 return pd.DataFrame(), pd.DataFrame()
             
