@@ -50,7 +50,7 @@ st.session_state.setdefault('symbol', 'AAPL')
 if 'aapl_df' not in st.session_state:
     st.session_state.aapl_df = pd.DataFrame()
 if 'pl_df' not in st.session_state:
-    st.session_state.pl_df' = pd.DataFrame()
+    st.session_state.pl_df = pd.DataFrame()
 
 # Title
 st.title("📊 Stock Analysis: Consolidation & Breakout Detection")
