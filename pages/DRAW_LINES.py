@@ -1,6 +1,4 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
+
 import plotly
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -95,22 +93,6 @@ subplot_order = st.sidebar.multiselect(
 )
 html_report_type = st.sidebar.radio("HTML Report Type", ["Interactive (with Hover)", "Static Images"], key="html_report_type")
 
-# Enhancement mode radio button
-st.sidebar.header("🔧 Enhancement Mode")
-enhancement_mode = st.sidebar.radio(
-    "Select Enhancement (choose one):",
-    [
-        "Standard Mode (Original)", 
-        "Flexible Date Formats", 
-        "Auto Date Range Detection",
-        "Enhanced Chart Hover",
-        "Table Format Reports"
-    ],
-    index=0,  # Default to standard mode
-    help="Select one enhancement at a time to avoid conflicts",
-    key="enhancement_mode"
-)
-
 # Submit and Clear buttons
 col1, col2 = st.sidebar.columns(2)
 with col1:
@@ -132,87 +114,6 @@ if clear:
 # Validate symbol format
 def validate_symbol(symbol):
     return bool(re.match(r'^[A-Za-z0-9.]+$', symbol.strip()))
-
-# Enhancement function
-def apply_selected_enhancement(aapl_df, enhancement_mode, fig=None, alerts_data=None):
-    """Apply only the selected enhancement mode"""
-    
-    if enhancement_mode == "Standard Mode (Original)":
-        # No changes - use original code paths
-        return aapl_df, fig, alerts_data
-    
-    elif enhancement_mode == "Flexible Date Formats":
-        # Only modify date parsing
-        if not aapl_df.empty and 'date' in aapl_df.columns:
-            original_date = aapl_df['date'].copy()
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
-            
-            if aapl_df['date'].isna().all():
-                date_formats = ['%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%d/%m/%Y']
-                for fmt in date_formats:
-                    try:
-                        aapl_df['date'] = pd.to_datetime(original_date, format=fmt, errors='coerce')
-                        if not aapl_df['date'].isna().all():
-                            st.success(f"Detected date format: {fmt}")
-                            break
-                    except:
-                        continue
-        return aapl_df, fig, alerts_data
-    
-    elif enhancement_mode == "Auto Date Range Detection":
-        # Only modify date range detection
-        if not aapl_df.empty and 'date' in aapl_df.columns:
-            valid_dates = aapl_df['date'].dropna()
-            if not valid_dates.empty:
-                file_min = valid_dates.min()
-                file_max = valid_dates.max()
-                st.info(f"File date range: {file_min.strftime('%m-%d-%Y')} to {file_max.strftime('%m-%d-%Y')}")
-                st.warning("Clear and resubmit to use detected range")
-        return aapl_df, fig, alerts_data
-    
-    elif enhancement_mode == "Enhanced Chart Hover":
-        # Only modify chart hover if fig exists
-        if fig and not aapl_df.empty:
-            # Check for signal columns
-            if 'buy_signal' in aapl_df.columns:
-                customdata = []
-                for idx, row in aapl_df.iterrows():
-                    if row.get('buy_signal', False):
-                        customdata.append('BUY SIGNAL')
-                    else:
-                        customdata.append('')
-                
-                # Update first candlestick trace only
-                if fig.data and len(customdata) == len(aapl_df):
-                    fig.data[0].customdata = customdata
-                    fig.data[0].hovertemplate = (
-                        '%{customdata}<br>' + 
-                        'Date: %{x}<br>Open: $%{open:.2f}<br>High: $%{high:.2f}<br>' +
-                        'Low: $%{low:.2f}<br>Close: $%{close:.2f}<extra></extra>'
-                    )
-            else:
-                st.warning("No buy/sell signal columns found")
-        return aapl_df, fig, alerts_data
-    
-    elif enhancement_mode == "Table Format Reports":
-        # Only modify alerts format
-        if alerts_data:
-            table_html = "<table border='1' style='border-collapse: collapse; width: 100%;'>"
-            table_html += "<tr><th>Date</th><th>Change (%)</th></tr>"
-            for alert in alerts_data:
-                # Parse alert string (e.g., "06-20-2025: 2.5% change")
-                try:
-                    date_str, change_str = alert.split(': ')
-                    change_value = change_str.replace('% change', '')
-                    table_html += f"<tr><td>{date_str}</td><td>{change_value}</td></tr>"
-                except:
-                    table_html += f"<tr><td>N/A</td><td>{alert}</td></tr>"
-            table_html += "</table>"
-            alerts_data = table_html
-        return aapl_df, fig, alerts_data
-    
-    # Fallback to original
-    return aapl_df, fig, alerts_data
 
 # Load and validate data
 @st.cache_data
@@ -248,12 +149,27 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 st.write("Data types:", aapl_df.dtypes)
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Apply enhancement for date parsing if selected
-            aapl_df, _, _ = apply_selected_enhancement(aapl_df, st.session_state.get('enhancement_mode', 'Standard Mode (Original)'))
-            if aapl_df['date'].isna().all():
-                st.error("No valid dates found in the uploaded file. Please check the date format.")
-                st.write("Sample data (first 5 rows):", aapl_df.head())
-                return pd.DataFrame(), pd.DataFrame()
+            # Enhanced date parsing for file uploads only
+            if data_source == "Upload CSV/XLSX":
+                # Try flexible date formats for Excel files
+                aapl_df['date_backup'] = aapl_df['date'].copy()
+                aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', infer_datetime_format=True)
+                
+                # If auto-detection fails, try specific formats
+                if aapl_df['date'].isna().all():
+                    date_formats = ['%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%d/%m/%Y']
+                    for fmt in date_formats:
+                        try:
+                            aapl_df['date'] = pd.to_datetime(aapl_df['date_backup'], format=fmt, errors='coerce')
+                            if not aapl_df['date'].isna().all():
+                                st.success(f"Detected date format: {fmt}")
+                                break
+                        except:
+                            continue
+                aapl_df = aapl_df.drop('date_backup', axis=1, errors='ignore')
+            else:
+                # Original logic for Yahoo Finance - no changes
+                aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', format='%m-%d-%Y')
             
             aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
             numeric_cols = ['open', 'high', 'low', 'close', 'volume']
@@ -266,6 +182,21 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 min_date = aapl_df['date'].min()
                 max_date = aapl_df['date'].max()
                 st.sidebar.write(f"File date range: {min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}")
+                
+                # Auto-suggest date range for uploaded files only (no automatic override)
+                if data_source == "Upload CSV/XLSX" and primary_file and not aapl_df['date'].empty:
+                    file_min_date = aapl_df['date'].min()
+                    file_max_date = aapl_df['date'].max()
+                    
+                    # Only show suggestion, don't change user's selection
+                    current_from = pd.to_datetime(start_date)
+                    current_to = pd.to_datetime(end_date)
+                    
+                    # Check if user dates are outside file range
+                    if current_from < file_min_date or current_to > file_max_date:
+                        st.warning(f"📅 File contains data from {file_min_date.strftime('%m-%d-%Y')} to {file_max_date.strftime('%m-%d-%Y')}. Consider adjusting date range.")
+                    else:
+                        st.info(f"✅ Using date range: {current_from.strftime('%m-%d-%Y')} to {current_to.strftime('%m-%d-%Y')}")
                 
                 if start_date < min_date or end_date > max_date:
                     st.error(f"Selected data range ({start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}) is outside the file's range ({min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}).")
@@ -314,8 +245,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
             aapl_df = aapl_df.reset_index().rename(columns={
                 'Date': 'date', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'
             })
-            # Apply enhancement for date parsing if selected
-            aapl_df, _, _ = apply_selected_enhancement(aapl_df, st.session_state.get('enhancement_mode', 'Standard Mode (Original)'))
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce')
             aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
             
             aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
@@ -347,7 +277,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
 # Load data only if Submit is pressed and not already processed
 if submit and not st.session_state.data_processed:
     st.session_state.data_loaded = True
-    st.session_state.symbol = st.session_state_symbol_input
+    st.session_state.symbol = st.session_state.symbol_input
     st.session_state.start_date = pd.to_datetime(from_date, format='%m-%d-%Y')
     st.session_state.end_date = pd.to_datetime(to_date, format='%m-%d-%Y')
     aapl_df, pl_df = load_data(primary_file, data_source, st.session_state.symbol, st.session_state.start_date, st.session_state.end_date, secondary_file)
@@ -404,8 +334,8 @@ if 'aapl_metrics' not in st.session_state or submit:
 def detect_consolidation_breakout(df):
     df['ma20'] = df['close'].rolling(window=20).mean()
     df['std_dev'] = df['close'].rolling(window=20).std()
-    df['atr'] = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close']).average_true()
-    df['rsi'] = ta.momentum.RSIIndicator(close=df['close']).date()
+    df['atr'] = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close']).average_true_range()
+    df['rsi'] = ta.momentum.RSIIndicator(close=df['close']).rsi()
     macd = ta.trend.MACD(close=df['close'])
     df['macd'] = macd.macd()
     df['signal'] = macd.macd_signal()
@@ -413,7 +343,7 @@ def detect_consolidation_breakout(df):
     stochastic = ta.momentum.StochasticOscillator(high=df['high'], low=df['low'], close=df['close'])
     df['stochastic_k'] = stochastic.stoch()
     df['stochastic_d'] = stochastic.stoch_signal()
-    df['adx'] = ta.trend.ADXIndicator(high=df['high'], low=df['low'], close=df['close']).date()
+    df['adx'] = ta.trend.ADXIndicator(high=df['high'], low=df['low'], close=df['close']).adx()
     df['rvol'] = df['volume'] / df['volume'].rolling(window=20).mean()
     df['is_consolidation'] = (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
     df['resistance'] = df['high'].rolling(20).max()
@@ -430,7 +360,7 @@ def detect_consolidation_breakout(df):
     df['senkou_span_a'] = ichimoku.ichimoku_a()
     df['senkou_span_b'] = ichimoku.ichimoku_b()
     close_exceeds_resistance = df['close'] > df['resistance'].shift(1)
-    volume_condition = df['volume'] > df['volume'].mean()
+    volume_condition = df['volume'] > df['volume'].mean() * 0.8
     rsi_condition = (df['rsi'] > 30) & (df['rsi'] < 80)
     macd_condition = df['macd'] > df['signal']
     stochastic_condition = df['stochastic_k'] > df['stochastic_d']
@@ -451,8 +381,8 @@ def backtest_strategy(df):
     for i in range(1, len(df)):
         if df['buy_signal'].iloc[i-1]:
             if position is None:
-                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i]
-                take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1
+                stop_loss = df['stop_loss'].iloc[i] if pd.notna(df['stop_loss'].iloc[i]) else df['close'].iloc[i] * 0.80
+                take_profit = df['take_profit'].iloc[i] if pd.notna(df['take_profit'].iloc[i]) else df['close'].iloc[i] * 1.20
                 position = {
                     'entry_date': df['date'].iloc[i],
                     'entry_price': df['close'].iloc[i],
@@ -467,7 +397,7 @@ def backtest_strategy(df):
                         'exit_date': df['date'].iloc[i],
                         'entry_price': position['entry_price'],
                         'exit_price': position['stop_loss'],
-                        'return': (position['stop_loss'] - position['entry_price']) / position['entry_price']
+                        'return': (position['stop_loss'] - position['entry_price']) / position['entry_price'] * 100
                     })
                     position = None
                 elif df['high'].iloc[i] >= position['take_profit']:
@@ -476,7 +406,7 @@ def backtest_strategy(df):
                         'exit_date': df['date'].iloc[i],
                         'entry_price': position['entry_price'],
                         'exit_price': position['take_profit'],
-                        'return': (position['take_profit'] - position['entry_price']) / position['entry_price']
+                        'return': (position['take_profit'] - position['entry_price']) / position['entry_price'] * 100
                     })
                     position = None
     
@@ -484,7 +414,7 @@ def backtest_strategy(df):
         return {'Win Rate': 0, 'Profit Factor': 0, 'Total Return': 0, 'Trades': 0}
     
     trades_df = pd.DataFrame(trades)
-    win_rate = (trades_df['return'] > 0).mean() if not trades_df.empty else 0
+    win_rate = (trades_df['return'] > 0).mean() * 100 if not trades_df.empty else 0
     gross_profit = trades_df[trades_df['return'] > 0]['return'].sum() if (trades_df['return'] > 0).any() else 0
     gross_loss = -trades_df[trades_df['return'] < 0]['return'].sum() if (trades_df['return'] < 0).any() else 0
     profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf') if gross_profit > 0 else 0
@@ -559,7 +489,7 @@ def predict_price(df):
     predicted_prices = model.predict(next_days)
     last_date = df['date'].iloc[-1]
     if pd.isna(last_date):
-        last_date = pd.Timestamp.now(tz='America/New_York')  # Fallback to current date/time if last date is NaT
+        last_date = pd.Timestamp.now(tz='America/New_York')
     date_range = pd.date_range(start=last_date, periods=5, freq='B')
     return pd.DataFrame({
         'date': date_range,
@@ -595,13 +525,18 @@ def add_candlestick_trace(fig, df, row):
         "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}".format(
             date=getattr(r, 'date').strftime('%m-%d-%Y') if pd.notna(getattr(r, 'date')) else 'N/A',
             month=getattr(r, 'date').strftime('%B') if pd.notna(getattr(r, 'date')) else 'N/A',
-            open=getattr(r, 'open'), high=getattr(r, 'high'), low=getattr(r, 'low'),
-            close=getattr(r, 'close'), volume=getattr(r, 'volume'), rsi=getattr(r, 'rsi'), rvol=getattr(r, 'rvol')
+            open=float(getattr(r, 'open')) if pd.notna(getattr(r, 'open')) else 0.0,
+            high=float(getattr(r, 'high')) if pd.notna(getattr(r, 'high')) else 0.0,
+            low=float(getattr(r, 'low')) if pd.notna(getattr(r, 'low')) else 0.0,
+            close=float(getattr(r, 'close')) if pd.notna(getattr(r, 'close')) else 0.0,
+            volume=float(getattr(r, 'volume')) if pd.notna(getattr(r, 'volume')) else 0,
+            rsi=float(getattr(r, 'rsi')) if pd.notna(getattr(r, 'rsi')) else 0.0,
+            rvol=float(getattr(r, 'rvol')) if pd.notna(getattr(r, 'rvol')) else 0.0
         )
         for r in df.itertuples()
     ]
     fig.add_trace(go.Candlestick(
-        x=df['date'],
+        x=df.index,
         open=df['open'], high=df['high'], low=df['low'], close=df['close'],
         name="Candlestick",
         increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
@@ -624,13 +559,13 @@ def add_candlestick_trace(fig, df, row):
         fig.add_annotation(x=signal_row['date'], y=signal_row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=row, col=1)
     if not buy_signals.empty:
         latest_buy = buy_signals.iloc[-1]
-        risk = latest_buy['close'] - latest_buy['stop_loss']
-        reward = latest_buy['take_profit'] - latest_buy['close']
+        risk = latest_buy['latest_buy'] - latest_buy['close']
+        reward = latest_buy['close'] - latest_buy['take_profit'];
         rr_ratio = reward / risk if risk > 0 else 'N/A'
         fig.add_hline(y=latest_buy['stop_loss'], line_dash="dash", line_color="#f44336", annotation_text="Stop-Loss", annotation_font_color="#000000", row=row, col=1)
         fig.add_hline(y=latest_buy['take_profit'], line_dash="dash", line_color="#4CAF50", annotation_text="Take-Profit", annotation_font_color="#000000", row=row, col=1)
         fig.add_trace(go.Scatter(x=[latest_buy['date'], latest_buy['date']], y=[latest_buy['stop_loss'], latest_buy['take_profit']],
-                                 mode='lines', line=dict(color='rgba(76,175,80,0.2)'), fill='toself', fillcolor='rgba(76,175,80,0.2)',
+                                 mode='lines', line=dict(color='rgba(76,175,80,0.2)'), fill='tozeroy', fillcolor='rgba(76,175,80,0.2)',
                                  hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"], hoverinfo='text', showlegend=False), row=row, col=1)
 
 def add_rsi_trace(fig, df, row):
@@ -684,6 +619,33 @@ def add_win_loss_trace(fig, df, row):
     else:
         st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available.")
 
+# Enhanced hover only if buy/sell signals are present
+def add_signal_hover_if_exists(fig, df):
+    """Add enhanced hover only if signal columns exist"""
+    if 'buy_signal' not in df.columns and 'sell_signal' not in df.columns:
+        return fig  # Return unchanged if no signals
+    
+    # Create custom data for signals
+    customdata = []
+    for _, row in df.iterrows():
+        signal_text = ""
+        if row.get('buy_signal', False):
+            signal_text = "🟢 BUY SIGNAL"
+        elif row.get('sell_signal', False):
+            signal_text = "🔴 SELL SIGNAL"
+        customdata.append(signal_text)
+    
+    # Update first candlestick trace if it exists
+    if fig.data and len(customdata) == len(df):
+        fig.data[0].customdata = customdata
+        fig.data[0].hovertemplate = (
+            '%{customdata}<br>' if any(customdata) else '' +
+            'Date: %{x}<br>Open: $%{open:.2f}<br>High: $%{high:.2f}<br>' +
+            'Low: $%{low:.2f}<br>Close: $%{close:.2f}<extra></extra>'
+        )
+    
+    return fig
+
 for i, subplot in enumerate(subplot_order, 1):
     if subplot == "Candlestick":
         add_candlestick_trace(fig, st.session_state.aapl_df, i)
@@ -698,6 +660,9 @@ for i, subplot in enumerate(subplot_order, 1):
     elif subplot == "Win/Loss Distribution":
         add_win_loss_trace(fig, st.session_state.aapl_df, i)
 
+# Apply enhanced hover for signals
+fig = add_signal_hover_if_exists(fig, st.session_state.aapl_df)
+
 fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white", title_text=f"{st.session_state.symbol} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
                   hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
 fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=len(subplot_order), col=1)
@@ -709,44 +674,37 @@ def on_click(trace, points, state):
         st.session_state.trade_details = {
             'Date': row['date'].strftime('%m-%d-%Y'),
             'Close': float(row['close']),
-            'Stop-Loss': float(row['stop_loss']),
-            'Take-Profit': float(row['take_profit']),
-            'Buy Signal': 'Yes' if row['buy_signal'] else 'No'
+            'pd.notna(row['stop_loss']) and row['stop_loss']: float(row['stop_loss']),
+            'Take-Profit': float(row['take_profit']) if pd.notna(row['take_profit']) else 0.0,
+            'Buy Signal': 'Yes' if row['buy_signal', False] else 'No'
         }
 
 for trace in fig.data:
     if trace.name == "Candlestick":
         trace.on_click(on_click)
 
-# Apply selected enhancement for chart or alerts
-st.session_state.aapl_df, fig, st.session_state.alerts = apply_selected_enhancement(
-    st.session_state.aapl_df,
-    st.session_state.get('enhancement_mode', 'Standard Mode (Original)'),
-    fig,
-    st.session_state.alerts
-)
-
 # Profit/Loss Analysis Section
 st.header("Profit/Loss Analysis")
-st.write(f"**Date Range:** {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')}")
+st.write(f"**Date Range:** {st.session_state.start_date.strftime('%Y-%m-%d')} to {st.session_state.end_date.strftime('%Y-%m-%m-%d')}")
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.markdown(f"<div class='metric-box'><b>Average Return</b><br>{st.session_state.aapl_metrics['Average Return']:.2f}%</div>", unsafe_allow_html=True)
 with col2:
-    st.markdown(f"<div class='metric-box'><b>Volatility</b><br>{st.session_state.aapl_metrics['Volatility']:.2f}%</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box' ><b>Volatility</b><br>{st.session_state.aapl_metrics['Volatility']:.2f}%</div>", unsafe_allow_html=True)
 with col3:
-    st.markdown(f"<div class='metric-box'><b>Win Ratio</b><br>{st.session_state.aapl_metrics['Win Ratio']:.2f}%</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box' ><b>Win Ratio</b><br>{st.session_state.aapl_metrics['Win Ratio']:.2f}%</div>", unsafe_allow_html=True)
 with col4:
-    st.markdown(f"<div class='metric-box'><b>Max Drawdown</b><br>{st.session_state.aapl_metrics['Max Drawdown']:.2f}%</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box' ><b>Max Drawdown</b><br>{st.session_state.aapl_metrics['Max Drawdown']:.2f}%</div>", unsafe_allow_html=True)
 st.markdown(
-    "<div class='metric-box'><b>Significant Events</b><br>"
+    "<div class='metric-box' ><b>Significant Events</b>:<br>"
     "Largest single-period loss was {largest_loss:.2f}% on {largest_loss_date}, indicating a significant market correction.<br>"
-    "Largest single-period gain was {largest_gain:.2f}% on {largest_gain_date}.</div>".format(
-        largest_loss=st.session_state.aapl_metrics['Largest Loss'],
-        largest_loss_date=st.session_state.aapl_metrics['Largest Loss Date'],
-        largest_gain=st.session_state.aapl_metrics['Largest Gain'],
-        largest_gain_date=st.session_state.aapl_metrics['Largest Gain Date']
-    ),
+    "Largest single-period gain was {largest_gain:.2f}% on {largest_gain_date}.</div>",
+    format_dict={
+        'largest_loss': st.session_state.aapl_metrics['Largest Loss'],
+        'largest_loss_date': st.session_state.aapl_metrics['Largest Loss Date'],
+        'largest_gain': st.session_state.aapl_metrics['Largest Gain'],
+        'largest_gain_date': st.session_state.aapl_metrics['Largest Gain Date']
+    },
     unsafe_allow_html=True
 )
 
@@ -793,27 +751,27 @@ st.header("Price Prediction (Next 5 Trading Days)")
 prediction_df = st.session_state.price_prediction
 fig_pred = go.Figure()
 fig_pred.add_trace(go.Scatter(x=prediction_df['date'], y=prediction_df['predicted_close'], mode='lines+markers', name="Predicted Close", line=dict(color="#0288d1"),
-                              hovertext=[f"Date: {d.strftime('%m-%d-%Y')}<br>Predicted Close: ${p:.2f}" for d, p in zip(prediction_df['date'], prediction_df['predicted_close'])], hoverinfo='text+x'))
-fig_pred.update_layout(title=f"{st.session_state.symbol} Price Prediction", height=400, template="plotly_white",
-                       hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
+                              hovertext=[f"Date: {d.strftime('%Y-%m-%d')}<br>Predicted Close: ${p:.2f}" for d, p in zip(prediction_df['date'], prediction_df['predicted_close'])], hoverinfo='text+x'))
+fig_pred.update_layout(title=f"{st.session_state.symbol}_Price Prediction", height=400, template="plotly_white",
+                       hovermode="x unified", font=dict(family="Arial", size=12, color="#000000")), xaxis_tickformat="%m-%d-%Y")
 st.plotly_chart(fig_pred, use_container_width=True)
 
 # Decision Dashboard
 st.header("Decision Dashboard")
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.markdown(f"<div class='metric-box'><b>Recommendation</b><br>{st.session_state.score['Recommendation']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box' ><b>Recommendation</b><br>{st.session_state.score['Recommendation']}</div>", unsafe_allow_html=True)
 with col2:
-    st.markdown(f"<div class='metric-box'><b>Total Score</b><br>{st.session_state.score['Total']:.1f}/100</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box' ><b>Total Score</b><br>{st.session_state.score['Total']:.1f}/100</div>", unsafe_allow_html=True)
 with col3:
-    st.markdown(f"<div class='metric-box'><b>Breakout Timeframe</b><br>{st.session_state.breakout_timeframe}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box' ><b>Breakout Timeframe</b><br>{st.session_state.breakout_timeframe}</div>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.markdown(f"<div class='metric-box'><b>CAGR</b><br>{st.session_state.aapl_metrics['CAGR']:.2f}%</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box' ><b>CAGR</b><br>{st.session_state.aapl_metrics['CAGR']:.2f}%</div>", unsafe_allow_html=True)
 with col2:
-    st.markdown(f"<div class='metric-box'><b>Sharpe Ratio</b><br>{st.session_state.aapl_metrics['Sharpe Ratio']:.2f}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box' ><b>Sharpe Ratio</b><br>{st.session_state.aapl_metrics['Sharpe Ratio']:.2f}</div>", unsafe_allow_html=True)
 with col3:
-    st.markdown(f"<div class='metric-box'><b>RSI</b><br>{st.session_state.aapl_df['rsi'].iloc[-1]:.2f} ({st.session_state.signals['RSI']})</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box' ><b>RSI</b><br>{st.session_state.aapl_df['rsi'].iloc[-1]:.2f} ({st.session_state.signals['RSI']})</div>", unsafe_allow_html=True)
 
 # Display trade details
 if st.session_state.trade_details and all(key in st.session_state.trade_details for key in ['Date', 'Close', 'Stop-Loss', 'Take-Profit', 'Buy Signal']):
@@ -829,15 +787,16 @@ if st.session_state.trade_details and all(key in st.session_state.trade_details 
             "<b>Take-Profit:</b> ${take_profit:.2f}<br>"
             "<b>Buy Signal:</b> {buy_signal}<br>"
             "<b>Risk-Reward Ratio:</b> {rr_ratio}"
-            "</div>".format(
-                date=details['Date'],
-                close=details['Close'],
-                stop_loss=details['Stop-Loss'],
-                take_profit=details['Take-Profit'],
-                buy_signal=details['Buy Signal'],
-                rr_ratio=f"{rr_ratio:.2f}" if isinstance(rr_ratio, float) else rr_ratio
-            ),
-            unsafe_allow_html=True
+            "</div>",
+            unsafe_allow_html=True,
+            format={
+                'date': details['Date'],
+                'close': details['Close'],
+                'stop_loss': details['Stop-Loss'],
+                'take_profit': details['Take-Profit'],
+                'buy_signal': details['Buy Signal'],
+                'rr_ratio': f"{rr_ratio:.2f}" if isinstance(rr_ratio, float) else rr_ratio
+            }
         )
     except Exception as e:
         st.warning(f"Error displaying trade details: {str(e)}. Please select a candlestick to view trade details.")
@@ -845,7 +804,7 @@ else:
     st.info("Click a candlestick on the chart to view trade details.")
 
 # Latest Trade Setup
-latest_buy = st.session_state.aapl_df[st.session_state.aapl_df['buy_signal'] == True].iloc[-1] if not st.session_state.aapl_df[st.session_state.aapl_df['buy_signal'] == True].empty else None
+latest_buy = st.session_state.aapl_df.loc[st.session_state.aapl_df['buy_signal'] == True].iloc[-1] if not st.session_state.aapl_df[st.session_state['aapl_df']['buy_signal'] == True].empty else None
 if latest_buy is not None:
     st.header("Latest Trade Setup")
     st.markdown(
@@ -853,12 +812,13 @@ if latest_buy is not None:
         "<b>Date:</b> {date}<br>"
         "<b>Entry:</b> ${entry:.2f}<br>"
         "<b>Stop-Loss:</b> ${stop_loss:.2f}<br>"
-        "<b>Take-Profit:</b> ${take_profit:.2f}"
-        "</div>".format(
-            date=latest_buy['date'].strftime('%m-%d-%Y'),
-            entry=latest_buy['close'],
-            stop_loss=latest_buy['stop_loss'],
-            take_profit=latest_buy['take_profit']
+        "<b>Take-Profit:</b> ${st.profit:.2f}"
+        "</div>",
+        format={
+            'date': latest_buy['date'].strftime('%Y-%m-%d'),
+            'entry': latest_buy['close'],
+            'stop_loss': latest_buy['stop_loss'],
+            'take_profit': latest_buy['stake_profit']
         ),
         unsafe_allow_html=True
     )
@@ -881,7 +841,7 @@ if st.session_state.get('secondary_file') and not st.session_state.pl_df.empty:
                                 hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
         st.plotly_chart(fig_bench, use_container_width=True)
     except Exception as e:
-        st.warning(f"Error plotting benchmark comparison: {str(e)}. Skipping benchmark chart.")
+        st.warning(f"Error performing benchmark comparison: {str(e)}. Skipping benchmark chart.")
 
 # Seasonality heatmap
 st.header("Seasonality Analysis")
@@ -960,8 +920,8 @@ if not st.session_state.aapl_df.empty:
     c.drawString(70, 470, f"- Largest Loss: {st.session_state.aapl_metrics['Largest Loss']:.2f}% on {st.session_state.aapl_metrics['Largest Loss Date']}")
     c.drawString(70, 450, f"- Largest Gain: {st.session_state.aapl_metrics['Largest Gain']:.2f}% on {st.session_state.aapl_metrics['Largest Gain Date']}")
     c.drawString(50, 430, "Latest Trade Setup:")
-    stop_loss_value = st.session_state.aapl_df['stop_loss'].iloc[-1] if 'stop_loss' in st.session_state.aapl_df.columns and not st.session_state.aapl_df['stop_loss'].iloc[-1] is None else 0.0
-    take_profit_value = st.session_state.aapl_df['take_profit'].iloc[-1] if 'take_profit' in st.session_state.aapl_df.columns and not st.session_state.aapl_df['take_profit'].iloc[-1] is None else 0.0
+    stop_loss_value = st.session_state.aapl_df['stop_loss'].iloc[-1] if pd.notna(st.session_state.aapl_df['stop_loss'].iloc[-1]) else 0.0
+    take_profit_value = st.session_state.aapl_df['take_profit'].iloc[-1] if pd.notna(st.session_state.aapl_df['take_profit'].iloc[-1]) else 0.0
     c.drawString(70, 410, f"- Date: {st.session_state.aapl_df['date'].iloc[-1].strftime('%m-%d-%Y')}")
     c.drawString(70, 390, f"- Entry: ${st.session_state.aapl_df['close'].iloc[-1]:.2f}")
     c.drawString(70, 370, f"- Stop-Loss: ${stop_loss_value:.2f}")
@@ -974,7 +934,50 @@ if not st.session_state.aapl_df.empty:
     c.showPage()
     c.save()
     pdf_buffer.seek(0)
-    st.download_button("Download PDF Report", pdf_buffer, file_name=f"{st.session_state.symbol}_investment_report_{min_date}_to_{max_date}.pdf", mime="application/pdf")
+    st.download_button("Download PDF Report", pdf_buffer.getvalue(), file_name=f"{st.session_state.symbol}_investment_report_{min_date}_to_{max_date}.pdf", mime="application/pdf")
+
+# Helper function for alerts table in HTML report
+def convert_alerts_to_table_html(alerts, use_table_format=True):
+    """Convert alerts to table format for HTML report only"""
+    if not alerts or not use_table_format:
+        return ''.join([f"<div class='alert-box'>{alert}</div>" for alert in alerts]) if isinstance(alerts, list) else alerts
+    
+    if isinstance(alerts, str) and "No significant" in alerts:
+        return f"<div class='alert-box'>{alerts}</div>"
+    
+    table_html = """
+    <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
+        <tr style="background-color: #f0f0f0;">
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Alert Type</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Description</th>
+        </tr>
+    """
+    
+    # Handle different alert formats
+    alert_list = alerts if isinstance(alerts, list) else [alerts]
+    
+    for alert in alert_list:
+        alert_text = str(alert)
+        alert_type = "Price Alert"
+        
+        if "buy" in alert_text.lower():
+            alert_type = "Buy Signal"
+            row_color = "#e8f5e9"
+        elif "sell" in alert_text.lower():
+            alert_type = "Sell Signal"
+            row_color = "#ffebee"
+        else:
+            row_color = "#fafafa"
+        
+        table_html += f"""
+        <tr style="background-color: {row_color};">
+            <td style="border: 1px solid #ddd; padding: 8px;"><strong>{alert_type}</strong></td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{alert_text}</td>
+        </tr>
+        """
+    
+    table_html += "</table>"
+    return table_html
 
 # Export HTML report
 if not st.session_state.aapl_df.empty:
@@ -986,10 +989,10 @@ if not st.session_state.aapl_df.empty:
         min_date = '01-01-2020'
         max_date = '06-24-2025'
     if html_report_type == "Interactive (with Hover)":
-        candlestick_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
-        bench_html = fig_bench.to_html(include_plotlyjs='cdn', full_html=False) if fig_bench else ""
-        heatmap_html = fig_heatmap.to_html(include_plotlyjs='cdn', full_html=False)
-        pred_html = fig_pred.to_html(include_plotlyjs='cdn', full_html=False)
+        candlestick_html = fig.to_html(include_plotlyjs='cdn')
+        bench_html = fig_bench.to_html(include_plotlyjs=False) if fig_bench else ""
+        heatmap_html = fig_heatmap.to_html(include_plotlyjs=False)
+        pred_html = fig_pred.to_html(include_plotlyjs=False)
     else:
         candlestick_img = fig.to_image(format="png")
         candlestick_img_b64 = base64.b64encode(candlestick_img).decode()
@@ -1003,8 +1006,6 @@ if not st.session_state.aapl_df.empty:
         bench_html = f'<img src="data:image/png;base64,{bench_img_b64}" alt="Benchmark Chart">' if bench_img_b64 else ""
         heatmap_html = f'<img src="data:image/png;base64,{heatmap_img_b64}" alt="Seasonality Heatmap">'
         pred_html = f'<img src="data:image/png;base64,{pred_img_b64}" alt="Price Prediction">'
-
-    alerts_html = st.session_state.alerts if st.session_state.get('enhancement_mode', 'Standard Mode (Original)') == "Table Format Reports" else ''.join([f"<div class='alert-box'>{alert}</div>" for alert in st.session_state.alerts])
 
     html_content = """
     <!DOCTYPE html>
