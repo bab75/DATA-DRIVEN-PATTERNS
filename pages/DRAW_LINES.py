@@ -48,7 +48,7 @@ st.session_state.setdefault('data_loaded', False)
 st.session_state.setdefault('data_processed', False)
 st.session_state.setdefault('symbol', 'AAPL')
 st.session_state.setdefault('start_date', pd.to_datetime('01-01-2020', format='%m-%d-%Y'))  # Default From Date
-st.session_state.setdefault('end_date', pd.to_datetime('06-24-2025', format='%m-%d-%Y'))  # Default To Date (current)
+st.session_state.setdefault('end_date', pd.to_datetime('06-24-2025 20:39:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York'))  # Current date/time
 if 'aapl_df' not in st.session_state:
     st.session_state.aapl_df = pd.DataFrame()
 if 'pl_df' not in st.session_state:
@@ -100,7 +100,7 @@ if clear:
     st.session_state.data_processed = False
     st.session_state.symbol = 'AAPL'
     st.session_state.start_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-    st.session_state.end_date = pd.to_datetime('06-24-2025', format='%m-%d-%Y')
+    st.session_state.end_date = pd.to_datetime('06-24-2025 20:39:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
     st.session_state.aapl_df = pd.DataFrame()
     st.session_state.pl_df = pd.DataFrame()
     st.rerun()
@@ -434,7 +434,7 @@ def calculate_score(metrics, signals):
 if 'score' not in st.session_state or submit:
     st.session_state.score = calculate_score(st.session_state.aapl_metrics, st.session_state.signals)
 
-# Price prediction with linear regression
+# Price prediction with linear regression (corrected)
 @st.cache_data
 def predict_price(df):
     X = np.arange(len(df['close'])).reshape(-1, 1)
@@ -443,8 +443,13 @@ def predict_price(df):
     model.fit(X, y)
     next_days = np.arange(len(df['close']), len(df['close']) + 5).reshape(-1, 1)
     predicted_prices = model.predict(next_days)
+    # Generate dates for the next 5 business days without format parameter
+    last_date = df['date'].iloc[-1]
+    if pd.isna(last_date):
+        last_date = pd.Timestamp.now(tz='America/New_York')  # Fallback to current date/time if last date is NaT
+    date_range = pd.date_range(start=last_date, periods=5, freq='B')
     return pd.DataFrame({
-        'date': pd.date_range(start=df['date'].iloc[-1], periods=5, freq='B', format='%m-%d-%Y'),
+        'date': date_range,
         'predicted_close': predicted_prices
     })
 
@@ -766,8 +771,14 @@ st.plotly_chart(fig_heatmap, use_container_width=True)
 # Export data as CSV and Excel
 st.header("Export Data and Reports")
 if not st.session_state.aapl_df.empty:
-    min_date = st.session_state.aapl_df['date'].min().strftime('%m-%d-%Y')
-    max_date = st.session_state.aapl_df['date'].max().strftime('%m-%d-%Y')
+    # Filter out NaT values and get valid min/max dates
+    valid_dates = st.session_state.aapl_df['date'].dropna()
+    if not valid_dates.empty:
+        min_date = valid_dates.min().strftime('%m-%d-%Y')
+        max_date = valid_dates.max().strftime('%m-%d-%Y')
+    else:
+        min_date = '01-01-2020'  # Fallback if no valid dates
+        max_date = '06-24-2025'  # Current date as fallback
     csv_buffer = io.StringIO()
     st.session_state.aapl_df.to_csv(csv_buffer, index=False)
     csv_buffer.seek(0)
@@ -780,8 +791,13 @@ if not st.session_state.aapl_df.empty:
 
 # Export PDF report
 if not st.session_state.aapl_df.empty:
-    min_date = st.session_state.aapl_df['date'].min().strftime('%m-%d-%Y')
-    max_date = st.session_state.aapl_df['date'].max().strftime('%m-%d-%Y')
+    valid_dates = st.session_state.aapl_df['date'].dropna()
+    if not valid_dates.empty:
+        min_date = valid_dates.min().strftime('%m-%d-%Y')
+        max_date = valid_dates.max().strftime('%m-%d-%Y')
+    else:
+        min_date = '01-01-2020'
+        max_date = '06-24-2025'
     pdf_buffer = io.BytesIO()
     c = canvas.Canvas(pdf_buffer, pagesize=letter)
     c.setFont("Helvetica", 12)
@@ -820,8 +836,13 @@ if not st.session_state.aapl_df.empty:
 
 # Export HTML report
 if not st.session_state.aapl_df.empty:
-    min_date = st.session_state.aapl_df['date'].min().strftime('%m-%d-%Y')
-    max_date = st.session_state.aapl_df['date'].max().strftime('%m-%d-%Y')
+    valid_dates = st.session_state.aapl_df['date'].dropna()
+    if not valid_dates.empty:
+        min_date = valid_dates.min().strftime('%m-%d-%Y')
+        max_date = valid_dates.max().strftime('%m-%d-%Y')
+    else:
+        min_date = '01-01-2020'
+        max_date = '06-24-2025'
     if html_report_type == "Interactive (with Hover)":
         candlestick_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
         bench_html = fig_bench.to_html(include_plotlyjs='cdn', full_html=False) if fig_bench else ""
@@ -962,8 +983,13 @@ if not st.session_state.aapl_df.empty:
 
 # Export JSON report
 if not st.session_state.aapl_df.empty:
-    min_date = st.session_state.aapl_df['date'].min().strftime('%m-%d-%Y')
-    max_date = st.session_state.aapl_df['date'].max().strftime('%m-%d-%Y')
+    valid_dates = st.session_state.aapl_df['date'].dropna()
+    if not valid_dates.empty:
+        min_date = valid_dates.min().strftime('%m-%d-%Y')
+        max_date = valid_dates.max().strftime('%m-%d-%Y')
+    else:
+        min_date = '01-01-2020'
+        max_date = '06-24-2025'
     json_data = {
         "symbol": st.session_state.symbol,
         "date_range": {"from": min_date, "to": max_date},
@@ -978,7 +1004,6 @@ if not st.session_state.aapl_df.empty:
     json.dump(json_data, json_buffer)
     json_buffer.seek(0)
     st.download_button("Download JSON Report", json_buffer.getvalue(), file_name=f"{st.session_state.symbol}_analysis_report_{min_date}_to_{max_date}.json", mime="application/json")
-
 # Help section
 with st.expander("📚 Help: How the Analysis Works"):
     help_text = """
