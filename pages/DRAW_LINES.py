@@ -1077,7 +1077,7 @@ if not st.session_state.aapl_df.empty:
     html_buffer.seek(0)
     st.download_button(
         label="Download HTML Report",
-        data="html_buffer.getvalue(),
+        data=html_buffer.getvalue(),
         file_name=f"file_name="{st.session_state.symbol}_report_{min_date}_to_{max_date}.html",
         mime="text/html"
     )
