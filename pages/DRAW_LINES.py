@@ -67,8 +67,8 @@ secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV/XLSX)", ty
 # Auto-update date range for uploaded files
 if primary_file and data_source == "Upload CSV/XLSX":
 # Load file temporarily to get date range
-temp_df = pd.read_csv(primary_file) if primary_file.name.endswith('.csv') else pd.read_excel(primary_file)
-temp_df['date'] = pd.to_datetime(temp_df['date'], errors='coerce')
+ temp_df = pd.read_csv(primary_file) if primary_file.name.endswith('.csv') else pd.read_excel(primary_file)
+ temp_df['date'] = pd.to_datetime(temp_df['date'], errors='coerce')
 if not temp_df['date'].isna().all():
 file_min_date = temp_df['date'].min()
 file_max_date = temp_df['date'].max()
