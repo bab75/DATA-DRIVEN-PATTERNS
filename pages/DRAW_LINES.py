@@ -179,15 +179,15 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
             max_date = aapl_df['date'].max()
             st.sidebar.write(f"File date range: {min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}")
             
-            # Adjust selected date range to fit file's range
+            # Warn if selected range is outside file's range, but use available data
             adjusted_start_date = max(start_date, min_date)
             adjusted_end_date = min(end_date, max_date)
-            if adjusted_start_date > adjusted_end_date:
-                st.error(
-                    f"Adjusted date range ({adjusted_start_date.strftime('%m-%d-%Y')} to {adjusted_end_date.strftime('%m-%d-%Y')}) is invalid. "
-                    f"File range is {min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}. Adjust the date range."
+            if start_date < min_date or end_date > max_date:
+                st.warning(
+                    f"Selected date range ({start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}) is outside the file's range "
+                    f"({min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}). Using available data from "
+                    f"{adjusted_start_date.strftime('%m-%d-%Y')} to {adjusted_end_date.strftime('%m-%d-%Y')}. Adjust the date range if needed."
                 )
-                return pd.DataFrame(), pd.DataFrame()
             
             aapl_df = aapl_df[(aapl_df['date'] >= adjusted_start_date) & (aapl_df['date'] <= adjusted_end_date)]
             if aapl_df.empty:
