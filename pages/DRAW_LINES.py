@@ -339,7 +339,7 @@ def detect_consolidation_breakout(df):
     df['stochastic_k'] = stochastic.stoch()
     df['stochastic_d'] = stochastic.stoch_signal()
     df['adx'] = ta.trend.ADXIndicator(high=df['high'], low=df['low'], close=df['close']).adx()
-    df['rvol'] = df['volume'] / df['volume'].rolling(window=20').mean()
+    df['rvol'] = df['volume'] / df['volume'].rolling(window=20).mean()
     df['is_consolidation'] = (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
     df['resistance'] = df['high'].rolling(window=20).max()
     df['support'] = df['low'].rolling(window=20).min()
