@@ -626,7 +626,7 @@ for i, subplot in enumerate(subplot_order, 1):
     elif subplot == "ADX & Volatility":
         add_adx_volatility_trace(fig, st.session_state.aapl_df, i)
     elif subplot == "Volume":
-        add_volume_trace(fig, st.session_state.aapl_df'], row=i)
+        add_volume_trace(fig, st.session_state.aapl_df, row=i)
     elif subplot == "Win/Loss Distribution":
         add_win_loss_distribution(fig, st.session_state.aapl_df, i])
 
