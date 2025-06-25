@@ -1128,16 +1128,16 @@ if not st.session_state.aapl_df.empty:
         heatmap_html=heatmap_html,
         pred_html=pred_html
         )
-        html_buffer = io.StringIO()
-        html_buffer.write(html_content)
-        html_buffer.seek(0)
-        st.download_button("Download HTML Report", html_buffer.getvalue(), file_name=f"{st.session_state.symbol}investment_report{min_date}to{max_date}.html", mime="text/html")
-        #Footer
-        st.markdown("---")
-        st.markdown(f"
-        Stock Analysis Dashboard - Powered by Streamlit | Data Source: {'Uploaded File' if data_source == 'Upload CSV/XLSX' else 'Yahoo Finance'} | Generated on {datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y %I:%M %p EDT')}
-        ", unsafe_allow_html=True)
-        Clear cache on rerun
+      html_buffer = io.StringIO()
+      html_buffer.write(html_content)
+      html_buffer.seek(0)
+      st.download_button("Download HTML Report", html_buffer.getvalue(), file_name=f"{st.session_state.symbol}investment_report{min_date}to{max_date}.html", mime="text/html")
+      #Footer
+      st.markdown("---")
+      st.markdown(f"
+      Stock Analysis Dashboard - Powered by Streamlit | Data Source: {'Uploaded File' if data_source == 'Upload CSV/XLSX' else 'Yahoo Finance'} | Generated on {datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y %I:%M %p EDT')}
+      ", unsafe_allow_html=True)
+      Clear cache on rerun
  if submit:
     st.session_state.data_processed = False
         
