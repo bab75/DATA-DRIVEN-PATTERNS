@@ -553,10 +553,10 @@ def add_candlestick_trace(fig, df, row):
     if "Fibonacci" in show_indicators:
         for level, color in [('fib_236', '#ff9800'), ('fib_382', '#e91e63'), ('fib_50', '#9c27b0'), ('fib_618', '#3f51b5')]:
             fig.add_trace(
-                go.Scatter(x=df.index, y=df['level], 
+                go.Scatter(x=df.index, y=df[level], 
                                  name=f"Fibonacci {level[-3:]}%", 
                                  line=dict(color=color, dash='dash'),
-                                 hovertext=[f"Fibonacci {level[-3:]}%: ${x:.2f}" for x in df['level]],
+                                 hovertext=[f"Fibonacci {level[-3:]}%: ${x:.2f}" for x in df[level]],
                                  hoverinfo='text+x'), row=row, col=1)
     
     buy_signals = df.loc[df['buy_signal'] == True]
