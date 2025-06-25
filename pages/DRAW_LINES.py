@@ -1015,130 +1015,142 @@ if not st.session_state.aapl_df.empty:
         pred_html = f'<img src="data:image/png;base64,{pred_img_b64}" alt="Price Prediction">'
 
     html_content = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>{symbol} Stock Analysis Report ({start_date} to {end_date})</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; background-color: #ffffff; color: #000000; margin: 20px; }}
-            h1, h2 {{ color: #0288d1; }}
-            .metric-box {{ background-color: #e0e0e0; padding: 10px; margin: 10px 0; border-radius: 5px; }}
-            .section {{ margin-bottom: 20px; }}
-            .plotly-graph-div {{ max-width: 100%; }}
-            .alert-box {{ background-color: #fff3e0; padding: 10px; margin: 10px 0; border-radius: 5px; }}
-        </style>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    </head>
-    <body>
-        <h1>{symbol} Stock Analysis Report ({start_date} to {end_date})</h1>
-        <p><b>Date:</b> {date}</p>
-        
-        <div class="section">
-            <h2>Recommendation</h2>
-            <div class="metric-box">
-                <p><b>Recommendation:</b> {recommendation}</p>
-                <p><b>Total Score:</b> {total_score:.1f}/100</p>
-                <p><b>Breakout Timeframe:</b> {breakout_timeframe}</p>
-            </div>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{symbol} Stock Analysis Report ({start_date} to {end_date})</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; background-color: #ffffff; color: #000000; margin: 20px; }}
+        h1, h2 {{ color: #0288d1; }}
+        .metric-box {{ background-color: #e0e0e0; padding: 10px; margin: 10px 0; border-radius: 5px; }}
+        .section {{ margin-bottom: 20px; }}
+        .plotly-graph-div {{ max-width: 100%; }}
+        .alert-box {{ background-color: #fff3e0; padding: 10px; margin: 10px 0; border-radius: 5px; }}
+    </style>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <h1>{symbol} Stock Analysis Report ({start_date} to {end_date})</h1>
+    <p><b>Date:</b> {date}</p>
+    
+    <div class="section">
+        <h2>Recommendation</h2>
+        <div class="metric-box">
+            <p><b>Recommendation:</b> {recommendation}</p>
+            <p><b>Total Score:</b> {total_score:.1f}/100</p>
+            <p><b>Breakout Timeframe:</b> {breakout_timeframe}</p>
         </div>
-        
-        <div class="section">
-            <h2>Key Metrics</h2>
-            <div class="metric-box">
-                <p><b>Average Return:</b> {average_return:.2f}%</p>
-                <p><b>Volatility:</b> {volatility:.2f}%</p>
-                <p><b>Win Ratio:</b> {win_ratio:.2f}%</p>
-                <p><b>Max Drawdown:</b> {max_drawdown:.2f}%</p>
-                <p><b>Largest Loss:</b> {largest_loss:.2f}% on {largest_loss_date}</p>
-                <p><b>Largest Gain:</b> {largest_gain:.2f}% on {largest_gain_date}</p>
-            </div>
+    </div>
+    
+    <div class="section">
+        <h2>Key Metrics</h2>
+        <div class="metric-box">
+            <p><b>Average Return:</b> {average_return:.2f}%</p>
+            <p><b>Volatility:</b> {volatility:.2f}%</p>
+            <p><b>Win Ratio:</b> {win_ratio:.2f}%</p>
+            <p><b>Max Drawdown:</b> {max_drawdown:.2f}%</p>
+            <p><b>Largest Loss:</b> {largest_loss:.2f}% on {largest_loss_date}</p>
+            <p><b>Largest Gain:</b> {largest_gain:.2f}% on {largest_gain_date}</p>
         </div>
-        
-        <div class="section">
-            <h2>Price Movement Alerts</h2>
-            {alerts_table_html}
+    </div>
+    
+    <div class="section">
+        <h2>Price Movement Alerts</h2>
+        {alerts_table_html}
+    </div>
+    
+    <div class="section">
+        <h2>Backtesting Results</h2>
+        <div class="metric-box">
+            <p><b>Win Rate:</b> {win_rate:.2f}%</p>
+            <p><b>Profit Factor:</b> {profit_factor:.2f}</p>
+            <p><b>Total Return:</b> {total_return:.2f}%</p>
+            <p><b>Trades:</b> {trades}</p>
         </div>
-        
-        <div class="section">
-            <h2>Backtesting Results</h2>
-            <div class="metric-box">
-                <p><b>Win Rate:</b> {win_rate:.2f}%</p>
-                <p><b>Profit Factor:</b> {profit_factor:.2f}</p>
-                <p><b>Total Return:</b> {total_return:.2f}%</p>
-                <p><b>Trades:</b> {trades}</p>
-            </div>
+    </div>
+    
+    <div class="section">
+        <h2>Latest Trade Setup</h2>
+        <div class="metric-box">
+            <p><b>Date:</b> {latest_date}</p>
+            <p><b>Entry:</b> ${entry:.2f}</p>
+            <p><b>Stop-Loss:</b> ${stop_loss:.2f}</p>
+            <p><b>Take-Profit:</b> ${take_profit:.2f}</p>
         </div>
-        
-        <div class="section">
-            <h2>Latest Trade Setup</h2>
-            <div class="metric-box">
-                <p><b>Date:</b> {latest_date}</p>
-                <p><b>Entry:</b> ${entry:.2f}</p>
-                <p><b>Stop-Loss:</b> ${stop_loss:.2f}</p>
-                <p><b>Take-Profit:</b> ${take_profit:.2f}</p>
-            </div>
-        </div>
-        
-        <div class="section">
-            <h2>Price Prediction</h2>
-            {pred_html}
-        </div>
-        
-        <div class="section">
-            <h2>Candlestick & Technical Analysis</h2>
-            {candlestick_html}
-        </div>
-        <div class="section">
-            <h2>Benchmark Comparison</h2>
-            {bench_html}
-        </div>
-        <div class="section">
-            <h2>Seasonality Analysis</h2>
-            {heatmap_html}
-        </div>
-    </body>
-    </html>
-    """.format(
-        symbol=st.session_state.symbol,
-        start_date=min_date,
-        end_date=max_date,
-        date=datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y %I:%M %p EDT'),
-        recommendation=st.session_state.score['Recommendation'],
-        total_score=st.session_state.score['Total'],
-        breakout_timeframe=st.session_state.breakout_timeframe,
-        average_return=st.session_state.aapl_metrics['Average Return'],
-        volatility=st.session_state.aapl_metrics['Volatility'],
-        win_ratio=st.session_state.aapl_metrics['Win Ratio'],
-        max_drawdown=st.session_state.aapl_metrics['Max Drawdown'],
-        largest_loss=st.session_state.aapl_metrics['Largest Loss'],
-        largest_loss_date=st.session_state.aapl_metrics['Largest Loss Date'],
-        largest_gain=st.session_state.aapl_metrics['Largest Gain'],
-        largest_gain_date=st.session_state.aapl_metrics['Largest Gain Date'],
-        win_rate=st.session_state.backtest_results['Win Rate'],
-        profit_factor=st.session_state.backtest_results['Profit Factor'],
-        total_return=st.session_state.backtest_results['Total Return'],
-        trades=st.session_state.backtest_results['Trades'],
-        latest_date=st.session_state.aapl_df['date'].iloc[-1].strftime('%m-%d-%Y') if not st.session_state.aapl_df.empty else 'N/A',
-        entry=st.session_state.aapl_df['close'].iloc[-1] if not st.session_state.aapl_df.empty else 0,
-        stop_loss=stop_loss_value,
-        take_profit=take_profit_value,
-        alerts_table_html=alerts_table_html,
-        candlestick_html=candlestick_html,
-        bench_html=bench_html,
-        heatmap_html=heatmap_html,
-        pred_html=pred_html
-        )
-      html_buffer = io.StringIO()
-      html_buffer.write(html_content)
-      html_buffer.seek(0)
-      st.download_button("Download HTML Report", html_buffer.getvalue(), file_name=f"{st.session_state.symbol}investment_report{min_date}to{max_date}.html", mime="text/html")
-      #Footer
-      st.markdown("---")
-      st.markdown(f"
-      Stock Analysis Dashboard - Powered by Streamlit | Data Source: {'Uploaded File' if data_source == 'Upload CSV/XLSX' else 'Yahoo Finance'} | Generated on {datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y %I:%M %p EDT')}
-      ", unsafe_allow_html=True)
-      Clear cache on rerun
- if submit:
+    </div>
+    
+    <div class="section">
+        <h2>Price Prediction</h2>
+        {pred_html}
+    </div>
+    
+    <div class="section">
+        <h2>Candlestick & Technical Analysis</h2>
+        {candlestick_html}
+    </div>
+    <div class="section">
+        <h2>Benchmark Comparison</h2>
+        {bench_html}
+    </div>
+    <div class="section">
+        <h2>Seasonality Analysis</h2>
+        {heatmap_html}
+    </div>
+</body>
+</html>
+""".format(
+    symbol=st.session_state.symbol,
+    start_date=min_date,
+    end_date=max_date,
+    date=datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y %I:%M %p EDT'),
+    recommendation=st.session_state.score['Recommendation'],
+    total_score=st.session_state.score['Total'],
+    breakout_timeframe=st.session_state.breakout_timeframe,
+    average_return=st.session_state.aapl_metrics['Average Return'],
+    volatility=st.session_state.aapl_metrics['Volatility'],
+    win_ratio=st.session_state.aapl_metrics['Win Ratio'],
+    max_drawdown=st.session_state.aapl_metrics['Max Drawdown'],
+    largest_loss=st.session_state.aapl_metrics['Largest Loss'],
+    largest_loss_date=st.session_state.aapl_metrics['Largest Loss Date'],
+    largest_gain=st.session_state.aapl_metrics['Largest Gain'],
+    largest_gain_date=st.session_state.aapl_metrics['Largest Gain Date'],
+    win_rate=st.session_state.backtest_results['Win Rate'],
+    profit_factor=st.session_state.backtest_results['Profit Factor'],
+    total_return=st.session_state.backtest_results['Total Return'],
+    trades=st.session_state.backtest_results['Trades'],
+    latest_date=st.session_state.aapl_df['date'].iloc[-1].strftime('%m-%d-%Y') if not st.session_state.aapl_df.empty else 'N/A',
+    entry=st.session_state.aapl_df['close'].iloc[-1] if not st.session_state.aapl_df.empty else 0,
+    stop_loss=stop_loss_value,
+    take_profit=take_profit_value,
+    alerts_table_html=alerts_table_html,
+    candlestick_html=candlestick_html,
+    bench_html=bench_html,
+    heatmap_html=heatmap_html,
+    pred_html=pred_html
+)
+
+html_buffer = io.StringIO()
+html_buffer.write(html_content)
+html_buffer.seek(0)
+st.download_button(
+    label="Download HTML Report",
+    data=html_buffer.getvalue(),
+    file_name=f"{st.session_state.symbol}_investment_report_{min_date}_to_{max_date}.html",
+    mime="text/html"
+)
+
+# Footer
+st.markdown("---")
+st.markdown(
+    f"<p style='text-align: center; color: #666;'>"
+    f"Stock Analysis Dashboard - Powered by Streamlit | Data Source: {'Uploaded File' if data_source == 'Upload CSV/XLSX' else 'Yahoo Finance'} | "
+    f"Generated on {datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y %I:%M %p EDT')}"
+    f"</p>",
+    unsafe_allow_html=True
+)
+
+# Clear cache on rerun
+if submit:
     st.session_state.data_processed = False
         
 # Export JSON report
