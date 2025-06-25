@@ -197,7 +197,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
             aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
             numeric_cols = ['open', 'high', 'low', 'close', 'volume']
             for col in numeric_cols:
-                a[color:darkgreen]apl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
+                aapl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
             
             aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
             
