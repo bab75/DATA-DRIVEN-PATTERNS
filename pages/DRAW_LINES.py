@@ -617,18 +617,19 @@ def add_win_loss_trace(fig, df, row):
         
 
 for i, subplot in enumerate(subplot_order, 1):
+    for i, subplot in enumerate(subplot_order, 1):
     if subplot == "Candlestick":
         add_candlestick_trace(fig, st.session_state.aapl_df, i)
     elif subplot == "RSI":
         add_rsi_trace(fig, st.session_state.aapl_df, i)
     elif subplot == "MACD & Stochastic":
-        add_macd_stochastic_trace(fig_df, st.session_state.aapl_df, i)
+        add_macd_stochastic_trace(fig, st.session_state.aapl_df, i)
     elif subplot == "ADX & Volatility":
-        add_adx_volatility_trace(fig_df, st.session_state.aapl_df, i)
+        add_adx_volatility_trace(fig, st.session_state.aapl_df, i)
     elif subplot == "Volume":
-        add_volume_trace(fig_df, st.session_state.aapl_df, i)
+        add_volume_trace(fig, st.session_state.aapl_df, i)
     elif subplot == "Win/Loss Distribution":
-        add_win_loss_trace(fig_df, st.session_state.aapl_df, i)
+        add_win_loss_trace(fig, st.session_state.aapl_df, i)
 
 fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white", title_text=f"{st.session_state.symbol} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
                   hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
