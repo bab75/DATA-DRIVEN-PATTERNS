@@ -1001,10 +1001,10 @@ if not st.session_state.aapl_df.empty:
     c.setFont("Helvetica", 12)
     c.drawString(50, 750, f"{st.session_state.symbol} Stock Report ({min_date_str} to {max_date_str})")
     c.drawString(50, 730, f"Date: {datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y %I:%M %p EDT')}")
-    c.drawString(50, 710, f"Recommendation: {fst.session_state.score['Recommendation']}")
+    c.drawString(50, 710, f"Recommendation: {st.session_state.score['Recommendation']}")
     c.drawString(50, 690, "Scores:")
     c.drawString(70, 670, f"- Performance: {st.session_state.score['Performance']:.1f}/30")
-    c.drawString(70, 650, f"- Risk: {st.session_state.score['Risk']}:.1f}/20")
+    c.drawString(70, 650, f"- Risk: {st.session_state.score['Risk']:.1f}/20")  # Fixed line
     c.drawString(70, 630, f"- Technical: {st.session_state.score['Technical']:.1f}/30")
     c.drawString(70, 610, f"- Volume: {st.session_state.score['Volume']:.1f}/20")
     c.drawString(70, 590, f"- Total: {st.session_state.score['Total']:.1f}/100")
