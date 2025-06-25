@@ -437,7 +437,7 @@ def calculate_score(metrics, signals):
     technical_score = sum([10 if s in ['Buy', 'Strong Trend'] else 0 for s in signals.values()])
     volume_score = 20 if st.session_state.aapl_df['volume'].iloc[-1] > st.session_state.aapl_df['volume'].mean() else 10
     total_score = performance_score + risk_score + technical_score + volume_score
-    recommendation = 'Buy' if total_score > 70 else 'Hold' if total_score > 50 else 'Market'
+    recommendation = 'Buy' if total_score > 70 else 'Hold' if total_score > 50 else 'Underperformance'
     return {
         'Performance': performance_score,
         'Risk': risk_score,
