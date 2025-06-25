@@ -630,9 +630,14 @@ for i, subplot in enumerate(subplot_order, 1):
     elif subplot == "Win/Loss Distribution":
         add_win_loss_distribution(fig, st.session_state.aapl_df, i)
 
-fig.update_layout(height=200 * len(subplot_order),showlegend=True,template="plotly_white"),
-                  title_text=f"{st.session_state.symbol.title()} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
-                  hovermode="x unified", font=dict(family="Arial", size=12, color="#000000")
+fig.update_layout(
+    height=200 * len(subplot_order),
+    showlegend=True,
+    template="plotly_white",
+    title_text=f"{st.session_state.symbol.title()} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
+    hovermode="x unified",
+    font=dict(family="Arial", size=12, color="#000000")
+)
 fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=len(subplot_order), col=1)
 
 def on_click(trace, points, state):
