@@ -88,11 +88,11 @@ if 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
         min_date = valid_dates.min()
         max_date = valid_dates.max()
     else:
-        min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-        max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+        min_date = st.session_state['auto_min_date']
+        max_date = st.session_state['auto_max_date']
 else:
-    min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-    max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+    min_date = st.session_state['auto_min_date']
+    max_date = st.session_state['auto_max_date']
 
 from_date = st.sidebar.date_input("From Date", value=min_date, min_value=min_date, max_value=max_date, key="from_date_input", format="MM-DD-YYYY")
 to_date = st.sidebar.date_input("To Date", value=max_date, min_value=min_date, max_value=max_date, key="to_date_input", format="MM-DD-YYYY")
