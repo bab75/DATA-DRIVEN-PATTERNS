@@ -213,7 +213,10 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     if data_source is None or not isinstance(data_source, pd.DataFrame):
         return "", "", "", stock_name, None, is_real_time_only, 50
 
-    latest = data_source.iloc[-1]
+    latest = data_source.iloc[-1] if not data_source.empty else None
+    if latest is None:
+        return "", "", "", stock_name, data_source, is_real_time_only, 50
+
     prev = data_source.iloc[-2] if len(data_source) > 1 else latest
 
     price = latest['Close']
@@ -356,21 +359,38 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 
 # Function to generate consolidated recommendation
 def generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, stock_name, date_str):
+    # Safely extract RSI value
+    rsi_value = '50'
+    if 'RSI:' in in_depth:
+        rsi_part = in_depth.split('RSI: ')[1]
+        if '(' in rsi_part:
+            rsi_value = rsi_part.split(' (')[0].strip()
+        else:
+            rsi_value = rsi_part.split('\n')[0].strip()
+
+    # Extract other values with fallbacks
+    price = quick_scan.split('Price: $')[1].split(' (')[0] if 'Price:' in quick_scan else 'N/A'
+    trend = moderate_detail.split('Price Trend: ')[1].split(',')[0] if 'Price Trend:' in moderate_detail else 'Neutral'
+    support = quick_scan.split('Support at $')[1].split(',')[0] if 'Support at $' in quick_scan else 'N/A'
+    resistance = quick_scan.split('Resistance at $')[1].split(')')[0] if 'Resistance at $' in quick_scan else 'N/A'
+    volume_trend = in_depth.split('OBV: ')[1].split(' (')[1].split(')')[0] if 'OBV:' in in_depth else 'N/A'
+    adx = in_depth.split('ADX: ')[1].split(' (')[0] if 'ADX:' in in_depth else '50'
+
     recommendation = f"""
 ### Consolidated Recommendation: {stock_name} ({date_str})
 #### Summary of Analysis
-- **Price**: Extracted from Quick Scan: ${quick_scan.split('Price: $')[1].split(' (')[0] if 'Price:' in quick_scan else 'N/A'}
-- **Trend**: {moderate_detail.split('Price Trend: ')[1].split(',')[0] if 'Price Trend:' in moderate_detail else 'Neutral'}
-- **RSI**: {in_depth.split('RSI: ')[1].split(' (')[0] if 'RSI:' in in_depth else '50'} ({'Oversold' if float(in_depth.split('RSI: ')[1].split(' (')[0]) < 30 else 'Overbought' if float(in_depth.split('RSI: ')[1].split(' (')[0]) > 70 else 'Neutral'})
-- **Support**: {quick_scan.split('Support at $')[1].split(',')[0] if 'Support at $' in quick_scan else 'N/A'}
-- **Resistance**: {quick_scan.split('Resistance at $')[1].split(')')[0] if 'Resistance at $' in quick_scan else 'N/A'}
-- **Volume Trend**: {in_depth.split('OBV: ')[1].split(' (')[1].split(')')[0] if 'OBV:' in in_depth else 'N/A'}
+- **Price**: ${price}
+- **Trend**: {trend}
+- **RSI**: {rsi_value} ({'Oversold' if float(rsi_value) < 30 else 'Overbought' if float(rsi_value) > 70 else 'Neutral'})
+- **Support**: ${support}
+- **Resistance**: ${resistance}
+- **Volume Trend**: {volume_trend}
 
 #### Recommendation
-- **Buy**: Recommended if RSI is oversold (<30) and price is near support (${quick_scan.split('Support at $')[1].split(',')[0] if 'Support at $' in quick_scan else 'N/A'}), with a target near resistance (${quick_scan.split('Resistance at $')[1].split(')')[0] if 'Resistance at $' in quick_scan else 'N/A'}). Current RSI is {in_depth.split('RSI: ')[1].split(' (')[0] if 'RSI:' in in_depth else '50'}, suggesting {'a buy opportunity' if float(in_depth.split('RSI: ')[1].split(' (')[0]) < 30 else 'to wait for better conditions'}.
-- **Hold**: Advised if price is between support and resistance with a neutral trend ({moderate_detail.split('Price Trend: ')[1].split(',')[0] if 'Price Trend:' in moderate_detail else 'Neutral'}) and RSI is neutral (30-70). Current trend is {moderate_detail.split('Price Trend: ')[1].split(',')[0] if 'Price Trend:' in moderate_detail else 'Neutral'}, supporting a hold.
-- **Sell**: Suggested if RSI is overbought (>70) or price breaks below support (${quick_scan.split('Support at $')[1].split(',')[0] if 'Support at $' in quick_scan else 'N/A'}) with declining volume. Current RSI is {in_depth.split('RSI: ')[1].split(' (')[0] if 'RSI:' in in_depth else '50'}, indicating {'a potential sell' if float(in_depth.split('RSI: ')[1].split(' (')[0]) > 70 else 'no immediate sell signal'}.
-- **Additional Notes**: Volume trend ({in_depth.split('OBV: ')[1].split(' (')[1].split(')')[0] if 'OBV:' in in_depth else 'N/A'}) and ADX ({in_depth.split('ADX: ')[1].split(' (')[0] if 'ADX:' in in_depth else '50'} {'Strong Trend' if float(in_depth.split('ADX: ')[1].split(' (')[0]) > 25 else 'Weak Trend'}) should be monitored for confirmation.
+- **Buy**: Recommended if RSI is oversold (<30) and price is near support (${support}), with a target near resistance (${resistance}). Current RSI is {rsi_value}, suggesting {'a buy opportunity' if float(rsi_value) < 30 else 'to wait for better conditions'}.
+- **Hold**: Advised if price is between support and resistance with a neutral trend ({trend}) and RSI is neutral (30-70). Current trend is {trend}, supporting a {'hold' if 30 <= float(rsi_value) <= 70 else 'reconsideration'}.
+- **Sell**: Suggested if RSI is overbought (>70) or price breaks below support (${support}) with declining volume. Current RSI is {rsi_value}, indicating {'a potential sell' if float(rsi_value) > 70 else 'no immediate sell signal'}.
+- **Additional Notes**: Volume trend ({volume_trend}) and ADX ({adx} {'Strong Trend' if float(adx) > 25 else 'Weak Trend'}) should be monitored for confirmation.
 """
 
     return recommendation
@@ -402,7 +422,7 @@ if any(v is not None for v in st.session_state.fundamental_data.values()):
 # Analyze data based on the last action
 data_source = st.session_state.csv_data if process_file_button and st.session_state.csv_data is not None else st.session_state.real_time_data if submit_button and st.session_state.real_time_data is not None else combine_dataframes(st.session_state.csv_data, st.session_state.real_time_data) if combine_button and st.session_state.combine_report and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else None
 
-if data_source is not None and isinstance(data_source, pd.DataFrame):
+if data_source is not None and isinstance(data_source, pd.DataFrame) and not data_source.empty:
     quick_scan, moderate_detail, in_depth, stock_name, df, is_real_time_only, adx_value = analyze_stock_data(
         st.session_state.csv_data if process_file_button and st.session_state.csv_data is not None else None,
         st.session_state.real_time_data if submit_button and st.session_state.real_time_data is not None else None,
@@ -498,12 +518,15 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
 
     with tabs[3]:
         st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-        date_str = (df['Date'].iloc[-1] if isinstance(df['Date'].iloc[-1], str) else df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else df.get('Date', 'N/A'))
+        if not df.empty and 'Date' in df.columns:
+            date_str = df['Date'].iloc[-1] if isinstance(df['Date'].iloc[-1], str) else df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else datetime.now().strftime('%Y-%m-%d')
+        else:
+            date_str = datetime.now().strftime('%Y-%m-%d')
         st.markdown(f"<h2>Visual Summary: {stock_name} ({date_str})</h2>")
-        st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}")
-        st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}")
+        st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}" if not df.empty else "No price data available.")
+        st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}" if not df.empty and 'SMA_20' in df.columns else "No trend data available.")
         
-        if not is_real_time_only and len(df) > 1:
+        if not is_real_time_only and len(df) > 1 and not df.empty:
             fig = px.line(df, x='Date', y=['Close', 'SMA_20', 'SMA_50', 'SMA_200'], title='Price Trend', hover_data=['Open', 'High', 'Low'])
             fig.update_layout(hovermode='x unified')
             st.plotly_chart(fig, use_container_width=True)
@@ -513,15 +536,13 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
             fig_rsi.update_layout(hovermode='x unified')
             st.plotly_chart(fig_rsi, use_container_width=True)
         else:
-            st.info("⚠️ Historical charts unavailable with real-time data only. Upload a CSV/XLSX.")
+            st.info("⚠️ Historical charts unavailable with real-time data only or empty DataFrame. Upload a CSV/XLSX.")
 
-        rsi_value = df.get('RSI', 50) if not is_real_time_only else 50
-        if isinstance(rsi_value, pd.Series):
-            rsi_value = rsi_value.iloc[-1]
-        st.markdown(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}")
-        st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})")
-        st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}")
-        visual_summary = f"### Visual Summary: {stock_name} ({date_str})\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})\n- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}"
+        rsi_value = df.get('RSI', 50).iloc[-1] if not df.empty and 'RSI' in df.columns and not is_real_time_only else 50
+        st.markdown(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}" if not df.empty else "- No support/resistance data available.")
+        st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})" if not df.empty else "- No RSI data available.")
+        st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}" if not df.empty else "- No recommendation available.")
+        visual_summary = f"### Visual Summary: {stock_name} ({date_str})\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})\n- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}" if not df.empty else ""
         col1, col2 = st.columns(2)
         with col1:
             buffer = io.StringIO()
@@ -548,32 +569,24 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("#### 📏 Technical Indicators")
-            st.write(f"- **Price**: ${df['Close'].iloc[-1]:.2f}")
-            rsi_value = df.get('RSI', 50) if not is_real_time_only else 50
-            if isinstance(rsi_value, pd.Series):
-                rsi_value = rsi_value.iloc[-1]
-            st.write(f"- **RSI**: {rsi_value:.2f}")
-            macd_value = df.get('MACD', 0) if not is_real_time_only else 0
-            macd_signal_value = df.get('MACD_Signal', 0) if not is_real_time_only else 0
-            if isinstance(macd_value, pd.Series):
-                macd_value = macd_value.iloc[-1]
-            if isinstance(macd_signal_value, pd.Series):
-                macd_signal_value = macd_signal_value.iloc[-1]
-            st.write(f"- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})")
-            stoch_k_value = df.get('Stoch_K', 50) if not is_real_time_only else 50
-            if isinstance(stoch_k_value, pd.Series):
-                stoch_k_value = stoch_k_value.iloc[-1]
-            st.write(f"- **Stochastic %K**: {stoch_k_value:.2f}")
-            st.write(f"- **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})")
-            st.write(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}")
-            st.write(f"- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}")
+            st.write(f"- **Price**: ${df['Close'].iloc[-1]:.2f}" if not df.empty else "- No price data available.")
+            rsi_value = df.get('RSI', 50).iloc[-1] if not df.empty and 'RSI' in df.columns and not is_real_time_only else 50
+            st.write(f"- **RSI**: {rsi_value:.2f}" if not df.empty else "- No RSI data available.")
+            macd_value = df.get('MACD', 0).iloc[-1] if not df.empty and 'MACD' in df.columns and not is_real_time_only else 0
+            macd_signal_value = df.get('MACD_Signal', 0).iloc[-1] if not df.empty and 'MACD_Signal' in df.columns and not is_real_time_only else 0
+            st.write(f"- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})" if not df.empty else "- No MACD data available.")
+            stoch_k_value = df.get('Stoch_K', 50).iloc[-1] if not df.empty and 'Stoch_K' in df.columns and not is_real_time_only else 50
+            st.write(f"- **Stochastic %K**: {stoch_k_value:.2f}" if not df.empty else "- No Stochastic data available.")
+            st.write(f"- **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})" if not df.empty else "- No ADX data available.")
+            st.write(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}" if not df.empty else "- No support data available.")
+            st.write(f"- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}" if not df.empty else "- No resistance data available.")
         with col2:
             st.markdown("#### 📋 Fundamental Metrics")
             for k, v in st.session_state.fundamental_data.items():
                 if v is not None:
                     st.write(f"- **{k}**: {v:.2f}")
         
-        if not is_real_time_only and len(df) > 1:
+        if not is_real_time_only and len(df) > 1 and not df.empty:
             fig = go.Figure()
             fig.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Candlestick'))
             if 'BB_Upper' in df.columns:
@@ -582,8 +595,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
             fig.update_layout(title='Candlestick with Bollinger Bands', xaxis_title='Date', yaxis_title='Price', hovermode='x unified')
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("⚠️ Candlestick chart unavailable with real-time data only. Upload a CSV/XLSX.")
-        interactive_dashboard = f"### Interactive Dashboard: {stock_name}\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f}\n- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})\n- **Stochastic %K**: {stoch_k_value:.2f}\n- **ADX**: {adx_value:.2f}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}\n- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}"
+            st.info("⚠️ Candlestick chart unavailable with real-time data only or empty DataFrame. Upload a CSV/XLSX.")
+        interactive_dashboard = f"### Interactive Dashboard: {stock_name}\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f}\n- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})\n- **Stochastic %K**: {stoch_k_value:.2f}\n- **ADX**: {adx_value:.2f}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}\n- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}" if not df.empty else ""
         col1, col2 = st.columns(2)
         with col1:
             buffer = io.StringIO()
@@ -607,7 +620,10 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
     with tabs[5]:
         st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
         st.markdown(f"<h2>Consolidated Recommendation: {stock_name}</h2>")
-        date_str = (df['Date'].iloc[-1] if isinstance(df['Date'].iloc[-1], str) else df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else df.get('Date', 'N/A'))
+        if not df.empty and 'Date' in df.columns:
+            date_str = df['Date'].iloc[-1] if isinstance(df['Date'].iloc[-1], str) else df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else datetime.now().strftime('%Y-%m-%d')
+        else:
+            date_str = datetime.now().strftime('%Y-%m-%d')
         recommendation = generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, stock_name, date_str)
         if isinstance(recommendation, str):
             st.markdown(recommendation.replace('### Consolidated Recommendation:', ''))
@@ -633,7 +649,7 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
             )
         st.markdown("</div></div>", unsafe_allow_html=True)
 
-    if data_source is not None and isinstance(data_source, pd.DataFrame):
+    if data_source is not None and isinstance(data_source, pd.DataFrame) and not data_source.empty:
         export_df = data_source.copy()
         if st.session_state.fundamental_data and any(v is not None for v in st.session_state.fundamental_data.values()):
             for k, v in st.session_state.fundamental_data.items():
