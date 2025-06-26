@@ -171,46 +171,47 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     if data_source is None:
         return None, None, None, stock_name, None
 
+    is_real_time = df is None and real_time_data is not None
     latest = data_source.iloc[-1]
     prev = data_source.iloc[-2] if len(data_source) > 1 else latest
 
-    # Extract indicators
+    # Extract indicators with defaults for real-time data
     price = latest['Close']
-    sma_20 = latest.get('SMA_20', price)
-    sma_50 = latest.get('SMA_50', price)
-    sma_200 = latest.get('SMA_200', price)
-    ema_20 = latest.get('EMA_20', price)
-    ema_50 = latest.get('EMA_50', price)
-    rsi = latest.get('RSI', 50)
-    macd = latest.get('MACD', 0)
-    macd_signal = latest.get('MACD_Signal', 0)
-    macd_hist = latest.get('MACD_Histogram', 0)
-    bb_upper = latest.get('BB_Upper', price * 1.05)
-    bb_middle = latest.get('BB_Middle', price)
-    bb_lower = latest.get('BB_Lower', price * 0.95)
-    stoch_k = latest.get('Stoch_K', 50)
-    williams_r = latest.get('Williams_R', -50)
-    cci = latest.get('CCI', 0)
-    momentum = latest.get('Momentum', 0)
-    roc = latest.get('ROC', 0)
-    obv = latest.get('OBV', latest['Volume'])
+    sma_20 = latest.get('SMA_20', price) if not is_real_time else price
+    sma_50 = latest.get('SMA_50', price) if not is_real_time else price
+    sma_200 = latest.get('SMA_200', price) if not is_real_time else price
+    ema_20 = latest.get('EMA_20', price) if not is_real_time else price
+    ema_50 = latest.get('EMA_50', price) if not is_real_time else price
+    rsi = latest.get('RSI', 50) if not is_real_time else 50
+    macd = latest.get('MACD', 0) if not is_real_time else 0
+    macd_signal = latest.get('MACD_Signal', 0) if not is_real_time else 0
+    macd_hist = latest.get('MACD_Histogram', 0) if not is_real_time else 0
+    bb_upper = latest.get('BB_Upper', price * 1.05) if not is_real_time else price * 1.05
+    bb_middle = latest.get('BB_Middle', price) if not is_real_time else price
+    bb_lower = latest.get('BB_Lower', price * 0.95) if not is_real_time else price * 0.95
+    stoch_k = latest.get('Stoch_K', 50) if not is_real_time else 50
+    williams_r = latest.get('Williams_R', -50) if not is_real_time else -50
+    cci = latest.get('CCI', 0) if not is_real_time else 0
+    momentum = latest.get('Momentum', 0) if not is_real_time else 0
+    roc = latest.get('ROC', 0) if not is_real_time else 0
+    obv = latest.get('OBV', latest['Volume']) if not is_real_time else latest['Volume']
     volume = latest['Volume']
-    pivot = latest.get('Pivot', price)
-    r1 = latest.get('R1', price * 1.02)
-    s1 = latest.get('S1', price * 0.98)
-    fib_618 = latest.get('Fib_618', price * 1.01)
+    pivot = latest.get('Pivot', price) if not is_real_time else price
+    r1 = latest.get('R1', price * 1.02) if not is_real_time else price * 1.02
+    s1 = latest.get('S1', price * 0.98) if not is_real_time else price * 0.98
+    fib_618 = latest.get('Fib_618', price * 1.01) if not is_real_time else price * 1.01
 
-    # Calculate ADX
+    # Calculate ADX (only for CSV data with sufficient rows)
     adx_value = 50  # Default
-    if df is not None and all(col in df.columns for col in ['High', 'Low', 'Close']):
-        adx_indicator = ADXIndicator(df['High'], df['Low'], df['Close'], window=14)
-        adx_value = adx_indicator.adx().iloc[-1]
+    if not is_real_time and all(col in data_source.columns for col in ['High', 'Low', 'Close']):
+        adx_indicator = ADXIndicator(data_source['High'], data_source['Low'], data_source['Close'], window=14)
+        adx_value = adx_indicator.adx().iloc[-1] if len(data_source) >= 14 else 50
 
-    # Historical trend analysis
+    # Historical trend analysis (only for CSV data with sufficient rows)
     trend_pattern = "Neutral"
-    if df is not None and len(df) > 10:
-        highs = df['High'].rolling(window=10).max()
-        lows = df['Low'].rolling(window=10).min()
+    if not is_real_time and len(data_source) > 10:
+        highs = data_source['High'].rolling(window=10).max()
+        lows = data_source['Low'].rolling(window=10).min()
         if highs.iloc[-1] > highs.iloc[-2] and lows.iloc[-1] > lows.iloc[-2]:
             trend_pattern = "Higher Highs & Lows (Bullish)"
         elif highs.iloc[-1] < highs.iloc[-2] and lows.iloc[-1] < lows.iloc[-2]:
@@ -279,7 +280,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 - **Risk**: {'High' if volume < data_source['Volume'].mean() else 'Moderate'} due to {'low volume' if volume < data_source['Volume'].mean() else 'market volatility'}.
 """
 
-    return quick_scan, moderate_detail, in_depth, stock_name, data_source
+    return quick_scan, moderate_detail, in_depth, stock_name, data_source, is_real_time
 
 # Main app
 st.title("📈 Stock Technical Analysis")
@@ -305,11 +306,14 @@ if any(v is not None for v in st.session_state.fundamental_data.values()):
 # Analyze data
 data_source = st.session_state.csv_data if st.session_state.csv_data is not None else st.session_state.real_time_data
 if data_source is not None:
-    quick_scan, moderate_detail, in_depth, stock_name, df = analyze_stock_data(
+    quick_scan, moderate_detail, in_depth, stock_name, df, is_real_time = analyze_stock_data(
         st.session_state.csv_data,
         st.session_state.real_time_data,
         st.session_state.fundamental_data
     )
+
+    if is_real_time:
+        st.warning("Real-time data lacks technical indicators (e.g., RSI, SMA). Upload a CSV for full analysis in Visual Summary and Interactive Dashboard.")
 
     # Report selection
     st.markdown("<div class='report-container'>", unsafe_allow_html=True)
@@ -327,23 +331,32 @@ if data_source is not None:
         st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}")
         st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}")
         
-        # Price trend chart
-        fig = px.line(df.tail(30) if df is not None else df, x='Date', y='Close', title='Price Trend (Last 30 Days)')
-        if df is not None:
-            fig.add_scatter(x=df['Date'], y=df.get('SMA_20', df['Close']), name='SMA20', line=dict(color='orange'))
-            fig.add_scatter(x=df['Date'], y=df.get('SMA_50', df['Close']), name='SMA50', line=dict(color='green'))
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # RSI chart
-        if 'RSI' in df.columns:
+        # Price trend chart (simplified for real-time data)
+        if not is_real_time and len(df) > 1:
+            fig = px.line(df.tail(30), x='Date', y='Close', title='Price Trend (Last 30 Days)')
+            if 'SMA_20' in df.columns:
+                fig.add_scatter(x=df['Date'], y=df['SMA_20'], name='SMA20', line=dict(color='orange'))
+            if 'SMA_50' in df.columns:
+                fig.add_scatter(x=df['Date'], y=df['SMA_50'], name='SMA50', line=dict(color='green'))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Price trend chart unavailable with real-time data. Upload a CSV for historical data.")
+
+        # RSI chart (only for CSV data)
+        if not is_real_time and 'RSI' in df.columns and len(df) > 1:
             fig_rsi = px.line(df.tail(30), x='Date', y='RSI', title='RSI (Last 30 Days)')
             fig_rsi.add_hline(y=70, line_dash="dash", line_color="red")
             fig_rsi.add_hline(y=30, line_dash="dash", line_color="green")
             st.plotly_chart(fig_rsi, use_container_width=True)
-        
+        else:
+            st.info("RSI chart unavailable with real-time data. Upload a CSV for RSI data.")
+
+        rsi_value = df.get('RSI', 50) if not is_real_time else 50
+        if isinstance(rsi_value, pd.Series):
+            rsi_value = rsi_value.iloc[-1]
         st.markdown(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}")
-        st.markdown(f"- **RSI**: {df.get('RSI', 50).iloc[-1]:.2f} ({'Oversold' if df.get('RSI', 50).iloc[-1] < 30 else 'Overbought' if df.get('RSI', 50).iloc[-1] > 70 else 'Neutral'})")
-        st.markdown(f"- **Recommendation**: {'Buy near support' if df.get('RSI', 50).iloc[-1] < 30 else 'Wait for breakout'}")
+        st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})")
+        st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}")
     else:
         # Interactive Dashboard
         st.markdown(f"### Interactive Dashboard: {stock_name}")
@@ -351,11 +364,22 @@ if data_source is not None:
         with col1:
             st.markdown("#### Technical Indicators")
             st.write(f"- **Price**: ${df['Close'].iloc[-1]:.2f}")
-            st.write(f"- **RSI**: {df.get('RSI', 50).iloc[-1]:.2f}")
-            st.write(f"- **MACD**: {df.get('MACD', 0).iloc[-1]:.2f} (Signal: {df.get('MACD_Signal', 0).iloc[-1]:.2f})")
-            st.write(f"- **Stochastic %K**: {df.get('Stoch_K', 50).iloc[-1]:.2f}")
-            adx_indicator = ADXIndicator(df['High'], df['Low'], df['Close'], window=14) if df is not None and all(col in df.columns for col in ['High', 'Low', 'Close']) else None
-            adx_value = adx_indicator.adx().iloc[-1] if adx_indicator else 50
+            rsi_value = df.get('RSI', 50) if not is_real_time else 50
+            if isinstance(rsi_value, pd.Series):
+                rsi_value = rsi_value.iloc[-1]
+            st.write(f"- **RSI**: {rsi_value:.2f}")
+            macd_value = df.get('MACD', 0) if not is_real_time else 0
+            macd_signal_value = df.get('MACD_Signal', 0) if not is_real_time else 0
+            if isinstance(macd_value, pd.Series):
+                macd_value = macd_value.iloc[-1]
+            if isinstance(macd_signal_value, pd.Series):
+                macd_signal_value = macd_signal_value.iloc[-1]
+            st.write(f"- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})")
+            stoch_k_value = df.get('Stoch_K', 50) if not is_real_time else 50
+            if isinstance(stoch_k_value, pd.Series):
+                stoch_k_value = stoch_k_value.iloc[-1]
+            st.write(f"- **Stochastic %K**: {stoch_k_value:.2f}")
+            adx_value = adx_value if not is_real_time else 50
             st.write(f"- **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})")
             st.write(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}")
             st.write(f"- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}")
@@ -365,8 +389,8 @@ if data_source is not None:
                 if v is not None:
                     st.write(f"- **{k}**: {v:.2f}")
         
-        # Price chart with Bollinger Bands
-        if df is not None:
+        # Price chart with Bollinger Bands (only for CSV data)
+        if not is_real_time and len(df) > 1:
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=df['Date'].tail(30), y=df['Close'].tail(30), name='Close'))
             if 'BB_Upper' in df.columns:
@@ -374,6 +398,8 @@ if data_source is not None:
                 fig.add_trace(go.Scatter(x=df['Date'].tail(30), y=df['BB_Lower'].tail(30), name='BB Lower', line=dict(color='green')))
             fig.update_layout(title='Price with Bollinger Bands (Last 30 Days)', xaxis_title='Date', yaxis_title='Price')
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Bollinger Bands chart unavailable with real-time data. Upload a CSV for full analysis.")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -399,7 +425,7 @@ if data_source is not None:
 
     # Export combined data as CSV
     if st.session_state.csv_data is not None or st.session_state.real_time_data:
-        export_df = pd.DataFrame([st.session_state.real_time_data]) if st.session_state.real_time_data else st.session_state.csv_data
+        export_df = pd.DataFrame([st.session_state.real_time_data]) if st.session_state.real_time_data and st.session_state.csv_data is None else st.session_state.csv_data
         if st.session_state.fundamental_data and any(v is not None for v in st.session_state.fundamental_data.values()):
             for k, v in st.session_state.fundamental_data.items():
                 export_df[k] = v
