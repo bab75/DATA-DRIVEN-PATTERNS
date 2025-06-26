@@ -901,7 +901,7 @@ else:
 
 latest_buy = st.session_state.aapl_df[st.session_state.aapl_df['buy_signal'] == True].iloc[-1] if not st.session_state.aapl_df[st.session_state.aapl_df['buy_signal'] == True].empty else None
 if latest_buy is not None:
-    st.header("Latest Trade Setup")
+    st.header("Latest Trade Setup")  # Indented with 4 spaces
     st.markdown(
         "<div class='trade-details'>"
         "<b>Date:</b> {date}<br>"
