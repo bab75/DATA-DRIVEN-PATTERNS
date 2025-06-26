@@ -621,8 +621,11 @@ def add_candlestick_trace(fig, df, row):
         risk = latest_buy['close'] - latest_buy['stop_loss']
         reward = latest_buy['take_profit'] - latest_buy['close']
         rr_ratio = reward / risk if risk > 0 else 'N/A'
-        fig.add_hline(y=latest_buy['stop_loss'], line_dash="dash", line_color="#f44336", annotation_text="Stop-Loss", annotation_font_color="#000000", row=row, col=1)
-        fig.add_hline(y=latest_buy['take_profit'], line_dash="dash", line_color="#4CAF50", annotation_text="Take-Profit", annotation_font_color="#000000", row=row, col=1)
+        fig.add_trace(go.Scatter(x=[df['date'].min(), df['date'].max()], y=[latest_buy['stop_loss'], latest_buy['stop_loss']], mode='lines', line=dict(color="#f44336", dash='dash', width=2), name="Stop-Loss",
+           hovertext=[f"Stop-Loss: ${latest_buy['stop_loss']:.2f}<br>Risk: ${risk:.2f}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in range(2)], hoverinfo='text+name', showlegend=True), row=row, col=1)
+        fig.add_trace(go.Scatter(x=[df['date'].min(), df['date'].max()],  y=[latest_buy['take_profit'], latest_buy['take_profit']], mode='lines', line=dict(color="#4CAF50", dash='dash', width=2),   name="Take-Profit",
+          hovertext=[f"Take-Profit: ${latest_buy['take_profit']:.2f}<br>Reward: ${reward:.2f}<br>Risk-Reward Ratio: {rr_ratio:.2f if isinstance(rr_ratio, float) else rr_ratio}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in range(2)],
+          hoverinfo='text+name', showlegend=True), row=row, col=1)
         fig.add_trace(go.Scatter(x=[latest_buy['date'], latest_buy['date']], y=[latest_buy['stop_loss'], latest_buy['take_profit']],
                                  mode='lines', line=dict(color='rgba(76,175,80,0.2)'), fill='toself', fillcolor='rgba(76,175,80,0.2)',
                                  hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"], hoverinfo='text+name', showlegend=False), row=row, col=1)
