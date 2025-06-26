@@ -5,8 +5,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import io
-import uuid
 from ta.trend import ADXIndicator
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
 # Streamlit app configuration
 st.set_page_config(page_title="Stock Technical Analysis", layout="wide", page_icon="📈")
@@ -111,24 +114,53 @@ if process_csv_button and uploaded_file:
     except Exception as e:
         st.error(f"Error processing CSV: {str(e)}")
 
-# Function to generate LaTeX report
-def generate_latex_report(report_content, stock_name, report_type):
-    latex_content = f"""
-\\documentclass{{article}}
-\\usepackage{{geometry}}
-\\usepackage{{booktabs}}
-\\usepackage{{parskip}}
-\\usepackage{{titlesec}}
-\\usepackage[utf8]{{inputenc}}
-\\geometry{{a4paper, margin=1in}}
-\\titleformat{{\\section}}{{\\Large\\bfseries}}{{}}{{0em}}{{}}
-\\titleformat{{\\subsection}}{{\\large\\bfseries}}{{}}{{0em}}{{}}
-\\begin{{document}}
-\\section*{{Stock Analysis Report: {stock_name} ({datetime.now().strftime('%Y-%m-%d')}})}
-{report_content.replace('$', '\\$').replace('%', '\\%').replace('#', '\\#')}
-\\end{{document}}
-"""
-    return latex_content
+# Function to generate PDF report using reportlab
+def generate_pdf_report(report_content, stock_name, report_type):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    custom_style = ParagraphStyle(name='Custom', parent=styles['Normal'], fontSize=12, leading=14)
+    heading_style = ParagraphStyle(name='Heading', parent=styles['Heading1'], fontSize=16, leading=18, spaceAfter=12)
+    elements = []
+
+    # Add title
+    elements.append(Paragraph(f"Stock Analysis Report: {stock_name} ({datetime.now().strftime('%Y-%m-%d')})", heading_style))
+    elements.append(Spacer(1, 12))
+
+    # Add report content
+    for line in report_content.split('\n'):
+        if line.startswith('### '):
+            elements.append(Paragraph(line[4:], heading_style))
+        elif line.startswith('- **'):
+            text = line.replace('- **', '').replace('**', '')
+            elements.append(Paragraph(f"• {text}", custom_style))
+        elif line.startswith('  - '):
+            text = line.replace('  - ', '')
+            elements.append(Paragraph(f"  • {text}", custom_style))
+        else:
+            elements.append(Paragraph(line, custom_style))
+        elements.append(Spacer(1, 6))
+
+    # Add fundamentals table if available
+    if any(v is not None for v in st.session_state.fundamental_data.values()):
+        elements.append(Paragraph("Fundamentals", heading_style))
+        data = [['Metric', 'Value']] + [[k, f"{v:.2f}" if v is not None else "N/A"] for k, v in st.session_state.fundamental_data.items()]
+        table = Table(data)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ]))
+        elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
 
 # Function to analyze stock data
 def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
@@ -188,38 +220,38 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     # Generate reports
     quick_scan = f"""
 ### Quick Scan: {stock_name} ({latest['Date']})
-- **Price**: \\${price:.2f} ({trend} trend)
-- **Support/Resistance**: Support at \\${s1:.2f}, Resistance at \\${r1:.2f}
+- **Price**: ${price:.2f} ({trend} trend)
+- **Support/Resistance**: Support at ${s1:.2f}, Resistance at ${r1:.2f}
 - **RSI**: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
 - **Recommendation**: {'Buy near support ($' + f'{s1:.2f}) for bounce to ${r1:.2f}' if rsi < 30 else 'Wait for breakout above $' + f'{sma_20:.2f}'}
 """
 
     moderate_detail = f"""
 ### Moderate Detail: {stock_name} ({latest['Date']})
-- **Price Trend**: \\${price:.2f}, {trend} (SMA20: \\${sma_20:.2f}, SMA50: \\${sma_50:.2f})
+- **Price Trend**: ${price:.2f}, {trend} (SMA20: ${sma_20:.2f}, SMA50: ${sma_50:.2f})
 - **Momentum**:
   - RSI: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
   - MACD: {macd:.2f} (Signal: {macd_signal:.2f}, {'Bearish' if macd < macd_signal else 'Bullish'})
-- **Bollinger Bands**: Price near {'lower' if price < bb_middle else 'upper'} band (Lower: \\${bb_lower:.2f}, Upper: \\${bb_upper:.2f})
+- **Bollinger Bands**: Price near {'lower' if price < bb_middle else 'upper'} band (Lower: ${bb_lower:.2f}, Upper: ${bb_upper:.2f})
 - **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})
-- **Key Levels**: Support: \\${s1:.2f}, Resistance: \\${r1:.2f}, Fib 61.8\\%: \\${fib_618:.2f}
+- **Key Levels**: Support: ${s1:.2f}, Resistance: ${r1:.2f}, Fib 61.8%: ${fib_618:.2f}
 - **Fundamentals**:
-  {'\\begin{itemize}' + ''.join([f'\\item {k}: {v:.2f}' for k, v in fundamental_data.items() if v is not None]) + '\\end{itemize}' if fundamental_data and any(v is not None for v in fundamental_data.values()) else 'Not provided'}
+  {'\n  - '.join([f'{k}: {v:.2f}' for k, v in fundamental_data.items() if v is not None]) if fundamental_data and any(v is not None for v in fundamental_data.values()) else 'Not provided'}
 - **Recommendation**: 
-  - Traders: {'Buy near \\$' + f'{s1:.2f} for bounce to \\${r1:.2f}' if rsi < 30 or price < bb_middle else 'Wait for breakout above \\$' + f'{r1:.2f}'}
-  - Investors: Confirm trend reversal above \\${sma_20:.2f}.
+  - Traders: {'Buy near ${s1:.2f} for bounce to ${r1:.2f}' if rsi < 30 or price < bb_middle else 'Wait for breakout above ${r1:.2f}'}
+  - Investors: Confirm trend reversal above ${sma_20:.2f}.
 """
 
     in_depth = f"""
 ### In-Depth Analysis: {stock_name} ({latest['Date']})
 #### Key Takeaways
-- **Price**: \\${price:.2f}, {trend} trend
+- **Price**: ${price:.2f}, {trend} trend
 - **Historical Pattern**: {trend_pattern}
 - **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})
 
 #### Price Trends
-- **Close**: \\${price:.2f}, {'below' if price < sma_20 else 'above'} SMA20 (\\${sma_20:.2f}), SMA50 (\\${sma_50:.2f}), SMA200 (\\${sma_200:.2f})
-- **Trend**: {trend} (EMA20: \\${ema_20:.2f}, EMA50: \\${ema_50:.2f})
+- **Close**: ${price:.2f}, {'below' if price < sma_20 else 'above'} SMA20 (${sma_20:.2f}), SMA50 (${sma_50:.2f}), SMA200 (${sma_200:.2f})
+- **Trend**: {trend} (EMA20: ${ema_20:.2f}, EMA50: ${ema_50:.2f})
 
 #### Momentum Indicators
 - **RSI**: {rsi:.2f} ({'Oversold (<30)' if rsi < 30 else 'Overbought (>70)' if rsi > 70 else 'Neutral'})
@@ -229,19 +261,19 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 - **CCI**: {cci:.2f}, Momentum: {momentum:.2f}, ROC: {roc:.2f}
 
 #### Volatility & Bollinger Bands
-- **Price Position**: {'Near lower band' if price < bb_middle else 'Near upper band'} (Lower: \\${bb_lower:.2f}, Middle: \\${bb_middle:.2f}, Upper: \\${bb_upper:.2f})
+- **Price Position**: {'Near lower band' if price < bb_middle else 'Near upper band'} (Lower: ${bb_lower:.2f}, Middle: ${bb_middle:.2f}, Upper: ${bb_upper:.2f})
 
 #### Volume
 - **OBV**: {obv:,.0f} ({'Declining' if obv < prev.get('OBV', obv) else 'Rising'})
 - **Volume**: {volume:,.0f} (Recent trend: {'Low' if volume < data_source['Volume'].mean() else 'High'})
 
 #### Fundamentals
-{'\\begin{itemize}' + '\\item ' + ' \\item '.join([f'{k}: {v:.2f}' for k, v in fundamental_data.items() if v is not None]) + '\\end{itemize}' if fundamental_data and any(v is not None for v in fundamental_data.values()) else '\\begin{itemize}\\item Not provided\\end{itemize}'}
+{'- ' + '\n- '.join([f'{k}: {v:.2f}' for k, v in fundamental_data.items() if v is not None]) if fundamental_data and any(v is not None for v in fundamental_data.values()) else '- Not provided'}
 
 #### Recommendation
-- **Conservative Investors**: Wait for price to break above SMA20 (\\${sma_20:.2f}).
-- **Traders**: {'Buy near support (\\$' + f'{s1:.2f}) for bounce to \\${r1:.2f}' if rsi < 30 or stoch_k < 20 else 'Wait for breakout above \\$' + f'{r1:.2f}'}.
-- **Key Levels**: Support: \\${s1:.2f}, Resistance: \\${r1:.2f}, Fib 61.8\\%: \\${fib_618:.2f}.
+- **Conservative Investors**: Wait for price to break above SMA20 (${sma_20:.2f}).
+- **Traders**: {'Buy near support (${s1:.2f}) for bounce to ${r1:.2f}' if rsi < 30 or stoch_k < 20 else 'Wait for breakout above ${r1:.2f}'}.
+- **Key Levels**: Support: ${s1:.2f}, Resistance: ${r1:.2f}, Fib 61.8%: ${fib_618:.2f}.
 - **Risk**: {'High' if volume < data_source['Volume'].mean() else 'Moderate'} due to {'low volume' if volume < data_source['Volume'].mean() else 'market volatility'}.
 """
 
@@ -320,6 +352,8 @@ if data_source is not None:
             st.write(f"- **RSI**: {df.get('RSI', 50).iloc[-1]:.2f}")
             st.write(f"- **MACD**: {df.get('MACD', 0).iloc[-1]:.2f} (Signal: {df.get('MACD_Signal', 0).iloc[-1]:.2f})")
             st.write(f"- **Stochastic %K**: {df.get('Stoch_K', 50).iloc[-1]:.2f}")
+            adx_indicator = ADXIndicator(df['High'], df['Low'], df['Close'], window=14) if df is not None and all(col in df.columns for col in ['High', 'Low', 'Close']) else None
+            adx_value = adx_indicator.adx().iloc[-1] if adx_indicator else 50
             st.write(f"- **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})")
             st.write(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}")
             st.write(f"- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}")
@@ -353,12 +387,12 @@ if data_source is not None:
         mime="text/markdown"
     )
     # PDF download
-    latex_content = generate_latex_report(report_content, stock_name, report_type)
+    pdf_buffer = generate_pdf_report(report_content, stock_name, report_type)
     st.download_button(
         label="Download PDF Report",
-        data=latex_content,
-        file_name=f"{stock_name}_{report_type.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.tex",
-        mime="text/latex"
+        data=pdf_buffer,
+        file_name=f"{stock_name}_{report_type.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf",
+        mime="application/pdf"
     )
 
     # Export combined data as CSV
