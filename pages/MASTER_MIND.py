@@ -22,6 +22,7 @@ try:
         .stSelectbox, .stTextInput, .stNumberInput {background-color: #e5e7eb; border-radius: 8px;}
         .report-container {background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);}
         h1, h2, h3 {color: #374151; font-family: Arial, sans-serif;}
+        .mode-banner {background-color: #e0f2fe; padding: 10px; border-radius: 5px; margin-bottom: 20px;}
         </style>
     """, unsafe_allow_html=True)
 except TypeError:
@@ -38,23 +39,36 @@ if 'fundamental_data' not in st.session_state:
 if 'csv_data' not in st.session_state:
     st.session_state.csv_data = None
 
+# Clear Analysis Button
+def clear_analysis():
+    st.session_state.real_time_data = None
+    st.session_state.fundamental_data = {
+        'EPS': None, 'P/E': None, 'PEG': None, 'P/B': None,
+        'ROE': None, 'Revenue': None, 'Debt/Equity': None
+    }
+    st.session_state.csv_data = None
+    st.success("Analysis cleared. Start a new analysis.")
+
 # Sidebar for inputs
 st.sidebar.header("Stock Data Input")
 ticker = st.sidebar.text_input("Enter Stock Ticker (e.g., KRRO)", value="KRRO")
 submit_button = st.sidebar.button("Fetch Real-Time Data")
 combine_data = st.sidebar.checkbox("Combine with Real-Time Data", value=False, disabled=st.session_state.csv_data is None)
+clear_button = st.sidebar.button("Clear Analysis")
+if clear_button:
+    clear_analysis()
 
 # Manual fundamental inputs
-st.sidebar.subheader("Manual Fundamental Data (Optional)")
-with st.sidebar.form(key="fundamental_form"):
-    eps = st.number_input("EPS", value=float(st.session_state.fundamental_data['EPS'] or 0.0), step=0.01, format="%.2f", placeholder="Enter EPS or leave blank")
-    pe = st.number_input("P/E Ratio", value=float(st.session_state.fundamental_data['P/E'] or 0.0), step=0.01, format="%.2f", placeholder="Enter P/E or leave blank")
-    peg = st.number_input("PEG Ratio", value=float(st.session_state.fundamental_data['PEG'] or 0.0), step=0.01, format="%.2f", placeholder="Enter PEG or leave blank")
-    pb = st.number_input("P/B Ratio", value=float(st.session_state.fundamental_data['P/B'] or 0.0), step=0.01, format="%.2f", placeholder="Enter P/B or leave blank")
-    roe = st.number_input("ROE (%)", value=float(st.session_state.fundamental_data['ROE'] or 0.0), step=0.01, format="%.2f", placeholder="Enter ROE or leave blank")
-    revenue = st.number_input("Revenue (in millions)", value=float(st.session_state.fundamental_data['Revenue'] or 0.0), step=0.1, format="%.1f", placeholder="Enter Revenue or leave blank")
-    debt_equity = st.number_input("Debt/Equity Ratio", value=float(st.session_state.fundamental_data['Debt/Equity'] or 0.0), step=0.01, format="%.2f", placeholder="Enter Debt/Equity or leave blank")
-    submit_fundamentals = st.form_submit_button("Update Fundamentals")
+with st.sidebar.expander("Manual Fundamental Data (Optional)"):
+    with st.form(key="fundamental_form"):
+        eps = st.number_input("EPS", value=float(st.session_state.fundamental_data['EPS'] or 0.0), step=0.01, format="%.2f", placeholder="Enter EPS or leave blank")
+        pe = st.number_input("P/E Ratio", value=float(st.session_state.fundamental_data['P/E'] or 0.0), step=0.01, format="%.2f", placeholder="Enter P/E or leave blank")
+        peg = st.number_input("PEG Ratio", value=float(st.session_state.fundamental_data['PEG'] or 0.0), step=0.01, format="%.2f", placeholder="Enter PEG or leave blank")
+        pb = st.number_input("P/B Ratio", value=float(st.session_state.fundamental_data['P/B'] or 0.0), step=0.01, format="%.2f", placeholder="Enter P/B or leave blank")
+        roe = st.number_input("ROE (%)", value=float(st.session_state.fundamental_data['ROE'] or 0.0), step=0.01, format="%.2f", placeholder="Enter ROE or leave blank")
+        revenue = st.number_input("Revenue (in millions)", value=float(st.session_state.fundamental_data['Revenue'] or 0.0), step=0.1, format="%.1f", placeholder="Enter Revenue or leave blank")
+        debt_equity = st.number_input("Debt/Equity Ratio", value=float(st.session_state.fundamental_data['Debt/Equity'] or 0.0), step=0.01, format="%.2f", placeholder="Enter Debt/Equity or leave blank")
+        submit_fundamentals = st.form_submit_button("Update Fundamentals")
 
 if submit_fundamentals:
     st.session_state.fundamental_data = {
@@ -69,35 +83,34 @@ if submit_fundamentals:
 
 # Fetch real-time data with yfinance
 if submit_button:
-    try:
-        stock = yf.Ticker(ticker)
-        # Fetch latest daily data
-        data = stock.history(period="1d", interval="1d")
-        if data.empty:
-            st.error("No data found for the ticker. Please check the ticker or upload a CSV/XLSX.")
-        else:
-            latest = data.iloc[-1]
-            st.session_state.real_time_data = {
-                'Date': data.index[-1].strftime('%Y-%m-%d %H:%M:%S'),
-                'Open': latest['Open'],
-                'High': latest['High'],
-                'Low': latest['Low'],
-                'Close': latest['Close'],
-                'Volume': latest['Volume']
-            }
-            # Fetch fundamental data
-            info = stock.info
-            st.session_state.fundamental_data = {
-                'EPS': info.get('trailingEps', st.session_state.fundamental_data['EPS']),
-                'P/E': info.get('trailingPE', st.session_state.fundamental_data['P/E']),
-                'PEG': info.get('pegRatio', st.session_state.fundamental_data['PEG']),
-                'P/B': info.get('priceToBook', st.session_state.fundamental_data['P/B']),
-                'ROE': info.get('returnOnEquity', st.session_state.fundamental_data['ROE']),
-                'Revenue': info.get('totalRevenue', st.session_state.fundamental_data['Revenue']),
-                'Debt/Equity': info.get('debtToEquity', st.session_state.fundamental_data['Debt/Equity'])
-            }
-    except Exception as e:
-        st.error(f"Error fetching data: {str(e)}. Please upload a CSV/XLSX or enter manual data.")
+    with st.spinner("Fetching real-time data..."):
+        try:
+            stock = yf.Ticker(ticker)
+            data = stock.history(period="1d", interval="1d")
+            if data.empty:
+                st.error("No data found for the ticker. Please check the ticker or upload a CSV/XLSX.")
+            else:
+                latest = data.iloc[-1]
+                st.session_state.real_time_data = {
+                    'Date': data.index[-1].strftime('%Y-%m-%d %H:%M:%S'),
+                    'Open': latest['Open'],
+                    'High': latest['High'],
+                    'Low': latest['Low'],
+                    'Close': latest['Close'],
+                    'Volume': latest['Volume']
+                }
+                info = stock.info
+                st.session_state.fundamental_data = {
+                    'EPS': info.get('trailingEps', st.session_state.fundamental_data['EPS']),
+                    'P/E': info.get('trailingPE', st.session_state.fundamental_data['P/E']),
+                    'PEG': info.get('pegRatio', st.session_state.fundamental_data['PEG']),
+                    'P/B': info.get('priceToBook', st.session_state.fundamental_data['P/B']),
+                    'ROE': info.get('returnOnEquity', st.session_state.fundamental_data['ROE']),
+                    'Revenue': info.get('totalRevenue', st.session_state.fundamental_data['Revenue']),
+                    'Debt/Equity': info.get('debtToEquity', st.session_state.fundamental_data['Debt/Equity'])
+                }
+        except Exception as e:
+            st.error(f"Error fetching data: {str(e)}. Please try another ticker (e.g., AAPL) or upload a CSV/XLSX.")
 
 # CSV/XLSX upload
 st.sidebar.subheader("Upload Technical Indicators CSV/XLSX")
@@ -105,20 +118,21 @@ uploaded_file = st.sidebar.file_uploader("Choose a CSV or XLSX file", type=["csv
 process_file_button = st.sidebar.button("Process File")
 
 if process_file_button and uploaded_file:
-    try:
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file, engine='openpyxl')
-        required_columns = ['Date', 'Close', 'SMA_20', 'SMA_50', 'SMA_200', 'EMA_20', 'EMA_50', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'OBV', 'Volume', 'Pivot', 'R1', 'S1', 'Fib_236', 'Fib_382', 'Fib_618', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'PSAR']
-        if not all(col in df.columns for col in required_columns):
-            st.error("File must contain required columns: " + ", ".join(required_columns))
-        else:
-            df['Date'] = pd.to_datetime(df['Date'])
-            st.session_state.csv_data = df
-            st.success("File processed successfully!")
-    except Exception as e:
-        st.error(f"Error processing file: {str(e)}")
+    with st.spinner("Processing file..."):
+        try:
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file, engine='openpyxl')
+            required_columns = ['Date', 'Close', 'SMA_20', 'SMA_50', 'SMA_200', 'EMA_20', 'EMA_50', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'OBV', 'Volume', 'Pivot', 'R1', 'S1', 'Fib_236', 'Fib_382', 'Fib_618', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'PSAR']
+            if not all(col in df.columns for col in required_columns):
+                st.error("File must contain required columns: " + ", ".join(required_columns))
+            else:
+                df['Date'] = pd.to_datetime(df['Date'])
+                st.session_state.csv_data = df
+                st.success("File processed successfully!")
+        except Exception as e:
+            st.error(f"Error processing file: {str(e)}. Ensure the file is a valid CSV/XLSX with required columns.")
 
 # Function to generate PDF report using reportlab
 def generate_pdf_report(report_content, stock_name, report_type):
@@ -129,11 +143,9 @@ def generate_pdf_report(report_content, stock_name, report_type):
     heading_style = ParagraphStyle(name='Heading', parent=styles['Heading1'], fontSize=16, leading=18, spaceAfter=12)
     elements = []
 
-    # Add title
     elements.append(Paragraph(f"Stock Analysis Report: {stock_name} ({datetime.now().strftime('%Y-%m-%d')})", heading_style))
     elements.append(Spacer(1, 12))
 
-    # Add report content
     for line in report_content.split('\n'):
         if line.startswith('### '):
             elements.append(Paragraph(line[4:], heading_style))
@@ -147,7 +159,6 @@ def generate_pdf_report(report_content, stock_name, report_type):
             elements.append(Paragraph(line, custom_style))
         elements.append(Spacer(1, 6))
 
-    # Add fundamentals table if available
     if any(v is not None for v in st.session_state.fundamental_data.values()):
         elements.append(Paragraph("Fundamentals", heading_style))
         data = [['Metric', 'Value']] + [[k, f"{v:.2f}" if v is not None else "N/A"] for k, v in st.session_state.fundamental_data.items()]
@@ -173,13 +184,9 @@ def combine_dataframes(csv_df, real_time_data):
     if real_time_data is None:
         return csv_df
     real_time_df = pd.DataFrame([real_time_data])
-    # Ensure Date is datetime
     real_time_df['Date'] = pd.to_datetime(real_time_df['Date'])
-    # Append real-time data to CSV/XLSX data
     combined_df = pd.concat([csv_df, real_time_df], ignore_index=True)
-    # Remove duplicates based on Date, keeping the latest (real-time) entry
     combined_df = combined_df.sort_values('Date').drop_duplicates(subset=['Date'], keep='last')
-    # Fill missing technical indicators with defaults
     for col in ['SMA_20', 'SMA_50', 'SMA_200', 'EMA_20', 'EMA_50', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'OBV', 'Pivot', 'R1', 'S1', 'Fib_236', 'Fib_382', 'Fib_618', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'PSAR']:
         if col not in real_time_df.columns:
             combined_df[col] = combined_df[col].fillna(combined_df['Close'] if col in ['SMA_20', 'SMA_50', 'SMA_200', 'EMA_20', 'EMA_50', 'BB_Middle', 'Pivot'] else 50 if col == 'RSI' else 0 if col in ['MACD', 'MACD_Signal', 'MACD_Histogram', 'CCI', 'Momentum', 'ROC'] else combined_df['Close'] * 1.05 if col == 'BB_Upper' else combined_df['Close'] * 0.95 if col == 'BB_Lower' else 50 if col == 'Stoch_K' else -50 if col == 'Williams_R' else combined_df['Close'] * 1.02 if col == 'R1' else combined_df['Close'] * 0.98 if col == 'S1' else combined_df['Close'] * 1.01 if col == 'Fib_618' else combined_df['Close'])
@@ -196,7 +203,6 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     latest = data_source.iloc[-1]
     prev = data_source.iloc[-2] if len(data_source) > 1 else latest
 
-    # Extract indicators with defaults for real-time data
     price = latest['Close']
     sma_20 = latest.get('SMA_20', price) if not is_real_time_only else price
     sma_50 = latest.get('SMA_50', price) if not is_real_time_only else price
@@ -222,13 +228,11 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     s1 = latest.get('S1', price * 0.98) if not is_real_time_only else price * 0.98
     fib_618 = latest.get('Fib_618', price * 1.01) if not is_real_time_only else price * 1.01
 
-    # Calculate ADX (only for CSV/XLSX or combined data with sufficient rows)
     adx_value = 50
     if not is_real_time_only and all(col in data_source.columns for col in ['High', 'Low', 'Close']) and len(data_source) >= 14:
         adx_indicator = ADXIndicator(data_source['High'], data_source['Low'], data_source['Close'], window=14)
         adx_value = adx_indicator.adx().iloc[-1]
 
-    # Historical trend analysis (only for CSV/XLSX or combined data with sufficient rows)
     trend_pattern = "Neutral"
     if not is_real_time_only and len(data_source) > 10:
         highs = data_source['High'].rolling(window=10).max()
@@ -238,10 +242,8 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
         elif highs.iloc[-1] < highs.iloc[-2] and lows.iloc[-1] < lows.iloc[-2]:
             trend_pattern = "Lower Highs & Lows (Bearish)"
 
-    # Determine trend
     trend = "Bearish" if price < sma_20 and price < sma_50 else "Bullish" if price > sma_20 and price > sma_50 else "Neutral"
 
-    # Generate reports with properly escaped f-strings
     quick_scan = f"""
 ### Quick Scan: {stock_name} ({latest['Date']})
 - **Price**: ${price:.2f} ({trend} trend)
@@ -307,6 +309,19 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 st.title("📈 Stock Technical Analysis")
 st.markdown("Fetch real-time data or upload a CSV/XLSX file with technical indicators to generate a stock analysis report.")
 
+# Mode indicator and comparison table
+mode = "Real-Time Only" if st.session_state.csv_data is None and st.session_state.real_time_data is not None else "XLSX/CSV Only" if st.session_state.csv_data is not None and not combine_data else "Combined" if st.session_state.csv_data is not None and combine_data else "No Data"
+st.markdown(f"<div class='mode-banner'><b>Active Mode: {mode}</b><br>{'Real-time price and fundamentals from yfinance.' if mode == 'Real-Time Only' else 'Historical data and indicators from uploaded CSV/XLSX.' if mode == 'XLSX/CSV Only' else 'Combines CSV/XLSX historical data with real-time price/fundamentals.' if mode == 'Combined' else 'Please fetch data or upload a file to begin.'}</div>", unsafe_allow_html=True)
+
+with st.expander("How Reports Differ by Mode"):
+    st.markdown("""
+    | **Mode** | **Data Source** | **Report Features** | **Limitations** |
+    |----------|-----------------|---------------------|-----------------|
+    | XLSX/CSV Only | Uploaded file | Full technical analysis (RSI, SMA, ADX, charts) | No real-time updates |
+    | Real-Time Only | yfinance | Latest price, fundamentals; default indicators | No historical trends/charts |
+    | Combined | XLSX/CSV + yfinance | Full analysis with real-time price updates | Requires matching ticker |
+    """)
+
 # Display real-time data
 if st.session_state.real_time_data:
     rt = st.session_state.real_time_data
@@ -353,22 +368,22 @@ if data_source is not None:
         st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}")
         st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}")
         
-        # Price trend chart (simplified for real-time data)
         if not is_real_time_only and len(df) > 1:
-            fig = px.line(df.tail(30), x='Date', y='Close', title='Price Trend (Last 30 Days)')
+            fig = px.line(df.tail(30), x='Date', y='Close', title='Price Trend (Last 30 Days)', hover_data=['Open', 'High', 'Low'])
             if 'SMA_20' in df.columns:
                 fig.add_scatter(x=df['Date'], y=df['SMA_20'], name='SMA20', line=dict(color='orange'))
             if 'SMA_50' in df.columns:
                 fig.add_scatter(x=df['Date'], y=df['SMA_50'], name='SMA50', line=dict(color='green'))
+            fig.update_layout(hovermode='x unified')
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Price trend chart unavailable with real-time data only. Upload a CSV/XLSX for historical data.")
 
-        # RSI chart (only for CSV/XLSX or combined data)
         if not is_real_time_only and 'RSI' in df.columns and len(df) > 1:
             fig_rsi = px.line(df.tail(30), x='Date', y='RSI', title='RSI (Last 30 Days)')
             fig_rsi.add_hline(y=70, line_dash="dash", line_color="red")
             fig_rsi.add_hline(y=30, line_dash="dash", line_color="green")
+            fig_rsi.update_layout(hovermode='x unified')
             st.plotly_chart(fig_rsi, use_container_width=True)
         else:
             st.info("RSI chart unavailable with real-time data only. Upload a CSV/XLSX for RSI data.")
@@ -380,7 +395,6 @@ if data_source is not None:
         st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})")
         st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}")
     else:
-        # Interactive Dashboard
         st.markdown(f"### Interactive Dashboard: {stock_name}")
         col1, col2 = st.columns(2)
         with col1:
@@ -410,23 +424,21 @@ if data_source is not None:
                 if v is not None:
                     st.write(f"- **{k}**: {v:.2f}")
         
-        # Price chart with Bollinger Bands (only for CSV/XLSX or combined data)
         if not is_real_time_only and len(df) > 1:
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df['Date'].tail(30), y=df['Close'].tail(30), name='Close'))
+            fig.add_trace(go.Candlestick(x=df['Date'].tail(30), open=df['Open'].tail(30), high=df['High'].tail(30), low=df['Low'].tail(30), close=df['Close'].tail(30), name='Candlestick'))
             if 'BB_Upper' in df.columns:
                 fig.add_trace(go.Scatter(x=df['Date'].tail(30), y=df['BB_Upper'].tail(30), name='BB Upper', line=dict(color='red')))
                 fig.add_trace(go.Scatter(x=df['Date'].tail(30), y=df['BB_Lower'].tail(30), name='BB Lower', line=dict(color='green')))
-            fig.update_layout(title='Price with Bollinger Bands (Last 30 Days)', xaxis_title='Date', yaxis_title='Price')
+            fig.update_layout(title='Candlestick with Bollinger Bands (Last 30 Days)', xaxis_title='Date', yaxis_title='Price', hovermode='x unified')
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Bollinger Bands chart unavailable with real-time data only. Upload a CSV/XLSX for full analysis.")
+            st.info("Candlestick chart unavailable with real-time data only. Upload a CSV/XLSX for full analysis.")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Download reports
     report_content = quick_scan if report_type == "Quick Scan" else moderate_detail if report_type == "Moderate Detail" else in_depth
-    # Markdown download
     buffer = io.StringIO()
     buffer.write(report_content)
     st.download_button(
@@ -435,7 +447,6 @@ if data_source is not None:
         file_name=f"{stock_name}_{report_type.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.md",
         mime="text/markdown"
     )
-    # PDF download
     pdf_buffer = generate_pdf_report(report_content, stock_name, report_type)
     st.download_button(
         label="Download PDF Report",
@@ -444,7 +455,6 @@ if data_source is not None:
         mime="application/pdf"
     )
 
-    # Export combined data as CSV
     if data_source is not None:
         export_df = data_source.copy()
         if st.session_state.fundamental_data and any(v is not None for v in st.session_state.fundamental_data.values()):
