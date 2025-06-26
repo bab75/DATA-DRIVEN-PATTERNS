@@ -665,26 +665,26 @@ def add_rsi_trace(fig, df, row):
 def add_macd_stochastic_trace(fig, df, row):
     if "MACD" in show_indicators and 'macd' in df.columns and 'signal' in df.columns:
         fig.add_trace(go.Scatter(x=df['date'], y=df['macd'], name="MACD", line=dict(color="#0288d1"),
-                                 hovertext=[f"MACD: {x:.2f}" for x in df['macd']], hoverinfo='text+x'), row=row, col=1)
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>MACD: {macd:.2f}" for date, macd in zip(df['date'], df['macd'])], hoverinfo='text'), row=row, col=1)
         fig.add_trace(go.Scatter(x=df['date'], y=df['signal'], name="Signal Line", line=dict(color="#ff9800"),
-                                 hovertext=[f"Signal: {x:.2f}" for x in df['signal']], hoverinfo='text+x'), row=row, col=1)
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Signal: {signal:.2f}" for date, signal in zip(df['date'], df['signal'])], hoverinfo='text'), row=row, col=1)
         fig.add_trace(go.Bar(x=df['date'], y=df['macd_diff'], name="MACD Histogram", marker_color="#607d8b",
-                             hovertext=[f"MACD Diff: {x:.2f}" for x in df['macd_diff']], hoverinfo='text+x'), row=row, col=1)
+                             hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>MACD Diff: {diff:.2f}" for date, diff in zip(df['date'], df['macd_diff'])], hoverinfo='text'), row=row, col=1)
     if "Stochastic" in show_indicators:
         fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2",
-                                 hovertext=[f"Stochastic %K: {x:.2f}" for x in df['stochastic_k']], hoverinfo='text+x'), row=row, col=1)
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %K: {k:.2f}" for date, k in zip(df['date'], df['stochastic_k'])], hoverinfo='text'), row=row, col=1)
         fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_d'], name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y2",
-                                 hovertext=[f"Stochastic %D: {x:.2f}" for x in df['stochastic_d']], hoverinfo='text+x'), row=row, col=1)
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %D: {d:.2f}" for date, d in zip(df['date'], df['stochastic_d'])], hoverinfo='text'), row=row, col=1)
         fig.update_layout(yaxis2=dict(overlaying='y', side='right', range=[0, 100]))
 
 def add_adx_volatility_trace(fig, df, row):
     if "ADX" in show_indicators:
         fig.add_trace(go.Scatter(x=df['date'], y=df['adx'], name="ADX", line=dict(color="#3f51b5"),
-                                 hovertext=[f"ADX: {x:.2f}" for x in df['adx']], hoverinfo='text+x'), row=row, col=1)
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>ADX: {adx:.2f}" for date, adx in zip(df['date'], df['adx'])], hoverinfo='text'), row=row, col=1)
         fig.add_hline(y=25, line_dash="dash", line_color="#0288d1", row=row, col=1)
     if "RVOL" in show_indicators:
         fig.add_trace(go.Scatter(x=df['date'], y=df['rvol'], name="RVOL", line=dict(color="#795548"), yaxis="y3",
-                                 hovertext=[f"RVOL: {x:.2f}" for x in df['rvol']], hoverinfo='text+x'), row=row, col=1)
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>RVOL: {rvol:.2f}" for date, rvol in zip(df['date'], df['rvol'])], hoverinfo='text'), row=row, col=1)
         fig.update_layout(yaxis3=dict(overlaying='y', side='right'))
 
 def add_volume_trace(fig, df, row):
