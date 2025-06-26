@@ -665,7 +665,8 @@ def add_rsi_trace(fig, df, row):
 def add_macd_stochastic_trace(fig, df, row):
     if "MACD" in show_indicators and 'macd' in df.columns and 'signal' in df.columns:
         fig.add_trace(go.Scatter(x=df['date'], y=df['macd'], name="MACD", line=dict(color="#0288d1"),
-                                 hovertext=[f"MACD: {x:.2f}" for x in df['macd']], hoverinfo='text+x'), row=row, col=1)
+                                 #hovertext=[f"MACD: {x:.2f}" for x in df['macd']], hoverinfo='text+x'), row=row, col=1)
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>MACD: {macd:.2f}" for date, macd in zip(df['date'], df['macd'])]
         fig.add_trace(go.Scatter(x=df['date'], y=df['signal'], name="Signal Line", line=dict(color="#ff9800"),
                                  hovertext=[f"Signal: {x:.2f}" for x in df['signal']], hoverinfo='text+x'), row=row, col=1)
         fig.add_trace(go.Bar(x=df['date'], y=df['macd_diff'], name="MACD Histogram", marker_color="#607d8b",
