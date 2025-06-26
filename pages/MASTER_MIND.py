@@ -22,6 +22,7 @@ try:
         .stButton>button:hover {background: linear-gradient(45deg, #357abd, #4a90e2); transform: scale(1.05);}
         .stSelectbox, .stTextInput, .stNumberInput {background: #ffffff; border: 1px solid #d1d9e6; border-radius: 10px; padding: 5px;}
         .report-container {background: #ffffff; padding: 20px; border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.1); margin-bottom: 20px;}
+        .data-card {background: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin: 10px 0;}
         h1 {color: #2c3e50; font-size: 2.5em; text-align: center; text-transform: uppercase; letter-spacing: 2px;}
         h2, h3 {color: #34495e; font-weight: 500;}
         .mode-banner {background: #e6f3fa; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid #3498db;}
@@ -112,7 +113,7 @@ st.sidebar.subheader("📈 Report Options")
 combine_checkbox = st.sidebar.checkbox("Combine Report", value=st.session_state.combine_report, disabled=st.session_state.csv_data is None)
 if combine_checkbox != st.session_state.combine_report:
     st.session_state.combine_report = combine_checkbox
-combine_button = st.sidebar.button("📊 Combine Process")
+combine_button = st.sidebar.button("📊 Combine Process", disabled=not combine_checkbox)
 
 # Manual fundamental inputs
 with st.sidebar.expander("📋 Manual Fundamental Data (Optional)", expanded=False):
@@ -208,7 +209,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     is_real_time_only = real_time_data is not None and df is None
     data_source = df if df is not None else pd.DataFrame([real_time_data]) if real_time_data is not None else None
 
-    if data_source is None:
+    if data_source is None or not isinstance(data_source, pd.DataFrame):
         return None, None, None, stock_name, None, is_real_time_only, 50
 
     latest = data_source.iloc[-1]
@@ -360,39 +361,26 @@ st.markdown("Analyze stocks with real-time data or uploaded CSV/XLSX files conta
 mode = "XLSX/CSV Only" if st.session_state.csv_data is not None and st.session_state.real_time_data is None else "Real-Time Only" if st.session_state.real_time_data is not None and st.session_state.csv_data is None else "Combined" if st.session_state.combine_report and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else "No Data"
 st.markdown(f"<div class='mode-banner'><b>Active Mode: {mode}</b><br>{'Historical data and indicators from uploaded CSV/XLSX.' if mode == 'XLSX/CSV Only' else 'Real-time price and fundamentals from yfinance.' if mode == 'Real-Time Only' else 'Combines CSV/XLSX historical data with real-time price/fundamentals.' if mode == 'Combined' else 'Please fetch data or upload a file to begin.'}</div>", unsafe_allow_html=True)
 
-# Display real-time and fundamental data in expandable section
-with st.expander("📊 Stock Data Overview", expanded=True):
-    if st.session_state.real_time_data:
-        current_data = {
-            "Metric": ["Date", "Open", "High", "Low", "Close", "Volume"],
-            "Value": [
-                st.session_state.real_time_data['Date'],
-                f"${st.session_state.real_time_data['Open']:.2f}",
-                f"${st.session_state.real_time_data['High']:.2f}",
-                f"${st.session_state.real_time_data['Low']:.2f}",
-                f"${st.session_state.real_time_data['Close']:.2f}",
-                f"{st.session_state.real_time_data['Volume']:,.0f}"
-            ]
-        }
-        st.table(pd.DataFrame(current_data))
+# Display Stock Data Overview with improved UI
+st.subheader("📊 Stock Data Overview")
+if st.session_state.real_time_data:
+    date_str = st.session_state.real_time_data['Date']
+    st.markdown(f"### Stock Price as on {date_str}")
+    st.markdown(f"<div class='data-card'><b>Price:</b> ${st.session_state.real_time_data['Close']:.2f}<br><b>Volume:</b> {st.session_state.real_time_data['Volume']:,.0f}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='data-card'><b>Open:</b> ${st.session_state.real_time_data['Open']:.2f}<br><b>High:</b> ${st.session_state.real_time_data['High']:.2f}<br><b>Low:</b> ${st.session_state.real_time_data['Low']:.2f}</div>", unsafe_allow_html=True)
 
-    if any(v is not None for v in st.session_state.fundamental_data.values()):
-        fundamental_data = {
-            "Metric": ["EPS", "P/B", "ROE", "Revenue", "Debt/Equity"],
-            "Value": [
-                f"{st.session_state.fundamental_data['EPS']:.2f}" if st.session_state.fundamental_data['EPS'] is not None else "N/A",
-                f"{st.session_state.fundamental_data['P/B']:.2f}" if st.session_state.fundamental_data['P/B'] is not None else "N/A",
-                f"{st.session_state.fundamental_data['ROE']:.2f}" if st.session_state.fundamental_data['ROE'] is not None else "N/A",
-                f"${st.session_state.fundamental_data['Revenue']:.2f}M" if st.session_state.fundamental_data['Revenue'] is not None else "N/A",
-                f"{st.session_state.fundamental_data['Debt/Equity']:.2f}" if st.session_state.fundamental_data['Debt/Equity'] is not None else "N/A"
-            ]
-        }
-        st.table(pd.DataFrame(fundamental_data))
+if any(v is not None for v in st.session_state.fundamental_data.values()):
+    with st.expander("### Fundamental Analysis", expanded=False):
+        st.markdown("<div class='data-card'>", unsafe_allow_html=True)
+        for k, v in st.session_state.fundamental_data.items():
+            if v is not None:
+                st.markdown(f"<b>{k}:</b> {v:.2f}<br>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # Analyze data based on the last action
 data_source = st.session_state.csv_data if process_file_button and st.session_state.csv_data is not None else st.session_state.real_time_data if submit_button and st.session_state.real_time_data is not None else combine_dataframes(st.session_state.csv_data, st.session_state.real_time_data) if combine_button and st.session_state.combine_report and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else None
 
-if data_source is not None:
+if data_source is not None and isinstance(data_source, pd.DataFrame):
     quick_scan, moderate_detail, in_depth, stock_name, df, is_real_time_only, adx_value = analyze_stock_data(
         st.session_state.csv_data if process_file_button and st.session_state.csv_data is not None else None,
         st.session_state.real_time_data if submit_button and st.session_state.real_time_data is not None else None,
