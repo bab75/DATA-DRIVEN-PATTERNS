@@ -637,7 +637,7 @@ def add_candlestick_trace(fig, df, row):
             mode='lines', 
             line=dict(color="#4CAF50", dash='dash', width=2),
             name="Take-Profit",
-            hovertext=[f"Take-Profit: ${latest_buy['take_profit']:.2f}<br>Reward: ${reward:.2f}<br>Risk-Reward Ratio: {rr_ratio:.2f if isinstance(rr_ratio, float) else rr_ratio}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in range(2)],
+            hovertext=[f"Take-Profit: ${latest_buy['take_profit']:.2f}<br>Reward: ${reward:.2f}<br>Risk-Reward Ratio: {rr_ratio:.2f if isinstance(rr_ratio, float) else str(rr_ratio)}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in range(2)],
             hoverinfo='text+name',
             showlegend=True
         ), row=row, col=1)
