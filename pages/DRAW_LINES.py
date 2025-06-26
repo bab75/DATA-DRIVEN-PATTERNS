@@ -659,6 +659,20 @@ def add_candlestick_trace(fig, df, row):
                 showlegend=False
             ), row=row, col=1)
 
+            # Add shaded area with Risk-Reward Ratio
+            fig.add_trace(go.Scatter(
+                x=[latest_buy['date'], latest_buy['date']],
+                y=[latest_buy['stop_loss'], latest_buy['take_profit']],
+                mode='lines',
+                line=dict(color='rgba(76,175,80,0.2)'),
+                fill='toself',
+                fillcolor='rgba(76,175,80,0.2)',
+                name="Risk-Reward Zone",
+                hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"],
+                hoverinfo='text+name',
+                showlegend=False
+            ), row=row, col=1)
+
             # Add Take-Profit line
             fig.add_trace(go.Scatter(
                 x=[df['date'].min(), df['date'].max'],
