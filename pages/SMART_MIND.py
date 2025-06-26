@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="Smart Pattern Analyzer", layout="centered")
 st.title("📊 Smart Pattern Analyzer for Day Traders")
 
-# --- User Inputs ---
+# --- Inputs ---
 symbol = st.text_input("Enter Stock Symbol", value="AAPL")
 
 col1, col2 = st.columns(2)
@@ -24,7 +24,7 @@ comparison = st.radio(
     index=5
 )
 
-# --- On Submit ---
+# --- Analyze Button ---
 if st.button("🚀 Analyze Pattern"):
 
     try:
@@ -34,39 +34,40 @@ if st.button("🚀 Analyze Pattern"):
         st.stop()
 
     if df.empty:
-        st.warning("No data found. Please check the symbol or date range.")
+        st.warning("No data retrieved. Please check your symbol or date range.")
         st.stop()
 
-    # Reset, sort, and clean column names
+    # --- Clean and Format ---
     df = df.reset_index()
-    df.columns = [col.strip().replace(" ", "_") for col in df.columns]
+    df.columns = [str(col).strip().replace(" ", "_") for col in df.columns]
     df["Date"] = pd.to_datetime(df["Date"])
     df.sort_values("Date", inplace=True)
 
-    # Lagged values
+    # --- Previous Day Columns ---
     for col in ["Open", "High", "Low", "Close", "Volume"]:
         df[f"Prev_{col}"] = df[col].shift(1)
 
+    # --- Recovery Pattern Flag ---
     df["Low_Diff"] = df["Open"] - df["Low"]
     df["Recovered"] = np.where(df["Close"] >= df["Open"], "Yes", "No")
 
+    # --- Metric Comparisons ---
     selected_metrics = ["Open", "High", "Low", "Close", "Volume"] if comparison == "All" else [comparison]
 
     for metric in selected_metrics:
-        curr = df.get(metric)
-        prev = df.get(f"Prev_{metric}")
-        if curr is not None and prev is not None:
-            diff_series = curr - prev
-            df[f"{metric}_Change_vs_Yest"] = diff_series
-        else:
-            st.warning(f"Skipping {metric}: missing data.")
+        try:
+            df[f"{metric}_Change_vs_Yest"] = df[metric] - df[f"Prev_{metric}"]
+        except Exception as e:
+            st.warning(f"Could not compute difference for {metric}: {e}")
 
+    # --- Display Results ---
     st.success(f"✅ Analysis complete for {symbol.upper()} from {start_date} to {end_date}")
+    st.subheader("📋 Recent Pattern Data")
     st.dataframe(df.tail(25), use_container_width=True)
 
-    st.subheader("📈 Price Trend")
-    chart_cols = [col for col in ["Open", "High", "Low", "Close"] if col in df.columns]
+    # --- Price Trend Chart ---
+    st.subheader("📈 Price Trend Chart")
     try:
-        st.line_chart(df.set_index("Date")[chart_cols])
-    except Exception as chart_error:
-        st.warning(f"Chart error: {chart_error}")
+        st.line_chart(df.set_index("Date")[["Open", "High", "Low", "Close"]])
+    except Exception as e:
+        st.warning(f"Could not plot chart: {e}")
