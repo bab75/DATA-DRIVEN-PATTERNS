@@ -13,7 +13,6 @@ from reportlab.lib import colors
 
 # Streamlit app configuration
 st.set_page_config(page_title="Stock Technical Analysis", layout="wide", page_icon="📈")
-# Enhanced CSS with modern design
 try:
     st.markdown("""
         <style>
@@ -41,7 +40,7 @@ if 'csv_data' not in st.session_state:
     st.session_state.csv_data = None
 if 'combine_report' not in st.session_state:
     st.session_state.combine_report = False
-if 'analysis_data' not in st.session_state:  # New key to store analysis results
+if 'analysis_data' not in st.session_state:
     st.session_state.analysis_data = None
 
 # Clear Analysis Button
@@ -53,12 +52,10 @@ def clear_analysis():
     st.session_state.analysis_data = None
     st.success("Analysis cleared. Start a new analysis.")
 
-# Sidebar for inputs with reorganized navigation
+# Sidebar for inputs
 st.sidebar.header("📊 Stock Analysis Controls")
-
-# Step 1: Export File and Process Button
 st.sidebar.subheader("📤 Upload Technical Data")
-uploaded_file = st.sidebar.file_uploader("Choose a CSV or XLSX file", type=["csv", "xlsx"], help="Upload a file with technical indicators.")
+uploaded_file = st.sidebar.file_uploader("Choose a CSV or XLSX file", type=["csv", "xlsx"])
 process_file_button = st.sidebar.button("📥 Process File")
 
 if process_file_button and uploaded_file:
@@ -70,17 +67,16 @@ if process_file_button and uploaded_file:
         required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
         if not all(col in df.columns for col in required_columns):
             missing = [col for col in required_columns if col not in df.columns]
-            st.error(f"❌ Missing columns: {', '.join(missing)}. Ensure all required columns are present.")
+            st.error(f"❌ Missing columns: {', '.join(missing)}")
         else:
             df['Date'] = pd.to_datetime(df['Date'])
             st.session_state.csv_data = df
-            st.success("✅ File processed successfully! The 'Combine Report' checkbox is now usable.")
+            st.success("✅ File processed successfully!")
     except Exception as e:
-        st.error(f"❌ Error processing file: {str(e)}. Ensure the file is a valid CSV/XLSX with required columns.")
+        st.error(f"❌ Error processing file: {str(e)}")
 
-# Step 2: Symbol Field and Fetch Real-Time Data Button
 st.sidebar.subheader("📡 Real-Time Data")
-ticker = st.sidebar.text_input("Enter Stock Ticker (e.g., KRRO)", value="KRRO", help="Enter a valid stock ticker symbol.")
+ticker = st.sidebar.text_input("Enter Stock Ticker (e.g., KRRO)", value="KRRO")
 submit_button = st.sidebar.button("🔄 Fetch Real-Time Data")
 
 if submit_button:
@@ -88,7 +84,7 @@ if submit_button:
         stock = yf.Ticker(ticker)
         data = stock.history(period="1d", interval="1d")
         if data.empty:
-            st.error("❌ No data found for the ticker. Please try a different ticker (e.g., AAPL) or upload a CSV/XLSX.")
+            st.error("❌ No data found for the ticker.")
         else:
             latest = data.iloc[-1]
             st.session_state.real_time_data = {
@@ -101,28 +97,26 @@ if submit_button:
             }
             info = stock.info
             st.session_state.fundamental_data.update({
-                'EPS': info.get('trailingEps', st.session_state.fundamental_data['EPS']),
-                'P/E': info.get('trailingPE', st.session_state.fundamental_data['P/E']),
-                'PEG': info.get('pegRatio', st.session_state.fundamental_data['PEG']),
-                'P/B': info.get('priceToBook', st.session_state.fundamental_data['P/B']),
-                'ROE': info.get('returnOnEquity', st.session_state.fundamental_data['ROE']),
-                'Revenue': info.get('totalRevenue', st.session_state.fundamental_data['Revenue']),
-                'Debt/Equity': info.get('debtToEquity', st.session_state.fundamental_data['Debt/Equity'])
+                'EPS': info.get('trailingEps'),
+                'P/E': info.get('trailingPE'),
+                'PEG': info.get('pegRatio'),
+                'P/B': info.get('priceToBook'),
+                'ROE': info.get('returnOnEquity'),
+                'Revenue': info.get('totalRevenue'),
+                'Debt/Equity': info.get('debtToEquity')
             })
     except Exception as e:
-        st.error(f"❌ Error fetching data: {str(e)}. Please try a different ticker (e.g., AAPL) or upload a CSV/XLSX.")
+        st.error(f"❌ Error fetching data: {str(e)}")
 
-# Step 3: Combine Checkbox and Combine Report Button
 st.sidebar.subheader("📈 Report Options")
 combine_checkbox = st.sidebar.checkbox("Combine Report", value=st.session_state.combine_report)
 if combine_checkbox != st.session_state.combine_report:
     st.session_state.combine_report = combine_checkbox
 combine_button = st.sidebar.button("📊 Combine Process", disabled=not combine_checkbox)
 
-# Manual fundamental inputs
-with st.sidebar.expander("📋 Manual Fundamental Data (Optional)", expanded=False):
+with st.sidebar.expander("📋 Manual Fundamental Data (Optional)"):
     with st.form(key="fundamental_form"):
-        eps = st.number_input("EPS", value=float(st.session_state.fundamental_data['EPS'] or 0.0), step=0.01, format="%.2f", placeholder="e.g., -9.42")
+        eps = st.number_input("EPS", value=float(st.session_state.fundamental_data['EPS'] or 0.0), step=0.01, format="%.2f")
         pe = st.number_input("P/E Ratio", value=float(st.session_state.fundamental_data['P/E'] or 0.0), step=0.01, format="%.2f")
         peg = st.number_input("PEG Ratio", value=float(st.session_state.fundamental_data['PEG'] or 0.0), step=0.01, format="%.2f")
         pb = st.number_input("P/B Ratio", value=float(st.session_state.fundamental_data['P/B'] or 0.0), step=0.01, format="%.2f")
@@ -142,7 +136,6 @@ if submit_fundamentals:
         'Debt/Equity': debt_equity if debt_equity != 0.0 else None
     }
 
-# Clear Analysis Button
 st.sidebar.subheader("🗑️ Reset")
 clear_button = st.sidebar.button("Clear Analysis")
 if clear_button:
@@ -156,7 +149,6 @@ def combine_dataframes(csv_df, real_time_data):
     real_time_df['Date'] = pd.to_datetime(real_time_df['Date'])
     combined_df = pd.concat([csv_df, real_time_df], ignore_index=True)
     combined_df = combined_df.sort_values('Date').drop_duplicates(subset=['Date'], keep='last')
-    # Update with real-time values where applicable
     for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
         if col in real_time_df.columns:
             combined_df[col].iloc[-1] = real_time_df[col].iloc[0]
@@ -362,7 +354,6 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 
 # Function to generate consolidated recommendation
 def generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, stock_name, date_str):
-    # Safely extract RSI value
     rsi_value = '50'
     if 'RSI:' in in_depth:
         rsi_part = in_depth.split('RSI: ')[1]
@@ -371,7 +362,6 @@ def generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, 
         else:
             rsi_value = rsi_part.split('\n')[0].strip()
 
-    # Extract other values with fallbacks
     price = quick_scan.split('Price: $')[1].split(' (')[0] if 'Price:' in quick_scan else 'N/A'
     trend = moderate_detail.split('Price Trend: ')[1].split(',')[0] if 'Price Trend:' in moderate_detail else 'Neutral'
     support = quick_scan.split('Support at $')[1].split(',')[0] if 'Support at $' in quick_scan else 'N/A'
@@ -402,11 +392,9 @@ def generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, 
 st.title("📈 Stock Technical Analysis Dashboard")
 st.markdown("Analyze stocks with real-time data or uploaded CSV/XLSX files containing technical indicators.")
 
-# Mode indicator
 mode = "XLSX/CSV Only" if st.session_state.csv_data is not None and st.session_state.real_time_data is None else "Real-Time Only" if st.session_state.real_time_data is not None and st.session_state.csv_data is None else "Combined" if st.session_state.combine_report and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else "No Data"
-st.markdown(f"<div class='mode-banner'><b>Active Mode: {mode}</b><br>{'Historical data and indicators from uploaded CSV/XLSX.' if mode == 'XLSX/CSV Only' else 'Real-time price and fundamentals from yfinance.' if mode == 'Real-Time Only' else 'Combines CSV/XLSX historical data with real-time price/fundamentals.' if mode == 'Combined' else 'Please fetch data or upload a file to begin.'}</div>", unsafe_allow_html=True)
+st.markdown(f"<div class='mode-banner'><b>Active Mode: {mode}</b><br>{'Historical data from CSV/XLSX.' if mode == 'XLSX/CSV Only' else 'Real-time data from yfinance.' if mode == 'Real-Time Only' else 'Combined data.' if mode == 'Combined' else 'Please provide data.'}</div>", unsafe_allow_html=True)
 
-# Display Stock Data Overview with improved UI
 st.subheader("📊 Stock Data Overview")
 if st.session_state.real_time_data:
     date_str = st.session_state.real_time_data['Date']
@@ -415,22 +403,19 @@ if st.session_state.real_time_data:
     st.markdown(f"<div class='data-card'><b>Open:</b> ${st.session_state.real_time_data['Open']:.2f}<br><b>High:</b> ${st.session_state.real_time_data['High']:.2f}<br><b>Low:</b> ${st.session_state.real_time_data['Low']:.2f}</div>", unsafe_allow_html=True)
 
 if any(v is not None for v in st.session_state.fundamental_data.values()):
-    with st.expander("### Fundamental Analysis", expanded=False):
+    with st.expander("### Fundamental Analysis"):
         st.markdown("<div class='data-card'>", unsafe_allow_html=True)
         for k, v in st.session_state.fundamental_data.items():
             if v is not None:
                 st.markdown(f"<b>{k}:</b> {v:.2f}<br>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-# Analyze data based on the last action
+# Data source determination
 data_source = st.session_state.csv_data if process_file_button and st.session_state.csv_data is not None else st.session_state.real_time_data if submit_button and st.session_state.real_time_data is not None else combine_dataframes(st.session_state.csv_data, st.session_state.real_time_data) if combine_button and st.session_state.combine_report and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else None
 
+# Analyze data
 if data_source is not None and isinstance(data_source, pd.DataFrame) and not data_source.empty:
-    quick_scan, moderate_detail, in_depth, stock_name, df, is_real_time_only, adx_value = analyze_stock_data(
-        st.session_state.csv_data if process_file_button and st.session_state.csv_data is not None else None,
-        st.session_state.real_time_data if submit_button and st.session_state.real_time_data is not None else None,
-        st.session_state.fundamental_data
-    )
+    quick_scan, moderate_detail, in_depth, stock_name, df, is_real_time_only, adx_value = analyze_stock_data(data_source, None if process_file_button or submit_button else st.session_state.real_time_data, st.session_state.fundamental_data)
     st.session_state.analysis_data = {
         'quick_scan': quick_scan,
         'moderate_detail': moderate_detail,
@@ -443,6 +428,7 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
 else:
     st.session_state.analysis_data = None
 
+# Render tabs only if analysis data exists
 if st.session_state.analysis_data is not None:
     quick_scan = st.session_state.analysis_data['quick_scan']
     moderate_detail = st.session_state.analysis_data['moderate_detail']
@@ -452,251 +438,143 @@ if st.session_state.analysis_data is not None:
     is_real_time_only = st.session_state.analysis_data['is_real_time_only']
     adx_value = st.session_state.analysis_data['adx_value']
 
-    if is_real_time_only and not all(col in df.columns for col in ['RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram']):
-        st.warning("⚠️ Real-time data lacks historical indicators. Upload a CSV/XLSX for full analysis.")
+    st.write("Debug: df is valid")  # Temporary debug
+    if isinstance(df, pd.DataFrame) and not df.empty and 'Date' in df.columns:
+        tabs = st.tabs(["Quick Scan", "Moderate Detail", "In-Depth Analysis", "Visual Summary", "Interactive Dashboard", "Consolidated Recommendation"])
 
-    # Report tabs with enhanced UI
-    tabs = st.tabs(["Quick Scan", "Moderate Detail", "In-Depth Analysis", "Visual Summary", "Interactive Dashboard", "Consolidated Recommendation"])
-
-    with tabs[0]:
-        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-        st.markdown(f"<h2>Quick Scan: {stock_name}</h2>")
-        if isinstance(quick_scan, str):
+        with tabs[0]:
+            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
+            st.markdown(f"<h2>Quick Scan: {stock_name}</h2>")
             st.markdown(quick_scan.replace('### Quick Scan:', ''))
-        else:
-            st.write("No quick scan data available.")
-        col1, col2 = st.columns(2)
-        with col1:
-            buffer = io.StringIO()
-            buffer.write(quick_scan if isinstance(quick_scan, str) else "")
-            st.download_button(
-                label="📥 Download Markdown",
-                data=buffer.getvalue(),
-                file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown",
-                on_click=lambda: None  # No-op callback to prevent state reset
-            )
-        with col2:
-            pdf_buffer = generate_pdf_report(quick_scan if isinstance(quick_scan, str) else "", stock_name, "Quick Scan")
-            st.download_button(
-                label="📥 Download PDF",
-                data=pdf_buffer,
-                file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf",
-                on_click=lambda: None  # No-op callback to prevent state reset
-            )
-        st.markdown("</div></div>", unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                buffer = io.StringIO()
+                buffer.write(quick_scan)
+                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
+            with col2:
+                pdf_buffer = generate_pdf_report(quick_scan, stock_name, "Quick Scan")
+                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
+            st.markdown("</div></div>", unsafe_allow_html=True)
 
-    with tabs[1]:
-        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-        st.markdown(f"<h2>Moderate Detail: {stock_name}</h2>")
-        if isinstance(moderate_detail, str):
+        with tabs[1]:
+            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
+            st.markdown(f"<h2>Moderate Detail: {stock_name}</h2>")
             st.markdown(moderate_detail.replace('### Moderate Detail:', ''))
-        else:
-            st.write("No moderate detail data available.")
-        col1, col2 = st.columns(2)
-        with col1:
-            buffer = io.StringIO()
-            buffer.write(moderate_detail if isinstance(moderate_detail, str) else "")
-            st.download_button(
-                label="📥 Download Markdown",
-                data=buffer.getvalue(),
-                file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown",
-                on_click=lambda: None
-            )
-        with col2:
-            pdf_buffer = generate_pdf_report(moderate_detail if isinstance(moderate_detail, str) else "", stock_name, "Moderate Detail")
-            st.download_button(
-                label="📥 Download PDF",
-                data=pdf_buffer,
-                file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf",
-                on_click=lambda: None
-            )
-        st.markdown("</div></div>", unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                buffer = io.StringIO()
+                buffer.write(moderate_detail)
+                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
+            with col2:
+                pdf_buffer = generate_pdf_report(moderate_detail, stock_name, "Moderate Detail")
+                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
+            st.markdown("</div></div>", unsafe_allow_html=True)
 
-    with tabs[2]:
-        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-        st.markdown(f"<h2>In-Depth Analysis: {stock_name}</h2>")
-        if isinstance(in_depth, str):
+        with tabs[2]:
+            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
+            st.markdown(f"<h2>In-Depth Analysis: {stock_name}</h2>")
             st.markdown(in_depth.replace('### In-Depth Analysis:', ''))
-        else:
-            st.write("No in-depth data available.")
-        col1, col2 = st.columns(2)
-        with col1:
-            buffer = io.StringIO()
-            buffer.write(in_depth if isinstance(in_depth, str) else "")
-            st.download_button(
-                label="📥 Download Markdown",
-                data=buffer.getvalue(),
-                file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown",
-                on_click=lambda: None
-            )
-        with col2:
-            pdf_buffer = generate_pdf_report(in_depth if isinstance(in_depth, str) else "", stock_name, "In-Depth Analysis")
-            st.download_button(
-                label="📥 Download PDF",
-                data=pdf_buffer,
-                file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf",
-                on_click=lambda: None
-            )
-        st.markdown("</div></div>", unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                buffer = io.StringIO()
+                buffer.write(in_depth)
+                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
+            with col2:
+                pdf_buffer = generate_pdf_report(in_depth, stock_name, "In-Depth Analysis")
+                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
+            st.markdown("</div></div>", unsafe_allow_html=True)
 
-    with tabs[3]:
-        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-        if not df.empty and 'Date' in df.columns:
-            date_str = df['Date'].iloc[-1] if isinstance(df['Date'].iloc[-1], str) else df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else datetime.now().strftime('%Y-%m-%d')
-        else:
-            date_str = datetime.now().strftime('%Y-%m-%d')
-        st.markdown(f"<h2>Visual Summary: {stock_name} ({date_str})</h2>")
-        st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}" if not df.empty else "No price data available.")
-        st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}" if not df.empty and 'SMA_20' in df.columns else "No trend data available.")
-        
-        if not is_real_time_only and len(df) > 1 and not df.empty:
-            fig = px.line(df, x='Date', y=['Close', 'SMA_20', 'SMA_50', 'SMA_200'], title='Price Trend', hover_data=['Open', 'High', 'Low'])
-            fig.update_layout(hovermode='x unified')
-            st.plotly_chart(fig, use_container_width=True)
-            fig_rsi = px.line(df, x='Date', y='RSI', title='RSI Trend')
-            fig_rsi.add_hline(y=70, line_dash="dash", line_color="red")
-            fig_rsi.add_hline(y=30, line_dash="dash", line_color="green")
-            fig_rsi.update_layout(hovermode='x unified')
-            st.plotly_chart(fig_rsi, use_container_width=True)
-        else:
-            st.info("⚠️ Historical charts unavailable with real-time data only or empty DataFrame. Upload a CSV/XLSX.")
+        with tabs[3]:
+            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
+            date_str = df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else datetime.now().strftime('%Y-%m-%d')
+            st.markdown(f"<h2>Visual Summary: {stock_name} ({date_str})</h2>")
+            st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}")
+            st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df['SMA_20'].iloc[-1] else 'Bullish'}")
+            if not is_real_time_only and len(df) > 1:
+                fig = px.line(df, x='Date', y=['Close', 'SMA_20', 'SMA_50', 'SMA_200'], title='Price Trend')
+                st.plotly_chart(fig)
+                fig_rsi = px.line(df, x='Date', y='RSI', title='RSI Trend')
+                fig_rsi.add_hline(y=70, line_dash="dash", line_color="red")
+                fig_rsi.add_hline(y=30, line_dash="dash", line_color="green")
+                st.plotly_chart(fig_rsi)
+            rsi_value = df['RSI'].iloc[-1] if 'RSI' in df.columns else 50
+            st.markdown(f"- **Support**: ${df['S1'].iloc[-1]:.2f}, **Resistance**: ${df['R1'].iloc[-1]:.2f}")
+            st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})")
+            st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}")
+            visual_summary = f"### Visual Summary: {stock_name} ({date_str})\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **Trend**: {'Bearish' if df['Close'].iloc[-1] < df['SMA_20'].iloc[-1] else 'Bullish'}\n- **Support**: ${df['S1'].iloc[-1]:.2f}, **Resistance**: ${df['R1'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})\n- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}"
+            col1, col2 = st.columns(2)
+            with col1:
+                buffer = io.StringIO()
+                buffer.write(visual_summary)
+                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
+            with col2:
+                pdf_buffer = generate_pdf_report(visual_summary, stock_name, "Visual Summary")
+                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
+            st.markdown("</div></div>", unsafe_allow_html=True)
 
-        rsi_value = df.get('RSI', 50).iloc[-1] if not df.empty and 'RSI' in df.columns and not is_real_time_only else 50
-        st.markdown(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}" if not df.empty else "- No support/resistance data available.")
-        st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})" if not df.empty else "- No RSI data available.")
-        st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}" if not df.empty else "- No recommendation available.")
-        visual_summary = f"### Visual Summary: {stock_name} ({date_str})\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})\n- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}" if not df.empty else ""
-        col1, col2 = st.columns(2)
-        with col1:
-            buffer = io.StringIO()
-            buffer.write(visual_summary)
-            st.download_button(
-                label="📥 Download Markdown",
-                data=buffer.getvalue(),
-                file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown",
-                on_click=lambda: None
-            )
-        with col2:
-            pdf_buffer = generate_pdf_report(visual_summary, stock_name, "Visual Summary")
-            st.download_button(
-                label="📥 Download PDF",
-                data=pdf_buffer,
-                file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf",
-                on_click=lambda: None
-            )
-        st.markdown("</div></div>", unsafe_allow_html=True)
+        with tabs[4]:
+            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
+            st.markdown(f"<h2>Interactive Dashboard: {stock_name}</h2>")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("#### 📏 Technical Indicators")
+                st.write(f"- **Price**: ${df['Close'].iloc[-1]:.2f}")
+                rsi_value = df['RSI'].iloc[-1] if 'RSI' in df.columns else 50
+                st.write(f"- **RSI**: {rsi_value:.2f}")
+                macd_value = df['MACD'].iloc[-1] if 'MACD' in df.columns else 0
+                macd_signal_value = df['MACD_Signal'].iloc[-1] if 'MACD_Signal' in df.columns else 0
+                st.write(f"- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})")
+                stoch_k_value = df['Stoch_K'].iloc[-1] if 'Stoch_K' in df.columns else 50
+                st.write(f"- **Stochastic %K**: {stoch_k_value:.2f}")
+                st.write(f"- **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})")
+                st.write(f"- **Support**: ${df['S1'].iloc[-1]:.2f}")
+                st.write(f"- **Resistance**: ${df['R1'].iloc[-1]:.2f}")
+            with col2:
+                st.markdown("#### 📋 Fundamental Metrics")
+                for k, v in st.session_state.fundamental_data.items():
+                    if v is not None:
+                        st.write(f"- **{k}**: {v:.2f}")
+            if not is_real_time_only and len(df) > 1:
+                fig = go.Figure()
+                fig.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']))
+                if 'BB_Upper' in df.columns:
+                    fig.add_trace(go.Scatter(x=df['Date'], y=df['BB_Upper'], name='BB Upper', line=dict(color='red')))
+                    fig.add_trace(go.Scatter(x=df['Date'], y=df['BB_Lower'], name='BB Lower', line=dict(color='green')))
+                st.plotly_chart(fig)
+            interactive_dashboard = f"### Interactive Dashboard: {stock_name}\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f}\n- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})\n- **Stochastic %K**: {stoch_k_value:.2f}\n- **ADX**: {adx_value:.2f}\n- **Support**: ${df['S1'].iloc[-1]:.2f}\n- **Resistance**: ${df['R1'].iloc[-1]:.2f}"
+            col1, col2 = st.columns(2)
+            with col1:
+                buffer = io.StringIO()
+                buffer.write(interactive_dashboard)
+                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
+            with col2:
+                pdf_buffer = generate_pdf_report(interactive_dashboard, stock_name, "Interactive Dashboard")
+                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
+            st.markdown("</div></div>", unsafe_allow_html=True)
 
-    with tabs[4]:
-        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-        st.markdown(f"<h2>Interactive Dashboard: {stock_name}</h2>")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("#### 📏 Technical Indicators")
-            st.write(f"- **Price**: ${df['Close'].iloc[-1]:.2f}" if not df.empty else "- No price data available.")
-            rsi_value = df.get('RSI', 50).iloc[-1] if not df.empty and 'RSI' in df.columns and not is_real_time_only else 50
-            st.write(f"- **RSI**: {rsi_value:.2f}" if not df.empty else "- No RSI data available.")
-            macd_value = df.get('MACD', 0).iloc[-1] if not df.empty and 'MACD' in df.columns and not is_real_time_only else 0
-            macd_signal_value = df.get('MACD_Signal', 0).iloc[-1] if not df.empty and 'MACD_Signal' in df.columns and not is_real_time_only else 0
-            st.write(f"- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})" if not df.empty else "- No MACD data available.")
-            stoch_k_value = df.get('Stoch_K', 50).iloc[-1] if not df.empty and 'Stoch_K' in df.columns and not is_real_time_only else 50
-            st.write(f"- **Stochastic %K**: {stoch_k_value:.2f}" if not df.empty else "- No Stochastic data available.")
-            st.write(f"- **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})" if not df.empty else "- No ADX data available.")
-            st.write(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}" if not df.empty else "- No support data available.")
-            st.write(f"- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}" if not df.empty else "- No resistance data available.")
-        with col2:
-            st.markdown("#### 📋 Fundamental Metrics")
-            for k, v in st.session_state.fundamental_data.items():
-                if v is not None:
-                    st.write(f"- **{k}**: {v:.2f}")
-        
-        if not is_real_time_only and len(df) > 1 and not df.empty:
-            fig = go.Figure()
-            fig.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Candlestick'))
-            if 'BB_Upper' in df.columns:
-                fig.add_trace(go.Scatter(x=df['Date'], y=df['BB_Upper'], name='BB Upper', line=dict(color='red')))
-                fig.add_trace(go.Scatter(x=df['Date'], y=df['BB_Lower'], name='BB Lower', line=dict(color='green')))
-            fig.update_layout(title='Candlestick with Bollinger Bands', xaxis_title='Date', yaxis_title='Price', hovermode='x unified')
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("⚠️ Candlestick chart unavailable with real-time data only or empty DataFrame. Upload a CSV/XLSX.")
-        interactive_dashboard = f"### Interactive Dashboard: {stock_name}\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f}\n- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})\n- **Stochastic %K**: {stoch_k_value:.2f}\n- **ADX**: {adx_value:.2f}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}\n- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}" if not df.empty else ""
-        col1, col2 = st.columns(2)
-        with col1:
-            buffer = io.StringIO()
-            buffer.write(interactive_dashboard)
-            st.download_button(
-                label="📥 Download Markdown",
-                data=buffer.getvalue(),
-                file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown",
-                on_click=lambda: None
-            )
-        with col2:
-            pdf_buffer = generate_pdf_report(interactive_dashboard, stock_name, "Interactive Dashboard")
-            st.download_button(
-                label="📥 Download PDF",
-                data=pdf_buffer,
-                file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf",
-                on_click=lambda: None
-            )
-        st.markdown("</div></div>", unsafe_allow_html=True)
-
-    with tabs[5]:
-        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-        st.markdown(f"<h2>Consolidated Recommendation: {stock_name}</h2>")
-        if not df.empty and 'Date' in df.columns:
-            date_str = df['Date'].iloc[-1] if isinstance(df['Date'].iloc[-1], str) else df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else datetime.now().strftime('%Y-%m-%d')
-        else:
-            date_str = datetime.now().strftime('%Y-%m-%d')
-        recommendation = generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, stock_name, date_str)
-        if isinstance(recommendation, str):
+        with tabs[5]:
+            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
+            st.markdown(f"<h2>Consolidated Recommendation: {stock_name}</h2>")
+            date_str = df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else datetime.now().strftime('%Y-%m-%d')
+            recommendation = generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, stock_name, date_str)
             st.markdown(recommendation.replace('### Consolidated Recommendation:', ''))
-        else:
-            st.write("No recommendation data available.")
-        col1, col2 = st.columns(2)
-        with col1:
-            buffer = io.StringIO()
-            buffer.write(recommendation if isinstance(recommendation, str) else "")
-            st.download_button(
-                label="📥 Download Markdown",
-                data=buffer.getvalue(),
-                file_name=f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown",
-                on_click=lambda: None
-            )
-        with col2:
-            pdf_buffer = generate_pdf_report(recommendation if isinstance(recommendation, str) else "", stock_name, "Consolidated Recommendation")
-            st.download_button(
-                label="📥 Download PDF",
-                data=pdf_buffer,
-                file_name=f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf",
-                on_click=lambda: None
-            )
-        st.markdown("</div></div>", unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                buffer = io.StringIO()
+                buffer.write(recommendation)
+                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
+            with col2:
+                pdf_buffer = generate_pdf_report(recommendation, stock_name, "Consolidated Recommendation")
+                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
+            st.markdown("</div></div>", unsafe_allow_html=True)
 
-    if data_source is not None and isinstance(data_source, pd.DataFrame) and not data_source.empty:
-        export_df = data_source.copy()
-        if st.session_state.fundamental_data and any(v is not None for v in st.session_state.fundamental_data.values()):
-            for k, v in st.session_state.fundamental_data.items():
-                export_df[k] = v
-        csv_buffer = io.StringIO()
-        export_df.to_csv(csv_buffer, index=False)
-        st.download_button(
-            label="📥 Export Data as CSV",
-            data=csv_buffer.getvalue(),
-            file_name=f"{stock_name}_data_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv",
-            on_click=lambda: None
-        )
+        if isinstance(data_source, pd.DataFrame) and not data_source.empty:
+            export_df = data_source.copy()
+            if st.session_state.fundamental_data and any(v is not None for v in st.session_state.fundamental_data.values()):
+                for k, v in st.session_state.fundamental_data.items():
+                    export_df[k] = v
+            csv_buffer = io.StringIO()
+            export_df.to_csv(csv_buffer, index=False)
+            st.download_button("📥 Export Data as CSV", csv_buffer.getvalue(), f"{stock_name}_data_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
 else:
-    st.info("⚠️ Please fetch real-time data or upload a CSV/XLSX to begin analysis.")
+    st.info("⚠️ Please upload a CSV/XLSX or fetch real-time data to begin analysis.")
