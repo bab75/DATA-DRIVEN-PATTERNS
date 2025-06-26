@@ -661,7 +661,6 @@ def add_rsi_trace(fig, df, row):
                              hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>RSI: {rsi:.2f}" for date, rsi in zip(df['date'], df['rsi'])], hoverinfo='text'), row=row, col=1)
     fig.add_hline(y=70, line_dash="dash", line_color="#f44336", row=row, col=1)
     fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=row, col=1)
-    
 
 def add_macd_stochastic_trace(fig, df, row):
     if "MACD" in show_indicators and 'macd' in df.columns and 'signal' in df.columns:
@@ -671,23 +670,22 @@ def add_macd_stochastic_trace(fig, df, row):
                                  hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Signal: {signal:.2f}" for date, signal in zip(df['date'], df['signal'])], hoverinfo='text'), row=row, col=1)
         fig.add_trace(go.Bar(x=df['date'], y=df['macd_diff'], name="MACD Histogram", marker_color="#607d8b",
                              hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>MACD Diff: {diff:.2f}" for date, diff in zip(df['date'], df['macd_diff'])], hoverinfo='text'), row=row, col=1)
-    if "Stochastic" in show_indicators and 'stochastic_k' in df.columns and 'stochastic_d' in df.columns:
+    if "Stochastic" in show_indicators:
         fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2",
                                  hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %K: {k:.2f}" for date, k in zip(df['date'], df['stochastic_k'])], hoverinfo='text'), row=row, col=1)
         fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_d'], name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y2",
                                  hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %D: {d:.2f}" for date, d in zip(df['date'], df['stochastic_d'])], hoverinfo='text'), row=row, col=1)
-        # Ensure yaxis2 is updated within the function to avoid global conflict
-        fig.update_layout(yaxis2=dict(domain=[0, 0.3], overlaying='y', side='right', range=[0, 100], title="Stochastic (%)"))
+        fig.update_layout(yaxis2=dict(overlaying='y', side='right', range=[0, 100]))
 
 def add_adx_volatility_trace(fig, df, row):
-    if "ADX" in show_indicators and 'adx' in df.columns:
+    if "ADX" in show_indicators:
         fig.add_trace(go.Scatter(x=df['date'], y=df['adx'], name="ADX", line=dict(color="#3f51b5"),
                                  hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>ADX: {adx:.2f}" for date, adx in zip(df['date'], df['adx'])], hoverinfo='text'), row=row, col=1)
         fig.add_hline(y=25, line_dash="dash", line_color="#0288d1", row=row, col=1)
-    if "RVOL" in show_indicators and 'rvol' in df.columns:
+    if "RVOL" in show_indicators:
         fig.add_trace(go.Scatter(x=df['date'], y=df['rvol'], name="RVOL", line=dict(color="#795548"), yaxis="y3",
                                  hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>RVOL: {rvol:.2f}" for date, rvol in zip(df['date'], df['rvol'])], hoverinfo='text'), row=row, col=1)
-        fig.update_layout(yaxis3=dict(overlaying='y', side='right', domain=[0, 0.3]))  # Allocate specific domain
+        fig.update_layout(yaxis3=dict(overlaying='y', side='right'))
 
 def add_volume_trace(fig, df, row):
     fig.add_trace(go.Bar(x=df['date'], y=df['volume'], name="Volume", marker_color="#607d8b",
@@ -716,19 +714,6 @@ def add_win_loss_trace(fig, df, row):
         st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available.")
         
 
-# Fill NaN values to ensure hover text works and prevent rendering issues
-# Fill NaN values to ensure hover text works and debug data availability
-st.session_state.aapl_df['rsi'] = st.session_state.aapl_df['rsi'].fillna(0)
-st.session_state.aapl_df['macd'] = st.session_state.aapl_df['macd'].fillna(0)
-st.session_state.aapl_df['signal'] = st.session_state.aapl_df['signal'].fillna(0)
-st.session_state.aapl_df['macd_diff'] = st.session_state.aapl_df['macd_diff'].fillna(0)
-st.session_state.aapl_df['stochastic_k'] = st.session_state.aapl_df['stochastic_k'].fillna(0)
-st.session_state.aapl_df['stochastic_d'] = st.session_state.aapl_df['stochastic_d'].fillna(0)
-st.session_state.aapl_df['adx'] = st.session_state.aapl_df['adx'].fillna(0)
-st.session_state.aapl_df['rvol'] = st.session_state.aapl_df['rvol'].fillna(0)
-st.write("Debug: Indicator columns present:", ['rsi', 'macd', 'signal', 'macd_diff', 'stochastic_k', 'stochastic_d', 'adx', 'rvol'])
-
-row_heights = [0.4 if s == "Candlestick" else 0.3 if s == "MACD & Stochastic" else 0.2 if s == "RSI" else 0.1 for s in subplot_order]
 for i, subplot in enumerate(subplot_order, 1):
     if subplot == "Candlestick":
         add_candlestick_trace(fig, st.session_state.aapl_df, i)
@@ -744,16 +729,14 @@ for i, subplot in enumerate(subplot_order, 1):
         add_win_loss_trace(fig, st.session_state.aapl_df, i)
 
 fig.update_layout(
-    height=350 * len(subplot_order),  # Increased height to accommodate Stochastic
+    height=250 * len(subplot_order), 
     showlegend=True, 
     template="plotly_white", 
     title_text=f"{st.session_state.symbol} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
     hovermode="x unified", 
-    font=dict(family="Arial", size=12, color="#000000"),
-    yaxis=dict(domain=[0.7, 1]),  # Adjust domain to prevent overlap
-    yaxis2=dict(domain=[0.7, 1], overlaying='y', side='right', range=[0, 100], title="Stochastic (%)")  # Ensure yaxis2 is defined
+    font=dict(family="Arial", size=12, color="#000000")
 )
-fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", matches='x')
+fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y")
 
 def on_click(trace, points, state):
     if points.point_inds:
