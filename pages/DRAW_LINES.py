@@ -134,7 +134,7 @@ st.sidebar.header("Chart Settings")
 show_indicators = st.sidebar.multiselect(
     "Select Indicators",
     ["Bollinger Bands", "Ichimoku Cloud", "RSI", "MACD", "Stochastic", "ADX", "Fibonacci", "RVOL"],
-    default=["Bollinger Bands", "RSI", "MACD","ADX"],
+    default=["Bollinger Bands", "RSI", "MACD", "ADX", "Fibonacci"],
     key="indicators"
 )
 subplot_order = st.sidebar.multiselect(
@@ -603,156 +603,156 @@ if 'alerts' not in st.session_state or submit:
     st.session_state.alerts = get_alerts(st.session_state.aapl_df)
 
 # Plotly candlestick chart with customizable subplots
-# Plotly candlestick chart with customizable subplots
-if not subplot_order:
-    st.warning("Please select at least one subplot in 'Customize Subplot Order' to display the chart.")
-else:
-    subplot_titles = [s for s in subplot_order]
-    row_heights = [0.35 if s == "Candlestick" else 0.15 if s == "Win/Loss Distribution" else 0.1 for s in subplot_order]
-    fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical_spacing=0.05,
-                        subplot_titles=subplot_titles, row_heights=row_heights)
+subplot_titles = [s for s in subplot_order]
+row_heights = [0.35 if s == "Candlestick" else 0.15 if s == "Win/Loss Distribution" else 0.1 for s in subplot_order]
+fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical_spacing=0.05,
+                    subplot_titles=subplot_titles, row_heights=row_heights)
 
-    def add_candlestick_trace(fig, df, row):
-        if not pd.api.types.is_datetime64_any_dtype(df['date']):
-            df['date'] = pd.to_datetime(df['date'], errors='coerce', format='%m-%d-%Y')
-        df['date'] = df['date'].fillna(pd.NaT)
+def add_candlestick_trace(fig, df, row):
+    if not pd.api.types.is_datetime64_any_dtype(df['date']):
+        df['date'] = pd.to_datetime(df['date'], errors='coerce', format='%m-%d-%Y')
+    df['date'] = df['date'].fillna(pd.NaT)
 
-        hover_texts = [
-            "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}<br><b style='color:#006400'>Buy Signal: {buy_signal}</b>".format(
-                date=getattr(r, 'date').strftime('%m-%d-%Y') if pd.notna(getattr(r, 'date')) else 'N/A',
-                month=getattr(r, 'date').strftime('%B') if pd.notna(getattr(r, 'date')) else 'N/A',
-                open=getattr(r, 'open'), high=getattr(r, 'high'), low=getattr(r, 'low'),
-                close=getattr(r, 'close'), volume=getattr(r, 'volume'), rsi=getattr(r, 'rsi'), rvol=getattr(r, 'rvol'),
-                buy_signal='Yes' if getattr(r, 'buy_signal') else 'No'
-            )
-            for r in df.itertuples()
-        ]
-        fig.add_trace(go.Candlestick(
-            x=df['date'],
-            open=df['open'], high=df['high'], low=df['low'], close=df['close'],
-            name="Candlestick",
-            increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
-            hovertext=hover_texts,
-            hoverinfo='text',
-            customdata=df.index
+    hover_texts = [
+        "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}<br><b style='color:#006400'>Buy Signal: {buy_signal}</b>".format(
+            date=getattr(r, 'date').strftime('%m-%d-%Y') if pd.notna(getattr(r, 'date')) else 'N/A',
+            month=getattr(r, 'date').strftime('%B') if pd.notna(getattr(r, 'date')) else 'N/A',
+            open=getattr(r, 'open'), high=getattr(r, 'high'), low=getattr(r, 'low'),
+            close=getattr(r, 'close'), volume=getattr(r, 'volume'), rsi=getattr(r, 'rsi'), rvol=getattr(r, 'rvol'),
+            buy_signal='Yes' if getattr(r, 'buy_signal') else 'No'
+        )
+        for r in df.itertuples()
+    ]
+    fig.add_trace(go.Candlestick(
+        x=df['date'],
+        open=df['open'], high=df['high'], low=df['low'], close=df['close'],
+        name="Candlestick",
+        increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
+        hovertext=hover_texts,
+        hoverinfo='text',
+        customdata=df.index
+    ), row=row, col=1)
+    if "Bollinger Bands" in show_indicators and 'ma20' in df.columns and 'std_dev' in df.columns:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] + 2*df['std_dev'], name="Bollinger Upper", line=dict(color="#0288d1")), row=row, col=1)
+        fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] - 2*df['std_dev'], name="Bollinger Lower", line=dict(color="#0288d1"), fill='tonexty', fillcolor='rgba(2,136,209,0.1)'), row=row, col=1)
+    if "Ichimoku Cloud" in show_indicators:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['senkou_span_a'], name="Senkou Span A", line=dict(color="#4CAF50"), fill='tonexty', fillcolor='rgba(76,175,80,0.2)'), row=row, col=1)
+        fig.add_trace(go.Scatter(x=df['date'], y=df['senkou_span_b'], name="Senkou Span B", line=dict(color="#f44336"), fill='tonexty', fillcolor='rgba(244,67,54,0.2)'), row=row, col=1)
+    if "Fibonacci" in show_indicators:
+        for level, color in [('fib_236', '#ff9800'), ('fib_382', '#e91e63'), ('fib_50', '#9c27b0'), ('fib_618', '#3f51b5')]:
+            fig.add_trace(go.Scatter(x=df['date'], y=df[level], name=f"Fib {level[-3:]}%", line=dict(color=color, dash='dash', width=1.5),
+                                     hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Fib {level[-3:]}%: ${val:.2f}" for date, val in zip(df['date'], df[level])], hoverinfo='text'), row=row, col=1)
+    buy_signals = df[df['buy_signal'] == True]
+    for _, signal_row in buy_signals.iterrows():
+        fig.add_annotation(x=signal_row['date'], y=signal_row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=row, col=1)
+    if not buy_signals.empty:
+        latest_buy = buy_signals.iloc[-1]
+        risk = latest_buy['close'] - latest_buy['stop_loss']
+        reward = latest_buy['take_profit'] - latest_buy['close']
+        rr_ratio = reward / risk if risk > 0 else 'N/A'
+        fig.add_hline(y=latest_buy['stop_loss'], line_dash="dash", line_color="#f44336", annotation_text="Stop-Loss", annotation_font_color="#000000", row=row, col=1)
+        fig.add_hline(y=latest_buy['take_profit'], line_dash="dash", line_color="#4CAF50", annotation_text="Take-Profit", annotation_font_color="#000000", row=row, col=1)
+        fig.add_trace(go.Scatter(x=[latest_buy['date'], latest_buy['date']], y=[latest_buy['stop_loss'], latest_buy['take_profit']],
+                                 mode='lines', line=dict(color='rgba(76,175,80,0.2)'), fill='toself', fillcolor='rgba(76,175,80,0.2)',
+                                 hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"], hoverinfo='text', showlegend=False), row=row, col=1)
+
+def add_rsi_trace(fig, df, row):
+    fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0", width=1.5),
+                             hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>RSI: {rsi:.2f}" for date, rsi in zip(df['date'], df['rsi'])], hoverinfo='text'), row=row, col=1)
+    fig.add_hline(y=70, line_dash="dash", line_color="#f44336", row=row, col=1)
+    fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=row, col=1)
+
+def add_macd_stochastic_trace(fig, df, row):
+    if "MACD" in show_indicators and 'macd' in df.columns and 'signal' in df.columns:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['macd'], name="MACD", line=dict(color="#0288d1"),
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>MACD: {macd:.2f}" for date, macd in zip(df['date'], df['macd'])], hoverinfo='text'), row=row, col=1)
+        fig.add_trace(go.Scatter(x=df['date'], y=df['signal'], name="Signal Line", line=dict(color="#ff9800"),
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Signal: {signal:.2f}" for date, signal in zip(df['date'], df['signal'])], hoverinfo='text'), row=row, col=1)
+        fig.add_trace(go.Bar(x=df['date'], y=df['macd_diff'], name="MACD Histogram", marker_color="#607d8b",
+                             hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>MACD Diff: {diff:.2f}" for date, diff in zip(df['date'], df['macd_diff'])], hoverinfo='text'), row=row, col=1)
+    if "Stochastic" in show_indicators:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2",
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %K: {k:.2f}" for date, k in zip(df['date'], df['stochastic_k'])], hoverinfo='text'), row=row, col=1)
+        fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_d'], name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y2",
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %D: {d:.2f}" for date, d in zip(df['date'], df['stochastic_d'])], hoverinfo='text'), row=row, col=1)
+        fig.update_layout(yaxis2=dict(overlaying='y', side='right', range=[0, 100]))
+
+def add_adx_volatility_trace(fig, df, row):
+    if "ADX" in show_indicators:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['adx'], name="ADX", line=dict(color="#3f51b5"),
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>ADX: {adx:.2f}" for date, adx in zip(df['date'], df['adx'])], hoverinfo='text'), row=row, col=1)
+        fig.add_hline(y=25, line_dash="dash", line_color="#0288d1", row=row, col=1)
+    if "RVOL" in show_indicators:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['rvol'], name="RVOL", line=dict(color="#795548"), yaxis="y3",
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>RVOL: {rvol:.2f}" for date, rvol in zip(df['date'], df['rvol'])], hoverinfo='text'), row=row, col=1)
+        fig.update_layout(yaxis3=dict(overlaying='y', side='right'))
+
+def add_volume_trace(fig, df, row):
+    fig.add_trace(go.Bar(x=df['date'], y=df['volume'], name="Volume", marker_color="#607d8b",
+                         hovertext=[f"Volume: {x:,.0f}" for x in df['volume']], hoverinfo='text+x'), row=row, col=1)
+    if 'vwap' in df.columns:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['vwap'], name="VWAP", line=dict(color="#0288d1"),
+                                 hovertext=[f"VWAP: ${x:.2f}" for x in df['vwap']], hoverinfo='text+x'), row=row, col=1)
+
+def add_win_loss_trace(fig, df, row):
+    if 'daily_return' not in df.columns:
+        st.warning("Cannot plot Win/Loss Distribution: 'daily_return' column is missing.")
+        return
+    valid_returns = df['daily_return'][df['daily_return'].notna() & ~df['daily_return'].isin([np.inf, -np.inf])]
+    if not valid_returns.empty:
+        bins = np.histogram_bin_edges(valid_returns * 100, bins=20)
+        hist_data = np.histogram(valid_returns * 100, bins=bins)
+        fig.add_trace(go.Bar(
+            x=bins[:-1],
+            y=hist_data[0],
+            name="Win/Loss Distribution",
+            marker_color="#607d8b",
+            hovertext=[f"Return: {x:.2f}% Count: {y}" for x, y in zip(bins[:-1], hist_data[0])],
+            hoverinfo='text'
         ), row=row, col=1)
-        if "Bollinger Bands" in show_indicators and 'ma20' in df.columns and 'std_dev' in df.columns:
-            fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] + 2*df['std_dev'], name="Bollinger Upper", line=dict(color="#0288d1")), row=row, col=1)
-            fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] - 2*df['std_dev'], name="Bollinger Lower", line=dict(color="#0288d1"), fill='tonexty', fillcolor='rgba(2,136,209,0.1)'), row=row, col=1)
-        if "Ichimoku Cloud" in show_indicators:
-            fig.add_trace(go.Scatter(x=df['date'], y=df['senkou_span_a'], name="Senkou Span A", line=dict(color="#4CAF50"), fill='tonexty', fillcolor='rgba(76,175,80,0.2)'), row=row, col=1)
-            fig.add_trace(go.Scatter(x=df['date'], y=df['senkou_span_b'], name="Senkou Span B", line=dict(color="#f44336"), fill='tonexty', fillcolor='rgba(244,67,54,0.2)'), row=row, col=1)
-        if "Fibonacci" in show_indicators:
-            for level, color in [('fib_236', '#ff9800'), ('fib_382', '#e91e63'), ('fib_50', '#9c27b0'), ('fib_618', '#3f51b5')]:
-                fig.add_trace(go.Scatter(x=df['date'], y=df[level], name=f"Fib {level[-3:]}%", line=dict(color=color, dash='dash'),
-                                        hovertext=[f"Fib {level[-3:]}%: ${x:.2f}" for x in df[level]], hoverinfo='text+x'), row=row, col=1)
-        buy_signals = df[df['buy_signal'] == True]
-        for _, signal_row in buy_signals.iterrows():
-            fig.add_annotation(x=signal_row['date'], y=signal_row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=row, col=1)
-        if not buy_signals.empty:
-            latest_buy = buy_signals.iloc[-1]
-            risk = latest_buy['close'] - latest_buy['stop_loss']
-            reward = latest_buy['take_profit'] - latest_buy['close']
-            rr_ratio = reward / risk if risk > 0 else 'N/A'
-            fig.add_hline(y=latest_buy['stop_loss'], line_dash="dash", line_color="#f44336", annotation_text="Stop-Loss", annotation_font_color="#000000", row=row, col=1)
-            fig.add_hline(y=latest_buy['take_profit'], line_dash="dash", line_color="#4CAF50", annotation_text="Take-Profit", annotation_font_color="#000000", row=row, col=1)
-            fig.add_trace(go.Scatter(x=[latest_buy['date'], latest_buy['date']], y=[latest_buy['stop_loss'], latest_buy['take_profit']],
-                                    mode='lines', line=dict(color='rgba(76,175,80,0.2)'), fill='toself', fillcolor='rgba(76,175,80,0.2)',
-                                    hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"], hoverinfo='text', showlegend=False), row=row, col=1)
+    else:
+        st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available.")
+        
 
-    def add_rsi_trace(fig, df, row):
-        fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"),
-                                hovertext=[f"RSI: {x:.2f}" for x in df['rsi']], hoverinfo='text+x'), row=row, col=1)
-        fig.add_hline(y=70, line_dash="dash", line_color="#f44336", row=row, col=1)
-        fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=row, col=1)
+for i, subplot in enumerate(subplot_order, 1):
+    if subplot == "Candlestick":
+        add_candlestick_trace(fig, st.session_state.aapl_df, i)
+    elif subplot == "RSI":
+        add_rsi_trace(fig, st.session_state.aapl_df, i)
+    elif subplot == "MACD & Stochastic":
+        add_macd_stochastic_trace(fig, st.session_state.aapl_df, i)
+    elif subplot == "ADX & Volatility":
+        add_adx_volatility_trace(fig, st.session_state.aapl_df, i)
+    elif subplot == "Volume":
+        add_volume_trace(fig, st.session_state.aapl_df, i)
+    elif subplot == "Win/Loss Distribution":
+        add_win_loss_trace(fig, st.session_state.aapl_df, i)
 
-    def add_macd_stochastic_trace(fig, df, row):
-        if "MACD" in show_indicators and 'macd' in df.columns and 'signal' in df.columns:
-            fig.add_trace(go.Scatter(x=df['date'], y=df['macd'], name="MACD", line=dict(color="#0288d1"),
-                                    hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>MACD: {macd:.2f}" for date, macd in zip(df['date'], df['macd'])], hoverinfo='text'), row=row, col=1)
-            fig.add_trace(go.Scatter(x=df['date'], y=df['signal'], name="Signal Line", line=dict(color="#ff9800"),
-                                    hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Signal: {signal:.2f}" for date, signal in zip(df['date'], df['signal'])], hoverinfo='text'), row=row, col=1)
-            fig.add_trace(go.Bar(x=df['date'], y=df['macd_diff'], name="MACD Histogram", marker_color="#607d8b",
-                                hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>MACD Diff: {diff:.2f}" for date, diff in zip(df['date'], df['macd_diff'])], hoverinfo='text'), row=row, col=1)
-        if "Stochastic" in show_indicators:
-            fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2",
-                                    hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %K: {k:.2f}" for date, k in zip(df['date'], df['stochastic_k'])], hoverinfo='text'), row=row, col=1)
-            fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_d'], name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y2",
-                                    hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %D: {d:.2f}" for date, d in zip(df['date'], df['stochastic_d'])], hoverinfo='text'), row=row, col=1)
-            fig.update_layout(yaxis2=dict(overlaying='y', side='right', range=[0, 100]))
+fig.update_layout(
+    height=250 * len(subplot_order), 
+    showlegend=True, 
+    template="plotly_white", 
+    title_text=f"{st.session_state.symbol} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
+    hovermode="x unified", 
+    font=dict(family="Arial", size=12, color="#000000")
+)
+fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y")
 
-    def add_adx_volatility_trace(fig, df, row):
-        if "ADX" in show_indicators:
-            fig.add_trace(go.Scatter(x=df['date'], y=df['adx'], name="ADX", line=dict(color="#3f51b5"),
-                                    hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>ADX: {adx:.2f}" for date, adx in zip(df['date'], df['adx'])], hoverinfo='text'), row=row, col=1)
-            fig.add_hline(y=25, line_dash="dash", line_color="#0288d1", row=row, col=1)
-        if "RVOL" in show_indicators:
-            fig.add_trace(go.Scatter(x=df['date'], y=df['rvol'], name="RVOL", line=dict(color="#795548"), yaxis="y3",
-                                    hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>RVOL: {rvol:.2f}" for date, rvol in zip(df['date'], df['rvol'])], hoverinfo='text'), row=row, col=1)
-            fig.update_layout(yaxis3=dict(overlaying='y', side='right'))
+def on_click(trace, points, state):
+    if points.point_inds:
+        idx = points[0].point_inds[0]
+        row = st.session_state.aapl_df.iloc[idx]
+        st.session_state.trade_details = {
+            'Date': row['date'].strftime('%m-%d-%Y'),
+            'Close': float(row['close']),
+            'Stop-Loss': float(row['stop_loss']),
+            'Take-Profit': float(row['take_profit']),
+            'Buy Signal': 'Yes' if row['buy_signal'] else 'No'
+        }
 
-    def add_volume_trace(fig, df, row):
-        fig.add_trace(go.Bar(x=df['date'], y=df['volume'], name="Volume", marker_color="#607d8b",
-                            hovertext=[f"Volume: {x:,.0f}" for x in df['volume']], hoverinfo='text+x'), row=row, col=1)
-        if 'vwap' in df.columns:
-            fig.add_trace(go.Scatter(x=df['date'], y=df['vwap'], name="VWAP", line=dict(color="#0288d1"),
-                                    hovertext=[f"VWAP: ${x:.2f}" for x in df['vwap']], hoverinfo='text+x'), row=row, col=1)
-
-    def add_win_loss_trace(fig, df, row):
-        if 'daily_return' not in df.columns:
-            st.warning("Cannot plot Win/Loss Distribution: 'daily_return' column is missing.")
-            return
-        valid_returns = df['daily_return'][df['daily_return'].notna() & ~df['daily_return'].isin([np.inf, -np.inf])]
-        if not valid_returns.empty:
-            bins = np.histogram_bin_edges(valid_returns * 100, bins=20)
-            hist_data = np.histogram(valid_returns * 100, bins=bins)
-            fig.add_trace(go.Bar(
-                x=bins[:-1],
-                y=hist_data[0],
-                name="Win/Loss Distribution",
-                marker_color="#607d8b",
-                hovertext=[f"Return: {x:.2f}% Count: {y}" for x, y in zip(bins[:-1], hist_data[0])],
-                hoverinfo='text'
-            ), row=row, col=1)
-        else:
-            st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available.")
-
-    for i, subplot in enumerate(subplot_order, 1):
-        if subplot == "Candlestick":
-            add_candlestick_trace(fig, st.session_state.aapl_df, i)
-        elif subplot == "RSI":
-            add_rsi_trace(fig, st.session_state.aapl_df, i)
-        elif subplot == "MACD & Stochastic":
-            add_macd_stochastic_trace(fig, st.session_state.aapl_df, i)
-        elif subplot == "ADX & Volatility":
-            add_adx_volatility_trace(fig, st.session_state.aapl_df, i)
-        elif subplot == "Volume":
-            add_volume_trace(fig, st.session_state.aapl_df, i)
-        elif subplot == "Win/Loss Distribution":
-            add_win_loss_trace(fig, st.session_state.aapl_df, i)
-
-    fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white",
-                      title_text=f"{st.session_state.symbol} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
-                      hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
-    fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=len(subplot_order), col=1)
-
-    def on_click(trace, points, state):
-        if points.point_inds:
-            idx = points[0].point_inds[0]
-            row = st.session_state.aapl_df.iloc[idx]
-            st.session_state.trade_details = {
-                'Date': row['date'].strftime('%m-%d-%Y'),
-                'Close': float(row['close']),
-                'Stop-Loss': float(row['stop_loss']),
-                'Take-Profit': float(row['take_profit']),
-                'Buy Signal': 'Yes' if row['buy_signal'] else 'No'
-            }
-
-    for trace in fig.data:
-        if trace.name == "Candlestick":
-            trace.on_click(on_click)
-
-    st.plotly_chart(fig, use_container_width=True)
+for trace in fig.data:
+    if trace.name == "Candlestick":
+        trace.on_click(on_click)
 
 # Profit/Loss Analysis Section
 st.header("Profit/Loss Analysis")
