@@ -628,8 +628,8 @@ def add_candlestick_trace(fig, df, row):
                                  hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"], hoverinfo='text+name', showlegend=False), row=row, col=1)
 
 def add_rsi_trace(fig, df, row):
-    #fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"),
-                              #hovertext=[f"RSI: {x:.2f}" for x in df['rsi']], hoverinfo='text+name'), row=row, col=1)
+   # fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"),
+                             # hovertext=[f"RSI: {x:.2f}" for x in df['rsi']], hoverinfo='text+name'), row=row, col=1)
     fig.add_hline(y=70, line_dash="dash", line_color="#f44336", row=row, col=1)
     fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=row, col=1)
 
@@ -683,11 +683,18 @@ def add_win_loss_trace(fig, df, row):
         st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available.")
 
 def consolidate_yaxis_layout(fig):
+    """Consolidate all y-axis updates to prevent conflicts"""
     layout_updates = {}
-    candlestick_row = next(i for i, s in enumerate(subplot_order, 1) if s == "Candlestick")
+    
+    # Find candlestick subplot row
+    candlestick_row = 1
+    for i, subplot in enumerate(subplot_order, 1):
+        if subplot == "Candlestick":
+            candlestick_row = i
+            break
     
     if "RSI" in show_indicators:
-        layout_updates[f'yaxis{candlestick_row + 12}'] = dict(
+        layout_updates[f'yaxis{candlestick_row + 12}'] = dict(  # Use a unique y-axis number
             overlaying=f'y{candlestick_row}',
             side='right',
             range=[0, 100],
@@ -711,6 +718,7 @@ def consolidate_yaxis_layout(fig):
     
     if layout_updates:
         fig.update_layout(**layout_updates)
+    
     return fig
 
 for i, subplot in enumerate(subplot_order, 1):
