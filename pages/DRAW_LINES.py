@@ -610,6 +610,9 @@ def add_candlestick_trace(fig, df, row):
         for level, color in [('fib_236', '#ff9800'), ('fib_382', '#e91e63'), ('fib_50', '#9c27b0'), ('fib_618', '#3f51b5')]:
             fig.add_trace(go.Scatter(x=df['date'], y=df[level], name=f"Fib {level[-3:]}%", line=dict(color=color, dash='dash'),
                                      hovertext=[f"Fib {level[-3:]}%: ${x:.2f}" for x in df[level]], hoverinfo='text+name'), row=row, col=1)
+    if "RSI" in show_indicators and 'rsi' in df.columns:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"), yaxis="y13",
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>RSI: {rsi:.2f}" for date, rsi in zip(df['date'], df['rsi'])], hoverinfo='text+name'), row=row, col=1)
     buy_signals = df[df['buy_signal'] == True]
     for _, signal_row in buy_signals.iterrows():
         fig.add_annotation(x=signal_row['date'], y=signal_row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=row, col=1)
@@ -639,9 +642,9 @@ def add_macd_stochastic_trace(fig, df, row):
         fig.add_trace(go.Bar(x=df['date'], y=df['macd_diff'], name="MACD Histogram", marker_color="#607d8b",
                              hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>MACD Diff: {diff:.2f}" for date, diff in zip(df['date'], df['macd_diff'])], hoverinfo='text+name'), row=row, col=1)
     if "Stochastic" in show_indicators:
-        fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y2",
+        fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_k'], name="Stochastic %K", line=dict(color="#e91e63"), yaxis="y11",
                                  hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %K: {k:.2f}" for date, k in zip(df['date'], df['stochastic_k'])], hoverinfo='text+name'), row=row, col=1)
-        fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_d'], name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y2",
+        fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_d'], name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y11",
                                  hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %D: {d:.2f}" for date, d in zip(df['date'], df['stochastic_d'])], hoverinfo='text+name'), row=row, col=1)
 
 def add_adx_volatility_trace(fig, df, row):
@@ -650,12 +653,12 @@ def add_adx_volatility_trace(fig, df, row):
                                  hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>ADX: {adx:.2f}" for date, adx in zip(df['date'], df['adx'])], hoverinfo='text+name'), row=row, col=1)
         fig.add_hline(y=25, line_dash="dash", line_color="#0288d1", row=row, col=1)
     if "RVOL" in show_indicators:
-        fig.add_trace(go.Scatter(x=df['date'], y=df['rvol'], name="RVOL", line=dict(color="#795548"), yaxis="y3",
+        fig.add_trace(go.Scatter(x=df['date'], y=df['rvol'], name="RVOL", line=dict(color="#795548"), yaxis="y12",
                                  hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>RVOL: {rvol:.2f}" for date, rvol in zip(df['date'], df['rvol'])], hoverinfo='text+name'), row=row, col=1)
 
 def add_volume_trace(fig, df, row):
     fig.add_trace(go.Bar(x=df['date'], y=df['volume'], name="Volume", marker_color="#607d8b",
-                         hovertext=[f"Volume: {x:,.0f}" for x in df['volume']], hoverinfo='text+name'), row=row, col=1)
+                         hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Volume: {volume:,.0f}" for date, volume in zip(df['date'], df['volume'])], hoverinfo='text+name'), row=row, col=1)
     if 'vwap' in df.columns:
         fig.add_trace(go.Scatter(x=df['date'], y=df['vwap'], name="VWAP", line=dict(color="#0288d1"),
                                  hovertext=[f"VWAP: ${x:.2f}" for x in df['vwap']], hoverinfo='text+name'), row=row, col=1)
@@ -683,19 +686,34 @@ def consolidate_yaxis_layout(fig):
     """Consolidate all y-axis updates to prevent conflicts"""
     layout_updates = {}
     
+    # Find candlestick subplot row
+    candlestick_row = 1  # Assuming candlestick is first
+    for i, subplot in enumerate(subplot_order, 1):
+        if subplot == "Candlestick":
+            candlestick_row = i
+            break
+    
     if "Stochastic" in show_indicators:
-        layout_updates['yaxis2'] = dict(
-            overlaying='y',
+        layout_updates[f'yaxis{candlestick_row + 10}'] = dict(  # Use higher number to avoid conflicts
+            overlaying=f'y{candlestick_row}',
             side='right',
             range=[0, 100],
             title="Stochastic"
         )
     
     if "RVOL" in show_indicators:
-        layout_updates['yaxis3'] = dict(
-            overlaying='y',
+        layout_updates[f'yaxis{candlestick_row + 11}'] = dict(  # Use higher number to avoid conflicts
+            overlaying=f'y{candlestick_row}',
             side='right',
             title="RVOL"
+        )
+    
+    if "RSI" in show_indicators:
+        layout_updates[f'yaxis{candlestick_row + 12}'] = dict(  # RSI y-axis
+            overlaying=f'y{candlestick_row}',
+            side='right',
+            range=[0, 100],
+            title="RSI"
         )
     
     if layout_updates:
