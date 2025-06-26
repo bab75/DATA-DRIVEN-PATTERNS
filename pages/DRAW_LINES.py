@@ -616,16 +616,49 @@ def add_candlestick_trace(fig, df, row):
     buy_signals = df[df['buy_signal'] == True]
     for _, signal_row in buy_signals.iterrows():
         fig.add_annotation(x=signal_row['date'], y=signal_row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=row, col=1)
-    if not buy_signals.empty:
-        latest_buy = buy_signals.iloc[-1]
+        
+   if not buy_signals.empty:
+    latest_buy = buy_signals.iloc[-1]
+    if pd.notna(latest_buy['stop_loss']) and pd.notna(latest_buy['take_profit']):
         risk = latest_buy['close'] - latest_buy['stop_loss']
         reward = latest_buy['take_profit'] - latest_buy['close']
         rr_ratio = reward / risk if risk > 0 else 'N/A'
-        fig.add_hline(y=latest_buy['stop_loss'], line_dash="dash", line_color="#f44336", annotation_text="Stop-Loss", annotation_font_color="#000000", row=row, col=1)
-        fig.add_hline(y=latest_buy['take_profit'], line_dash="dash", line_color="#4CAF50", annotation_text="Take-Profit", annotation_font_color="#000000", row=row, col=1)
-        fig.add_trace(go.Scatter(x=[latest_buy['date'], latest_buy['date']], y=[latest_buy['stop_loss'], latest_buy['take_profit']],
-                                 mode='lines', line=dict(color='rgba(76,175,80,0.2)'), fill='toself', fillcolor='rgba(76,175,80,0.2)',
-                                 hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"], hoverinfo='text+name', showlegend=False), row=row, col=1)
+
+        # Add Stop-Loss line as a Scatter trace with hover text
+        fig.add_trace(go.Scatter(
+            x=[df['date'].min(), df['date'].max()],  # Span the entire x-axis
+            y=[latest_buy['stop_loss']] * 2,
+            mode='lines',
+            line=dict(color="#f44336", dash="dash"),
+            name="Stop-Loss",
+            hovertext=[f"Stop-Loss: ${latest_buy['stop_loss']:.2f}"] * 2,
+            hoverinfo='text+name'
+        ), row=row, col=1)
+
+        # Add Take-Profit line as a Scatter trace with hover text
+        fig.add_trace(go.Scatter(
+            x=[df['date'].min(), df['date'].max()],  # Span the entire x-axis
+            y=[latest_buy['take_profit']] * 2,
+            mode='lines',
+            line=dict(color="#4CAF50", dash="dash"),
+            name="Take-Profit",
+            hovertext=[f"Take-Profit: ${latest_buy['take_profit']:.2f}"] * 2,
+            hoverinfo='text+name'
+        ), row=row, col=1)
+
+        # Add shaded area with Risk-Reward Ratio
+        fig.add_trace(go.Scatter(
+            x=[latest_buy['date'], latest_buy['date']],
+            y=[latest_buy['stop_loss'], latest_buy['take_profit']],
+            mode='lines',
+            line=dict(color='rgba(76,175,80,0.2)'),
+            fill='toself',
+            fillcolor='rgba(76,175,80,0.2)',
+            name="Risk-Reward Zone",
+            hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"],
+            hoverinfo='text+name',
+            showlegend=False
+        ), row=row, col=1)
 
 def add_rsi_trace(fig, df, row):
    # fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"),
