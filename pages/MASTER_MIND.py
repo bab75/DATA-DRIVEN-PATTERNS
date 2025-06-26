@@ -3,10 +3,10 @@ import pandas as pd
 import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from datetime import datetime
 import io
 import uuid
+from ta.trend import ADXIndicator
 
 # Streamlit app configuration
 st.set_page_config(page_title="Stock Technical Analysis", layout="wide", page_icon="📈")
@@ -20,95 +20,7 @@ st.markdown("""
     h2, h3 {color: #374151; font-family: 'Arial', sans-serif;}
     .sidebar .sidebar-content {background-color: #e5e7eb;}
     </style>
-""", unsafe_allow_html=True)
-
-# Initialize session state for storing data
-if 'real_time_data' not in st.session_state:
-    st.session_state.real_time_data = None
-if 'fundamental_data' not in st.session_state:
-    st.session_state.fundamental_data = {
-        'EPS': None, 'P/E': None, 'PEG': None, 'P/B': None,
-        'ROE': None, 'Revenue': None, 'Debt/Equity': None
-    }
-if 'sentiment_score' not in st.session_state:
-    st.session_state.sentiment_score = None
-
-# Sidebar for ticker input and fundamental data
-st.sidebar.header("Stock Data Input")
-ticker = st.sidebar.text_input("Enter Stock Ticker (e.g., KRRO)", value="KRRO")
-submit_button = st.sidebar.button("Fetch Real-Time Data")
-
-# Fetch real-time data with yfinance
-if submit_button:
-    try:
-        stock = yf.Ticker(ticker)
-        # Fetch latest daily data
-        data = stock.history(period="1d", interval="1d")
-        if data.empty:
-            st.error("No data found for the ticker. Please check the ticker or enter data manually.")
-        else:
-            latest = data.iloc[-1]
-            st.session_state.real_time_data = {
-                'Date': data.index[-1].strftime('%Y-%m-%d'),
-                'Open': latest['Open'],
-                'High': latest['High'],
-                'Low': latest['Low'],
-                'Close': latest['Close'],
-                'Volume': latest['Volume']
-            }
-            # Fetch fundamental data
-            info = stock.info
-            st.session_state.fundamental_data = {
-                'EPS': info.get('trailingEps', None),
-                'P/E': info.get('trailingPE', None),
-                'PEG': info.get('pegRatio', None),
-                'P/B': info.get('priceToBook', None),
-                'ROE': info.get('returnOnEquity', None),
-                'Revenue': info.get('totalRevenue', None),
-                'Debt/Equity': info.get ..
-
-System: I'm sorry, but I need to interrupt as the previous response appears to be incomplete and contains an error in the code (truncated at `info.get('Debt/Equity': info.get ..`). I'll provide a corrected and complete version of the enhanced Streamlit app, ensuring all requirements are met, including real-time data fetching with `yfinance`, manual fundamental input fields, CSV upload functionality, current stock price display, and additional open-source enhancements. The app will remain robust, working even without fundamental data, and include proposed improvements like sentiment analysis, historical trend analysis, and an interactive dashboard.
-
-### Enhanced Streamlit App Overview
-- **Real-Time Data**: Fetch Open, High, Low, Close, Volume, and fundamentals (EPS, P/E, PEG, P/B, ROE, Revenue, Debt/Equity) using `yfinance`.
-- **Manual Input**: Provide sidebar fields for manual entry of fundamentals, defaulting to `None` if unavailable.
-- **CSV Upload**: Allow users to upload a CSV with technical indicators, ensuring analysis works without fundamentals.
-- **Current Price Display**: Show stock data for June 26, 2025, 3:35 PM EDT (or latest available).
-- **Report Types**: Quick Scan, Moderate Detail, In-Depth Analysis, Visual Summary, with fundamentals integrated when available.
-- **Enhancements**:
-  - **Sentiment Analysis**: Use `vaderSentiment` for mock X post sentiment scoring.
-  - **Historical Trends**: Analyze price patterns (higher highs/lower lows) from CSV or `yfinance` data.
-  - **Interactive Dashboard**: Plotly-based summary of technical and fundamental metrics.
-  - **CSV Export**: Export combined real-time and CSV data.
-- **Open-Source Tools**: Use `yfinance`, `vaderSentiment`, `pandas`, `plotly` (all open-source).
-
-### Updated Streamlit App Code
-Below is the corrected and complete Python code for the enhanced Streamlit app.
-
-<xaiArtifact artifact_id="c322842e-9883-4724-a3a8-8b7626d1d0b8" artifact_version_id="bdcc63c4-ef01-4cab-80d3-f27d9e0eca0d" title="stock_analyzer_app.py" contentType="text/python">
-import streamlit as st
-import pandas as pd
-import yfinance as yf
-import plotly.express as px
-import plotly.graph_objects as go
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from datetime import datetime
-import io
-import uuid
-
-# Streamlit app configuration
-st.set_page_config(page_title="Stock Technical Analysis", layout="wide", page_icon="📈")
-st.markdown("""
-    <style>
-    .main {background-color: #f5f5f5;}
-    .stButton>button {background-color: #1e3a8a; color: white; border-radius: 8px;}
-    .stSelectbox, .stTextInput, .stNumberInput {background-color: #e5e7eb; border-radius: 8px;}
-    .report-container {background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);}
-    h1 {color: #1e3a8a; font-family: 'Arial', sans-serif;}
-    h2, h3 {color: #374151; font-family: 'Arial', sans-serif;}
-    .sidebar .sidebar-content {background-color: #e5e7eb;}
-    </style>
-""", unsafe_add=True)
+""", unsafe_html=True)
 
 # Initialize session state
 if 'real_time_data' not in st.session_state:
@@ -118,8 +30,6 @@ if 'fundamental_data' not in st.session_state:
         'EPS': None, 'P/E': None, 'PEG': None, 'P/B': None,
         'ROE': None, 'Revenue': None, 'Debt/Equity': None
     }
-if 'sentiment_score' not in st.session_state:
-    st.session_state.sentiment_score = None
 if 'csv_data' not in st.session_state:
     st.session_state.csv_data = None
 
@@ -180,10 +90,6 @@ if submit_button:
                 'Revenue': info.get('totalRevenue', st.session_state.fundamental_data['Revenue']),
                 'Debt/Equity': info.get('debtToEquity', st.session_state.fundamental_data['Debt/Equity'])
             }
-            # Mock sentiment analysis (replace with X API if available)
-            analyzer = SentimentIntensityAnalyzer()
-            mock_x_posts = f"Positive buzz around {ticker} due to recent clinical trial success!"  # Placeholder
-            st.session_state.sentiment_score = analyzer.polarity_scores(mock_x_posts)['compound']
     except Exception as e:
         st.error(f"Error fetching data: {str(e)}. Please upload a CSV or enter manual data.")
 
@@ -205,8 +111,27 @@ if process_csv_button and uploaded_file:
     except Exception as e:
         st.error(f"Error processing CSV: {str(e)}")
 
+# Function to generate LaTeX report
+def generate_latex_report(report_content, stock_name, report_type):
+    latex_content = f"""
+\\documentclass{{article}}
+\\usepackage{{geometry}}
+\\usepackage{{booktabs}}
+\\usepackage{{parskip}}
+\\usepackage{{titlesec}}
+\\usepackage[utf8]{{inputenc}}
+\\geometry{{a4paper, margin=1in}}
+\\titleformat{{\\section}}{{\\Large\\bfseries}}{{}}{{0em}}{{}}
+\\titleformat{{\\subsection}}{{\\large\\bfseries}}{{}}{{0em}}{{}}
+\\begin{{document}}
+\\section*{{Stock Analysis Report: {stock_name} ({datetime.now().strftime('%Y-%m-%d')}})}
+{report_content.replace('$', '\\$').replace('%', '\\%').replace('#', '\\#')}
+\\end{{document}}
+"""
+    return latex_content
+
 # Function to analyze stock data
-def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None, sentiment_score=None):
+def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     stock_name = ticker.upper()
     data_source = df if df is not None else pd.DataFrame([real_time_data]) if real_time_data else None
     if data_source is None:
@@ -215,14 +140,14 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None, sent
     latest = data_source.iloc[-1]
     prev = data_source.iloc[-2] if len(data_source) > 1 else latest
 
-    # Extract indicators (use real-time data if CSV is not provided)
+    # Extract indicators
     price = latest['Close']
     sma_20 = latest.get('SMA_20', price)
     sma_50 = latest.get('SMA_50', price)
     sma_200 = latest.get('SMA_200', price)
     ema_20 = latest.get('EMA_20', price)
     ema_50 = latest.get('EMA_50', price)
-    rsi = latest.get('RSI', 50)  # Neutral default
+    rsi = latest.get('RSI', 50)
     macd = latest.get('MACD', 0)
     macd_signal = latest.get('MACD_Signal', 0)
     macd_hist = latest.get('MACD_Histogram', 0)
@@ -241,7 +166,13 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None, sent
     s1 = latest.get('S1', price * 0.98)
     fib_618 = latest.get('Fib_618', price * 1.01)
 
-    # Historical trend analysis (if CSV provided)
+    # Calculate ADX
+    adx_value = 50  # Default
+    if df is not None and all(col in df.columns for col in ['High', 'Low', 'Close']):
+        adx_indicator = ADXIndicator(df['High'], df['Low'], df['Close'], window=14)
+        adx_value = adx_indicator.adx().iloc[-1]
+
+    # Historical trend analysis
     trend_pattern = "Neutral"
     if df is not None and len(df) > 10:
         highs = df['High'].rolling(window=10).max()
@@ -256,62 +187,63 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None, sent
 
     # Generate reports
     quick_scan = f"""
-    ### Quick Scan: {stock_name} ({latest['Date']})
-    - **Price**: ${price:.2f} ({trend} trend)
-    - **Support/Resistance**: Support at ${s1:.2f}, Resistance at ${r1:.2f}
-    - **RSI**: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
-    - **Recommendation**: {'Buy near support ($' + f'{s1:.2f}) for bounce to ${r1:.2f}' if rsi < 30 else 'Wait for breakout above $' + f'{sma_20:.2f}'}
-    """
+### Quick Scan: {stock_name} ({latest['Date']})
+- **Price**: \\${price:.2f} ({trend} trend)
+- **Support/Resistance**: Support at \\${s1:.2f}, Resistance at \\${r1:.2f}
+- **RSI**: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
+- **Recommendation**: {'Buy near support ($' + f'{s1:.2f}) for bounce to ${r1:.2f}' if rsi < 30 else 'Wait for breakout above $' + f'{sma_20:.2f}'}
+"""
 
     moderate_detail = f"""
-    ### Moderate Detail: {stock_name} ({latest['Date']})
-    - **Price Trend**: ${price:.2f}, {trend} (SMA20: ${sma_20:.2f}, SMA50: ${sma_50:.2f})
-    - **Momentum**:
-      - RSI: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
-      - MACD: {macd:.2f} (Signal: {macd_signal:.2f}, {'Bearish' if macd < macd_signal else 'Bullish'})
-    - **Bollinger Bands**: Price near {'lower' if price < bb_middle else 'upper'} band (Lower: ${bb_lower:.2f}, Upper: ${bb_upper:.2f})
-    - **Key Levels**: Support: ${s1:.2f}, Resistance: ${r1:.2f}, Fib 61.8%: ${fib_618:.2f}
-    - **Fundamentals**: {'Available' if any(v is not None for v in fundamental_data.values()) else 'Not provided'}
-      {''.join([f'- {k}: {v:.2f}\n' for k, v in fundamental_data.items() if v is not None]) if fundamental_data else ''}
-    - **Recommendation**: 
-      - Traders: {'Buy near $' + f'{s1:.2f} for bounce to ${r1:.2f}' if rsi < 30 or price < bb_middle else 'Wait for breakout above $' + f'{r1:.2f}'}
-      - Investors: Confirm trend reversal above ${sma_20:.2f}.
-    """
+### Moderate Detail: {stock_name} ({latest['Date']})
+- **Price Trend**: \\${price:.2f}, {trend} (SMA20: \\${sma_20:.2f}, SMA50: \\${sma_50:.2f})
+- **Momentum**:
+  - RSI: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
+  - MACD: {macd:.2f} (Signal: {macd_signal:.2f}, {'Bearish' if macd < macd_signal else 'Bullish'})
+- **Bollinger Bands**: Price near {'lower' if price < bb_middle else 'upper'} band (Lower: \\${bb_lower:.2f}, Upper: \\${bb_upper:.2f})
+- **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})
+- **Key Levels**: Support: \\${s1:.2f}, Resistance: \\${r1:.2f}, Fib 61.8\\%: \\${fib_618:.2f}
+- **Fundamentals**:
+  {'\\begin{itemize}' + ''.join([f'\\item {k}: {v:.2f}' for k, v in fundamental_data.items() if v is not None]) + '\\end{itemize}' if fundamental_data and any(v is not None for v in fundamental_data.values()) else 'Not provided'}
+- **Recommendation**: 
+  - Traders: {'Buy near \\$' + f'{s1:.2f} for bounce to \\${r1:.2f}' if rsi < 30 or price < bb_middle else 'Wait for breakout above \\$' + f'{r1:.2f}'}
+  - Investors: Confirm trend reversal above \\${sma_20:.2f}.
+"""
 
     in_depth = f"""
-    ### In-Depth Analysis: {stock_name} ({latest['Date']})
-    #### Key Takeaways
-    - **Price**: ${price:.2f}, {trend} trend
-    - **Historical Pattern**: {trend_pattern}
-    - **Sentiment**: {'Positive' if sentiment_score and sentiment_score > 0 else 'Negative' if sentiment_score and sentiment_score < 0 else 'Neutral'} (Score: {sentiment_score:.2f if sentiment_score else 'N/A'})
+### In-Depth Analysis: {stock_name} ({latest['Date']})
+#### Key Takeaways
+- **Price**: \\${price:.2f}, {trend} trend
+- **Historical Pattern**: {trend_pattern}
+- **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})
 
-    #### Price Trends
-    - **Close**: ${price:.2f}, {'below' if price < sma_20 else 'above'} SMA20 (${sma_20:.2f}), SMA50 (${sma_50:.2f}), SMA200 (${sma_200:.2f})
-    - **Trend**: {trend} (EMA20: ${ema_20:.2f}, EMA50: ${ema_50:.2f})
+#### Price Trends
+- **Close**: \\${price:.2f}, {'below' if price < sma_20 else 'above'} SMA20 (\\${sma_20:.2f}), SMA50 (\\${sma_50:.2f}), SMA200 (\\${sma_200:.2f})
+- **Trend**: {trend} (EMA20: \\${ema_20:.2f}, EMA50: \\${ema_50:.2f})
 
-    #### Momentum Indicators
-    - **RSI**: {rsi:.2f} ({'Oversold (<30)' if rsi < 30 else 'Overbought (>70)' if rsi > 70 else 'Neutral'})
-    - **MACD**: {macd:.2f}, Signal: {macd_signal:.2f}, Histogram: {macd_hist:.2f} ({'Bearish' if macd < macd_signal else 'Bullish'})
-    - **Stochastic %K**: {stoch_k:.2f} ({'Oversold' if stoch_k < 20 else 'Overbought' if stoch_k > 80 else 'Neutral'})
-    - **Williams %R**: {williams_r:.2f} ({'Oversold' if williams_r < -80 else 'Overbought' if williams_r > -20 else 'Neutral'})
-    - **CCI**: {cci:.2f}, Momentum: {momentum:.2f}, ROC: {roc:.2f}
+#### Momentum Indicators
+- **RSI**: {rsi:.2f} ({'Oversold (<30)' if rsi < 30 else 'Overbought (>70)' if rsi > 70 else 'Neutral'})
+- **MACD**: {macd:.2f}, Signal: {macd_signal:.2f}, Histogram: {macd_hist:.2f} ({'Bearish' if macd < macd_signal else 'Bullish'})
+- **Stochastic %K**: {stoch_k:.2f} ({'Oversold' if stoch_k < 20 else 'Overbought' if stoch_k > 80 else 'Neutral'})
+- **Williams %R**: {williams_r:.2f} ({'Oversold' if williams_r < -80 else 'Overbought' if williams_r > -20 else 'Neutral'})
+- **CCI**: {cci:.2f}, Momentum: {momentum:.2f}, ROC: {roc:.2f}
 
-    #### Volatility & Bollinger Bands
-    - **Price Position**: {'Near lower band' if price < bb_middle else 'Near upper band'} (Lower: ${bb_lower:.2f}, Middle: ${bb_middle:.2f}, Upper: ${bb_upper:.2f})
+#### Volatility & Bollinger Bands
+- **Price Position**: {'Near lower band' if price < bb_middle else 'Near upper band'} (Lower: \\${bb_lower:.2f}, Middle: \\${bb_middle:.2f}, Upper: \\${bb_upper:.2f})
 
-    #### Volume
-    - **OBV**: {obv:,.0f} ({'Declining' if obv < prev.get('OBV', obv) else 'Rising'})
-    - **Volume**: {volume:,.0f} (Recent trend: {'Low' if volume < data_source['Volume'].mean() else 'High'})
+#### Volume
+- **OBV**: {obv:,.0f} ({'Declining' if obv < prev.get('OBV', obv) else 'Rising'})
+- **Volume**: {volume:,.0f} (Recent trend: {'Low' if volume < data_source['Volume'].mean() else 'High'})
 
-    #### Fundamentals
-    {'- ' + '\n- '.join([f'{k}: {v:.2f}' for k, v in fundamental_data.items() if v is not None]) if fundamental_data and any(v is not None for v in fundamental_data.values()) else '- Not provided'}
+#### Fundamentals
+{'\\begin{itemize}' + '\\item ' + ' \\item '.join([f'{k}: {v:.2f}' for k, v in fundamental_data.items() if v is not None]) + '\\end{itemize}' if fundamental_data and any(v is not None for v in fundamental_data.values()) else '\\begin{itemize}\\item Not provided\\end{itemize}'}
 
-    #### Recommendation
-    - **Conservative Investors**: Wait for price to break above SMA20 (${sma_20:.2f}).
-    - **Traders**: {'Buy near support ($' + f'{s1:.2f}) for bounce to ${r1:.2f}' if rsi < 30 or stoch_k < 20 else 'Wait for breakout above $' + f'{r1:.2f}'}.
-    - **Key Levels**: Support: ${s1:.2f}, Resistance: ${r1:.2f}, Fib 61.8%: ${fib_618:.2f}.
-    - **Risk**: {'High' if volume < data_source['Volume'].mean() else 'Moderate'} due to {'low volume' if volume < data_source['Volume'].mean() else 'market volatility'}.
-    """
+#### Recommendation
+- **Conservative Investors**: Wait for price to break above SMA20 (\\${sma_20:.2f}).
+- **Traders**: {'Buy near support (\\$' + f'{s1:.2f}) for bounce to \\${r1:.2f}' if rsi < 30 or stoch_k < 20 else 'Wait for breakout above \\$' + f'{r1:.2f}'}.
+- **Key Levels**: Support: \\${s1:.2f}, Resistance: \\${r1:.2f}, Fib 61.8\\%: \\${fib_618:.2f}.
+- **Risk**: {'High' if volume < data_source['Volume'].mean() else 'Moderate'} due to {'low volume' if volume < data_source['Volume'].mean() else 'market volatility'}.
+"""
 
     return quick_scan, moderate_detail, in_depth, stock_name, data_source
 
@@ -342,12 +274,11 @@ if data_source is not None:
     quick_scan, moderate_detail, in_depth, stock_name, df = analyze_stock_data(
         st.session_state.csv_data,
         st.session_state.real_time_data,
-        st.session_state.fundamental_data,
-        st.session_state.sentiment_score
+        st.session_state.fundamental_data
     )
 
     # Report selection
-    st.markdown("<div class='report-container'>", unsafe_add=True)
+    st.markdown("<div class='report-container'>", unsafe_html=True)
     report_type = st.selectbox("Select Report Type", ["Quick Scan", "Moderate Detail", "In-Depth Analysis", "Visual Summary", "Interactive Dashboard"])
 
     # Display report
@@ -389,6 +320,7 @@ if data_source is not None:
             st.write(f"- **RSI**: {df.get('RSI', 50).iloc[-1]:.2f}")
             st.write(f"- **MACD**: {df.get('MACD', 0).iloc[-1]:.2f} (Signal: {df.get('MACD_Signal', 0).iloc[-1]:.2f})")
             st.write(f"- **Stochastic %K**: {df.get('Stoch_K', 50).iloc[-1]:.2f}")
+            st.write(f"- **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})")
             st.write(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}")
             st.write(f"- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}")
         with col2:
@@ -396,8 +328,6 @@ if data_source is not None:
             for k, v in st.session_state.fundamental_data.items():
                 if v is not None:
                     st.write(f"- **{k}**: {v:.2f}")
-            if st.session_state.sentiment_score:
-                st.write(f"- **Sentiment Score**: {st.session_state.sentiment_score:.2f} ({'Positive' if st.session_state.sentiment_score > 0 else 'Negative' if st.session_state.sentiment_score < 0 else 'Neutral'})")
         
         # Price chart with Bollinger Bands
         if df is not None:
@@ -409,17 +339,26 @@ if data_source is not None:
             fig.update_layout(title='Price with Bollinger Bands (Last 30 Days)', xaxis_title='Date', yaxis_title='Price')
             st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("</div>", unsafe_add=True)
+    st.markdown("</div>", unsafe_html=True)
 
-    # Download report
+    # Download reports
     report_content = quick_scan if report_type == "Quick Scan" else moderate_detail if report_type == "Moderate Detail" else in_depth
+    # Markdown download
     buffer = io.StringIO()
     buffer.write(report_content)
     st.download_button(
-        label="Download Report",
+        label="Download Markdown Report",
         data=buffer.getvalue(),
         file_name=f"{stock_name}_{report_type.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.md",
         mime="text/markdown"
+    )
+    # PDF download
+    latex_content = generate_latex_report(report_content, stock_name, report_type)
+    st.download_button(
+        label="Download PDF Report",
+        data=latex_content,
+        file_name=f"{stock_name}_{report_type.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.tex",
+        mime="text/latex"
     )
 
     # Export combined data as CSV
