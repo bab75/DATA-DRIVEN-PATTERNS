@@ -39,9 +39,23 @@ if st.button("🚀 Analyze Pattern"):
 
     # --- Clean and Format ---
     df = df.reset_index()
-    # Ensure column names are clean and standardized
-    df.columns = [str(col).strip().replace(" ", "_") for col in df.columns]
     
+    # Handle MultiIndex columns
+    if isinstance(df.columns, pd.MultiIndex):
+        # Extract the first level of the MultiIndex and map to clean names
+        column_mapping = {
+            ('Date', ''): 'Date',
+            ('Open', symbol): 'Open',
+            ('High', symbol): 'High',
+            ('Low', symbol): 'Low',
+            ('Close', symbol): 'Close',
+            ('Volume', symbol): 'Volume'
+        }
+        df.columns = [column_mapping.get(col, col[0]) for col in df.columns]
+    else:
+        # Clean column names for single-level index
+        df.columns = [str(col).strip().replace(" ", "_") for col in df.columns]
+
     # Verify if 'Date' column exists
     if 'Date' not in df.columns:
         st.error("Date column not found in the data. Available columns: " + ", ".join(df.columns))
@@ -59,7 +73,7 @@ if st.button("🚀 Analyze Pattern"):
             st.warning(f"Column {col} not found in the data.")
 
     # --- Recovery Pattern Flag ---
-    if "Open" in df.columns and "Low" in df.columns and "Close" in df.columns:
+    if "Open" in df.columns and "Low" in df.columns and "Close" in df.columns.:
         df["Low_Diff"] = df["Open"] - df["Low"]
         df["Recovered"] = np.where(df["Close"] >= df["Open"], "Yes", "No")
     else:
