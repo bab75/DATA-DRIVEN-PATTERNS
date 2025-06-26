@@ -38,22 +38,32 @@ if 'fundamental_data' not in st.session_state:
     st.session_state.fundamental_data = {'EPS': None, 'P/E': None, 'PEG': None, 'P/B': None, 'ROE': None, 'Revenue': None, 'Debt/Equity': None}
 if 'csv_data' not in st.session_state:
     st.session_state.csv_data = None
+if 'combine_report' not in st.session_state:
+    st.session_state.combine_report = False
 
 # Clear Analysis Button
 def clear_analysis():
     st.session_state.real_time_data = None
     st.session_state.fundamental_data = {'EPS': None, 'P/E': None, 'PEG': None, 'P/B': None, 'ROE': None, 'Revenue': None, 'Debt/Equity': None}
     st.session_state.csv_data = None
+    st.session_state.combine_report = False
     st.success("Analysis cleared. Start a new analysis.")
 
 # Sidebar for inputs
 st.sidebar.header("📊 Stock Analysis Controls")
 ticker = st.sidebar.text_input("Enter Stock Ticker (e.g., KRRO)", value="KRRO", help="Enter a valid stock ticker symbol.")
 submit_button = st.sidebar.button("🔄 Fetch Real-Time Data")
-combine_data = st.sidebar.checkbox("🔗 Combine with Real-Time Data", value=True, disabled=st.session_state.csv_data is None or st.session_state.real_time_data is None, help="Enable to merge uploaded data with real-time data for enhanced analysis.")
+process_file_button = st.sidebar.button("📥 Process File")
+combine_button = st.sidebar.button("📊 Combine Process")
 clear_button = st.sidebar.button("🗑️ Clear Analysis")
 if clear_button:
     clear_analysis()
+
+# Combine Report Checkbox
+st.sidebar.subheader("📈 Report Options")
+combine_checkbox = st.sidebar.checkbox("Combine Report", value=st.session_state.combine_report, disabled=st.session_state.csv_data is None)
+if combine_checkbox != st.session_state.combine_report:
+    st.session_state.combine_report = combine_checkbox
 
 # Manual fundamental inputs
 with st.sidebar.expander("📋 Manual Fundamental Data (Optional)", expanded=False):
@@ -112,7 +122,6 @@ if submit_button:
 # CSV/XLSX upload
 st.sidebar.subheader("📤 Upload Technical Data")
 uploaded_file = st.sidebar.file_uploader("Choose a CSV or XLSX file", type=["csv", "xlsx"], help="Upload a file with technical indicators.")
-process_file_button = st.sidebar.button("📥 Process File")
 
 if process_file_button and uploaded_file:
     with st.spinner("📂 Processing file..."):
@@ -128,7 +137,7 @@ if process_file_button and uploaded_file:
             else:
                 df['Date'] = pd.to_datetime(df['Date'])
                 st.session_state.csv_data = df
-                st.success("✅ File processed successfully! The 'Combine with Real-Time Data' checkbox is now enabled.")
+                st.success("✅ File processed successfully! The 'Combine Report' checkbox is now enabled.")
         except Exception as e:
             st.error(f"❌ Error processing file: {str(e)}. Ensure the file is a valid CSV/XLSX with required columns.")
 
@@ -200,58 +209,52 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     if data_source is None:
         return None, None, None, stock_name, None, is_real_time_only, 50
 
-    # Combine data if requested and available
-    if combine_data and st.session_state.csv_data is not None and st.session_state.real_time_data is not None:
-        data_source = combine_dataframes(st.session_state.csv_data, st.session_state.real_time_data)
-    elif is_real_time_only:
-        data_source = pd.DataFrame([real_time_data])
-
     latest = data_source.iloc[-1]
     prev = data_source.iloc[-2] if len(data_source) > 1 else latest
 
     price = latest['Close']
-    volatility = latest.get('Volatility', data_source['Volatility'].mean() if not is_real_time_only else 0)
-    rsi = latest.get('RSI', 50) if not is_real_time_only else 50
-    macd = latest.get('MACD', 0) if not is_real_time_only else 0
-    macd_signal = latest.get('MACD_Signal', 0) if not is_real_time_only else 0
-    macd_hist = latest.get('MACD_Histogram', 0) if not is_real_time_only else 0
-    bb_upper = latest.get('BB_Upper', price * 1.05) if not is_real_time_only else price * 1.05
-    bb_middle = latest.get('BB_Middle', price) if not is_real_time_only else price
-    bb_lower = latest.get('BB_Lower', price * 0.95) if not is_real_time_only else price * 0.95
-    bb_width = latest.get('BB_Width', data_source['BB_Width'].mean() if not is_real_time_only else 0)
-    bb_position = latest.get('BB_Position', data_source['BB_Position'].mean() if not is_real_time_only else 0)
-    sma_20 = latest.get('SMA_20', price) if not is_real_time_only else price
-    ema_20 = latest.get('EMA_20', price) if not is_real_time_only else price
-    sma_50 = latest.get('SMA_50', price) if not is_real_time_only else price
-    ema_50 = latest.get('EMA_50', price) if not is_real_time_only else price
-    sma_200 = latest.get('SMA_200', price) if not is_real_time_only else price
-    ema_200 = latest.get('EMA_200', price) if not is_real_time_only else price
-    ichimoku_tenkan = latest.get('Ichimoku_Tenkan', price) if not is_real_time_only else price
-    ichimoku_kijun = latest.get('Ichimoku_Kijun', price) if not is_real_time_only else price
-    ichimoku_senkou_a = latest.get('Ichimoku_Senkou_A', price) if not is_real_time_only else price
-    ichimoku_senkou_b = latest.get('Ichimoku_Senkou_B', price) if not is_real_time_only else price
-    ichimoku_chikou = latest.get('Ichimoku_Chikou', price) if not is_real_time_only else price
-    psar = latest.get('PSAR', price) if not is_real_time_only else price
-    psar_bull = latest.get('PSAR_Bull', price) if not is_real_time_only else price
-    psar_bear = latest.get('PSAR_Bear', price) if not is_real_time_only else price
-    stoch_k = latest.get('Stoch_K', 50) if not is_real_time_only else 50
-    williams_r = latest.get('Williams_R', -50) if not is_real_time_only else -50
-    cci = latest.get('CCI', 0) if not is_real_time_only else 0
-    momentum = latest.get('Momentum', 0) if not is_real_time_only else 0
-    roc = latest.get('ROC', 0) if not is_real_time_only else 0
-    atr = latest.get('ATR', data_source['ATR'].mean() if not is_real_time_only else 0)
-    keltner_upper = latest.get('Keltner_Upper', price * 1.05) if not is_real_time_only else price * 1.05
-    keltner_lower = latest.get('Keltner_Lower', price * 0.95) if not is_real_time_only else price * 0.95
-    obv = latest.get('OBV', latest['Volume']) if not is_real_time_only else latest['Volume']
-    vwap = latest.get('VWAP', price) if not is_real_time_only else price
-    volume_sma = latest.get('Volume_SMA', latest['Volume']) if not is_real_time_only else latest['Volume']
-    mfi = latest.get('MFI', 50) if not is_real_time_only else 50
-    pivot = latest.get('Pivot', price) if not is_real_time_only else price
-    r1 = latest.get('R1', price * 1.02) if not is_real_time_only else price * 1.02
-    s1 = latest.get('S1', price * 0.98) if not is_real_time_only else price * 0.98
-    r2 = latest.get('R2', price * 1.04) if not is_real_time_only else price * 1.04
-    s2 = latest.get('S2', price * 0.96) if not is_real_time_only else price * 0.96
-    fib_618 = latest.get('Fib_618', price * 1.01) if not is_real_time_only else price * 1.01
+    volatility = latest.get('Volatility', data_source['Volatility'].mean() if not is_real_time_only and len(data_source) > 1 else 0)
+    rsi = latest.get('RSI', 50) if not is_real_time_only and len(data_source) > 1 else 50
+    macd = latest.get('MACD', 0) if not is_real_time_only and len(data_source) > 1 else 0
+    macd_signal = latest.get('MACD_Signal', 0) if not is_real_time_only and len(data_source) > 1 else 0
+    macd_hist = latest.get('MACD_Histogram', 0) if not is_real_time_only and len(data_source) > 1 else 0
+    bb_upper = latest.get('BB_Upper', price * 1.05) if not is_real_time_only and len(data_source) > 1 else price * 1.05
+    bb_middle = latest.get('BB_Middle', price) if not is_real_time_only and len(data_source) > 1 else price
+    bb_lower = latest.get('BB_Lower', price * 0.95) if not is_real_time_only and len(data_source) > 1 else price * 0.95
+    bb_width = latest.get('BB_Width', data_source['BB_Width'].mean() if not is_real_time_only and len(data_source) > 1 else 0)
+    bb_position = latest.get('BB_Position', data_source['BB_Position'].mean() if not is_real_time_only and len(data_source) > 1 else 0)
+    sma_20 = latest.get('SMA_20', price) if not is_real_time_only and len(data_source) > 1 else price
+    ema_20 = latest.get('EMA_20', price) if not is_real_time_only and len(data_source) > 1 else price
+    sma_50 = latest.get('SMA_50', price) if not is_real_time_only and len(data_source) > 1 else price
+    ema_50 = latest.get('EMA_50', price) if not is_real_time_only and len(data_source) > 1 else price
+    sma_200 = latest.get('SMA_200', price) if not is_real_time_only and len(data_source) > 1 else price
+    ema_200 = latest.get('EMA_200', price) if not is_real_time_only and len(data_source) > 1 else price
+    ichimoku_tenkan = latest.get('Ichimoku_Tenkan', price) if not is_real_time_only and len(data_source) > 1 else price
+    ichimoku_kijun = latest.get('Ichimoku_Kijun', price) if not is_real_time_only and len(data_source) > 1 else price
+    ichimoku_senkou_a = latest.get('Ichimoku_Senkou_A', price) if not is_real_time_only and len(data_source) > 1 else price
+    ichimoku_senkou_b = latest.get('Ichimoku_Senkou_B', price) if not is_real_time_only and len(data_source) > 1 else price
+    ichimoku_chikou = latest.get('Ichimoku_Chikou', price) if not is_real_time_only and len(data_source) > 1 else price
+    psar = latest.get('PSAR', price) if not is_real_time_only and len(data_source) > 1 else price
+    psar_bull = latest.get('PSAR_Bull', price) if not is_real_time_only and len(data_source) > 1 else price
+    psar_bear = latest.get('PSAR_Bear', price) if not is_real_time_only and len(data_source) > 1 else price
+    stoch_k = latest.get('Stoch_K', 50) if not is_real_time_only and len(data_source) > 1 else 50
+    williams_r = latest.get('Williams_R', -50) if not is_real_time_only and len(data_source) > 1 else -50
+    cci = latest.get('CCI', 0) if not is_real_time_only and len(data_source) > 1 else 0
+    momentum = latest.get('Momentum', 0) if not is_real_time_only and len(data_source) > 1 else 0
+    roc = latest.get('ROC', 0) if not is_real_time_only and len(data_source) > 1 else 0
+    atr = latest.get('ATR', data_source['ATR'].mean() if not is_real_time_only and len(data_source) > 1 else 0)
+    keltner_upper = latest.get('Keltner_Upper', price * 1.05) if not is_real_time_only and len(data_source) > 1 else price * 1.05
+    keltner_lower = latest.get('Keltner_Lower', price * 0.95) if not is_real_time_only and len(data_source) > 1 else price * 0.95
+    obv = latest.get('OBV', latest['Volume']) if not is_real_time_only and len(data_source) > 1 else latest['Volume']
+    vwap = latest.get('VWAP', price) if not is_real_time_only and len(data_source) > 1 else price
+    volume_sma = latest.get('Volume_SMA', latest['Volume']) if not is_real_time_only and len(data_source) > 1 else latest['Volume']
+    mfi = latest.get('MFI', 50) if not is_real_time_only and len(data_source) > 1 else 50
+    pivot = latest.get('Pivot', price) if not is_real_time_only and len(data_source) > 1 else price
+    r1 = latest.get('R1', price * 1.02) if not is_real_time_only and len(data_source) > 1 else price * 1.02
+    s1 = latest.get('S1', price * 0.98) if not is_real_time_only and len(data_source) > 1 else price * 0.98
+    r2 = latest.get('R2', price * 1.04) if not is_real_time_only and len(data_source) > 1 else price * 1.04
+    s2 = latest.get('S2', price * 0.96) if not is_real_time_only and len(data_source) > 1 else price * 0.96
+    fib_618 = latest.get('Fib_618', price * 1.01) if not is_real_time_only and len(data_source) > 1 else price * 1.01
 
     adx_value = 50
     if not is_real_time_only and all(col in data_source.columns for col in ['High', 'Low', 'Close']) and len(data_source) >= 14:
@@ -270,7 +273,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     trend = "Bearish" if price < sma_20 and price < sma_50 else "Bullish" if price > sma_20 and price > sma_50 else "Neutral"
 
     quick_scan = f"""
-### Quick Scan: {stock_name} ({latest['Date'].strftime('%Y-%m-%d') if not is_real_time_only else latest['Date']})
+### Quick Scan: {stock_name} ({latest['Date'] if isinstance(latest['Date'], str) else latest['Date'].strftime('%Y-%m-%d')})
 - **Price**: ${price:.2f} ({trend} trend)
 - **Support/Resistance**: Support at ${s1:.2f}, Resistance at ${r1:.2f}
 - **RSI**: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
@@ -279,7 +282,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 """
 
     moderate_detail = f"""
-### Moderate Detail: {stock_name} ({latest['Date'].strftime('%Y-%m-%d') if not is_real_time_only else latest['Date']})
+### Moderate Detail: {stock_name} ({latest['Date'] if isinstance(latest['Date'], str) else latest['Date'].strftime('%Y-%m-%d')})
 - **Price Trend**: ${price:.2f}, {trend} (SMA20: ${sma_20:.2f}, SMA50: ${sma_50:.2f})
 - **Momentum**:
   - RSI: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
@@ -296,7 +299,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 """
 
     in_depth = f"""
-### In-Depth Analysis: {stock_name} ({latest['Date'].strftime('%Y-%m-%d') if not is_real_time_only else latest['Date']})
+### In-Depth Analysis: {stock_name} ({latest['Date'] if isinstance(latest['Date'], str) else latest['Date'].strftime('%Y-%m-%d')})
 #### Key Takeaways
 - **Price**: ${price:.2f}, {trend} trend
 - **Historical Pattern**: {trend_pattern}
@@ -352,8 +355,8 @@ st.title("📈 Stock Technical Analysis Dashboard")
 st.markdown("Analyze stocks with real-time data or uploaded CSV/XLSX files containing technical indicators.")
 
 # Mode indicator
-mode = "Real-Time Only" if st.session_state.real_time_data is not None and st.session_state.csv_data is None else "XLSX/CSV Only" if st.session_state.csv_data is not None and st.session_state.real_time_data is None else "Combined" if st.session_state.csv_data is not None and st.session_state.real_time_data is not None and combine_data else "No Data"
-st.markdown(f"<div class='mode-banner'><b>Active Mode: {mode}</b><br>{'Real-time price and fundamentals from yfinance.' if mode == 'Real-Time Only' else 'Historical data and indicators from uploaded CSV/XLSX.' if mode == 'XLSX/CSV Only' else 'Combines CSV/XLSX historical data with real-time price/fundamentals.' if mode == 'Combined' else 'Please fetch data or upload a file to begin.'}</div>", unsafe_allow_html=True)
+mode = "XLSX/CSV Only" if st.session_state.csv_data is not None and st.session_state.real_time_data is None else "Real-Time Only" if st.session_state.real_time_data is not None and st.session_state.csv_data is None else "Combined" if st.session_state.combine_report and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else "No Data"
+st.markdown(f"<div class='mode-banner'><b>Active Mode: {mode}</b><br>{'Historical data and indicators from uploaded CSV/XLSX.' if mode == 'XLSX/CSV Only' else 'Real-time price and fundamentals from yfinance.' if mode == 'Real-Time Only' else 'Combines CSV/XLSX historical data with real-time price/fundamentals.' if mode == 'Combined' else 'Please fetch data or upload a file to begin.'}</div>", unsafe_allow_html=True)
 
 # Display real-time and fundamental data in expandable section
 with st.expander("📊 Stock Data Overview", expanded=True):
@@ -384,16 +387,17 @@ with st.expander("📊 Stock Data Overview", expanded=True):
         }
         st.table(pd.DataFrame(fundamental_data))
 
-# Analyze data
-data_source = combine_dataframes(st.session_state.csv_data, st.session_state.real_time_data) if combine_data and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else st.session_state.csv_data if st.session_state.csv_data is not None else st.session_state.real_time_data
+# Analyze data based on the last action
+data_source = st.session_state.csv_data if process_file_button and st.session_state.csv_data is not None else st.session_state.real_time_data if submit_button and st.session_state.real_time_data is not None else combine_dataframes(st.session_state.csv_data, st.session_state.real_time_data) if combine_button and st.session_state.combine_report and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else None
+
 if data_source is not None:
     quick_scan, moderate_detail, in_depth, stock_name, df, is_real_time_only, adx_value = analyze_stock_data(
-        st.session_state.csv_data,
-        st.session_state.real_time_data,
+        st.session_state.csv_data if process_file_button and st.session_state.csv_data is not None else None,
+        st.session_state.real_time_data if submit_button and st.session_state.real_time_data is not None else None,
         st.session_state.fundamental_data
     )
 
-    if is_real_time_only:
+    if is_real_time_only and not all(col in df.columns for col in ['RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram']):
         st.warning("⚠️ Real-time data lacks historical indicators. Upload a CSV/XLSX for full analysis.")
 
     # Report tabs
@@ -403,7 +407,6 @@ if data_source is not None:
         st.markdown("<div class='report-container'>", unsafe_allow_html=True)
         st.markdown(quick_scan)
         st.markdown("</div>", unsafe_allow_html=True)
-        # Download buttons for Quick Scan
         buffer = io.StringIO()
         buffer.write(quick_scan)
         st.download_button(
@@ -424,7 +427,6 @@ if data_source is not None:
         st.markdown("<div class='report-container'>", unsafe_allow_html=True)
         st.markdown(moderate_detail)
         st.markdown("</div>", unsafe_allow_html=True)
-        # Download buttons for Moderate Detail
         buffer = io.StringIO()
         buffer.write(moderate_detail)
         st.download_button(
@@ -445,7 +447,6 @@ if data_source is not None:
         st.markdown("<div class='report-container'>", unsafe_allow_html=True)
         st.markdown(in_depth)
         st.markdown("</div>", unsafe_allow_html=True)
-        # Download buttons for In-Depth Analysis
         buffer = io.StringIO()
         buffer.write(in_depth)
         st.download_button(
@@ -464,8 +465,7 @@ if data_source is not None:
 
     with tabs[3]:
         st.markdown("<div class='report-container'>", unsafe_allow_html=True)
-        # Handle date_str safely
-        date_str = (df['Date'].iloc[-1].strftime('%Y-%m-%d') if isinstance(df['Date'], pd.Series) and not df['Date'].empty and pd.notna(df['Date'].iloc[-1]) else df.get('Date', 'N/A'))
+        date_str = (df['Date'].iloc[-1] if isinstance(df['Date'].iloc[-1], str) else df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else df.get('Date', 'N/A'))
         st.markdown(f"### 📊 Visual Summary: {stock_name} ({date_str})")
         st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}")
         st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}")
@@ -488,7 +488,6 @@ if data_source is not None:
         st.markdown(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}")
         st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})")
         st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}")
-        # Download buttons for Visual Summary
         visual_summary = f"### Visual Summary: {stock_name} ({date_str})\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})\n- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}"
         buffer = io.StringIO()
         buffer.write(visual_summary)
@@ -547,7 +546,6 @@ if data_source is not None:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("⚠️ Candlestick chart unavailable with real-time data only. Upload a CSV/XLSX.")
-        # Download buttons for Interactive Dashboard
         interactive_dashboard = f"### Interactive Dashboard: {stock_name}\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f}\n- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})\n- **Stochastic %K**: {stoch_k_value:.2f}\n- **ADX**: {adx_value:.2f}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}\n- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}"
         buffer = io.StringIO()
         buffer.write(interactive_dashboard)
