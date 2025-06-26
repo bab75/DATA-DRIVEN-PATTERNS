@@ -625,7 +625,7 @@ def add_candlestick_trace(fig, df, row):
 
             # Add Stop-Loss line
             fig.add_trace(go.Scatter(
-                x=[df['date'].min(), df['date'].max'],
+                x=[df['date'].min(), df['date'].max],
                 y=[latest_buy['stop_loss']] * 2,
                 mode='lines',
                 line=dict(color="#f44336", dash="dash"),
