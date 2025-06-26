@@ -211,7 +211,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     data_source = df if df is not None else pd.DataFrame([real_time_data]) if real_time_data is not None else None
 
     if data_source is None or not isinstance(data_source, pd.DataFrame):
-        return None, None, None, stock_name, None, is_real_time_only, 50
+        return "", "", "", stock_name, None, is_real_time_only, 50
 
     latest = data_source.iloc[-1]
     prev = data_source.iloc[-2] if len(data_source) > 1 else latest
@@ -354,6 +354,27 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 
     return quick_scan, moderate_detail, in_depth, stock_name, data_source, is_real_time_only, adx_value
 
+# Function to generate consolidated recommendation
+def generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, stock_name, date_str):
+    recommendation = f"""
+### Consolidated Recommendation: {stock_name} ({date_str})
+#### Summary of Analysis
+- **Price**: Extracted from Quick Scan: ${quick_scan.split('Price: $')[1].split(' (')[0] if 'Price:' in quick_scan else 'N/A'}
+- **Trend**: {moderate_detail.split('Price Trend: ')[1].split(',')[0] if 'Price Trend:' in moderate_detail else 'Neutral'}
+- **RSI**: {in_depth.split('RSI: ')[1].split(' (')[0] if 'RSI:' in in_depth else '50'} ({'Oversold' if float(in_depth.split('RSI: ')[1].split(' (')[0]) < 30 else 'Overbought' if float(in_depth.split('RSI: ')[1].split(' (')[0]) > 70 else 'Neutral'})
+- **Support**: {quick_scan.split('Support at $')[1].split(',')[0] if 'Support at $' in quick_scan else 'N/A'}
+- **Resistance**: {quick_scan.split('Resistance at $')[1].split(')')[0] if 'Resistance at $' in quick_scan else 'N/A'}
+- **Volume Trend**: {in_depth.split('OBV: ')[1].split(' (')[1].split(')')[0] if 'OBV:' in in_depth else 'N/A'}
+
+#### Recommendation
+- **Buy**: Recommended if RSI is oversold (<30) and price is near support (${quick_scan.split('Support at $')[1].split(',')[0] if 'Support at $' in quick_scan else 'N/A'}), with a target near resistance (${quick_scan.split('Resistance at $')[1].split(')')[0] if 'Resistance at $' in quick_scan else 'N/A'}). Current RSI is {in_depth.split('RSI: ')[1].split(' (')[0] if 'RSI:' in in_depth else '50'}, suggesting {'a buy opportunity' if float(in_depth.split('RSI: ')[1].split(' (')[0]) < 30 else 'to wait for better conditions'}.
+- **Hold**: Advised if price is between support and resistance with a neutral trend ({moderate_detail.split('Price Trend: ')[1].split(',')[0] if 'Price Trend:' in moderate_detail else 'Neutral'}) and RSI is neutral (30-70). Current trend is {moderate_detail.split('Price Trend: ')[1].split(',')[0] if 'Price Trend:' in moderate_detail else 'Neutral'}, supporting a hold.
+- **Sell**: Suggested if RSI is overbought (>70) or price breaks below support (${quick_scan.split('Support at $')[1].split(',')[0] if 'Support at $' in quick_scan else 'N/A'}) with declining volume. Current RSI is {in_depth.split('RSI: ')[1].split(' (')[0] if 'RSI:' in in_depth else '50'}, indicating {'a potential sell' if float(in_depth.split('RSI: ')[1].split(' (')[0]) > 70 else 'no immediate sell signal'}.
+- **Additional Notes**: Volume trend ({in_depth.split('OBV: ')[1].split(' (')[1].split(')')[0] if 'OBV:' in in_depth else 'N/A'}) and ADX ({in_depth.split('ADX: ')[1].split(' (')[0] if 'ADX:' in in_depth else '50'} {'Strong Trend' if float(in_depth.split('ADX: ')[1].split(' (')[0]) > 25 else 'Weak Trend'}) should be monitored for confirmation.
+"""
+
+    return recommendation
+
 # Main app
 st.title("📈 Stock Technical Analysis Dashboard")
 st.markdown("Analyze stocks with real-time data or uploaded CSV/XLSX files containing technical indicators.")
@@ -392,16 +413,19 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
         st.warning("⚠️ Real-time data lacks historical indicators. Upload a CSV/XLSX for full analysis.")
 
     # Report tabs with enhanced UI
-    tabs = st.tabs(["Quick Scan", "Moderate Detail", "In-Depth Analysis", "Visual Summary", "Interactive Dashboard"])
+    tabs = st.tabs(["Quick Scan", "Moderate Detail", "In-Depth Analysis", "Visual Summary", "Interactive Dashboard", "Consolidated Recommendation"])
 
     with tabs[0]:
         st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
         st.markdown(f"<h2>Quick Scan: {stock_name}</h2>")
-        st.markdown(quick_scan.replace('### Quick Scan:', ''))
+        if isinstance(quick_scan, str):
+            st.markdown(quick_scan.replace('### Quick Scan:', ''))
+        else:
+            st.write("No quick scan data available.")
         col1, col2 = st.columns(2)
         with col1:
             buffer = io.StringIO()
-            buffer.write(quick_scan)
+            buffer.write(quick_scan if isinstance(quick_scan, str) else "")
             st.download_button(
                 label="📥 Download Markdown",
                 data=buffer.getvalue(),
@@ -409,7 +433,7 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
                 mime="text/markdown"
             )
         with col2:
-            pdf_buffer = generate_pdf_report(quick_scan, stock_name, "Quick Scan")
+            pdf_buffer = generate_pdf_report(quick_scan if isinstance(quick_scan, str) else "", stock_name, "Quick Scan")
             st.download_button(
                 label="📥 Download PDF",
                 data=pdf_buffer,
@@ -421,11 +445,14 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
     with tabs[1]:
         st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
         st.markdown(f"<h2>Moderate Detail: {stock_name}</h2>")
-        st.markdown(moderate_detail.replace('### Moderate Detail:', ''))
+        if isinstance(moderate_detail, str):
+            st.markdown(moderate_detail.replace('### Moderate Detail:', ''))
+        else:
+            st.write("No moderate detail data available.")
         col1, col2 = st.columns(2)
         with col1:
             buffer = io.StringIO()
-            buffer.write(moderate_detail)
+            buffer.write(moderate_detail if isinstance(moderate_detail, str) else "")
             st.download_button(
                 label="📥 Download Markdown",
                 data=buffer.getvalue(),
@@ -433,7 +460,7 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
                 mime="text/markdown"
             )
         with col2:
-            pdf_buffer = generate_pdf_report(moderate_detail, stock_name, "Moderate Detail")
+            pdf_buffer = generate_pdf_report(moderate_detail if isinstance(moderate_detail, str) else "", stock_name, "Moderate Detail")
             st.download_button(
                 label="📥 Download PDF",
                 data=pdf_buffer,
@@ -445,11 +472,14 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
     with tabs[2]:
         st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
         st.markdown(f"<h2>In-Depth Analysis: {stock_name}</h2>")
-        st.markdown(in_depth.replace('### In-Depth Analysis:', ''))
+        if isinstance(in_depth, str):
+            st.markdown(in_depth.replace('### In-Depth Analysis:', ''))
+        else:
+            st.write("No in-depth data available.")
         col1, col2 = st.columns(2)
         with col1:
             buffer = io.StringIO()
-            buffer.write(in_depth)
+            buffer.write(in_depth if isinstance(in_depth, str) else "")
             st.download_button(
                 label="📥 Download Markdown",
                 data=buffer.getvalue(),
@@ -457,7 +487,7 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
                 mime="text/markdown"
             )
         with col2:
-            pdf_buffer = generate_pdf_report(in_depth, stock_name, "In-Depth Analysis")
+            pdf_buffer = generate_pdf_report(in_depth if isinstance(in_depth, str) else "", stock_name, "In-Depth Analysis")
             st.download_button(
                 label="📥 Download PDF",
                 data=pdf_buffer,
@@ -570,6 +600,35 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
                 label="📥 Download PDF",
                 data=pdf_buffer,
                 file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf"
+            )
+        st.markdown("</div></div>", unsafe_allow_html=True)
+
+    with tabs[5]:
+        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
+        st.markdown(f"<h2>Consolidated Recommendation: {stock_name}</h2>")
+        date_str = (df['Date'].iloc[-1] if isinstance(df['Date'].iloc[-1], str) else df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else df.get('Date', 'N/A'))
+        recommendation = generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, stock_name, date_str)
+        if isinstance(recommendation, str):
+            st.markdown(recommendation.replace('### Consolidated Recommendation:', ''))
+        else:
+            st.write("No recommendation data available.")
+        col1, col2 = st.columns(2)
+        with col1:
+            buffer = io.StringIO()
+            buffer.write(recommendation if isinstance(recommendation, str) else "")
+            st.download_button(
+                label="📥 Download Markdown",
+                data=buffer.getvalue(),
+                file_name=f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.md",
+                mime="text/markdown"
+            )
+        with col2:
+            pdf_buffer = generate_pdf_report(recommendation if isinstance(recommendation, str) else "", stock_name, "Consolidated Recommendation")
+            st.download_button(
+                label="📥 Download PDF",
+                data=pdf_buffer,
+                file_name=f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.pdf",
                 mime="application/pdf"
             )
         st.markdown("</div></div>", unsafe_allow_html=True)
