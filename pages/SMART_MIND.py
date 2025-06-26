@@ -49,11 +49,19 @@ if st.button("🚀 Analyze Pattern"):
         df["Prev_Date"] = df["Date"].apply(lambda d: (d - BDay(1)).date())
 
         if comparison != "All":
-            col_name = comparison
-            df[f"{col_name}_Change_vs_Yest"] = df[col_name] - df[f"Prev {col_name}"]
+    col_name = comparison
+    prev_col = f"Prev {col_name}"
+    if col_name in df.columns and prev_col in df.columns:
+        df[f"{col_name}_Change_vs_Yest"] = df[col_name] - df[prev_col]
+    else:
+        st.warning(f"Column {col_name} or {prev_col} not found in data.")
+else:
+    for col in ["Open", "High", "Low", "Close", "Volume"]:
+        prev_col = f"Prev {col}"
+        if col in df.columns and prev_col in df.columns:
+            df[f"{col}_Change_vs_Yest"] = df[col] - df[prev_col]
         else:
-            for col in ["Open", "High", "Low", "Close", "Volume"]:
-                df[f"{col}_Change_vs_Yest"] = df[col] - df[f"Prev {col}"]
+            st.warning(f"Skipping {col}: column or previous column missing.")
 
         st.success(f"Showing pattern analysis for {symbol.upper()} from {start_date} to {end_date}")
         st.dataframe(df.tail(25), use_container_width=True)
