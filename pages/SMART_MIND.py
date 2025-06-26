@@ -27,7 +27,6 @@ comparison = st.radio(
 # --- On Submit ---
 if st.button("🚀 Analyze Pattern"):
 
-    # Download Data
     try:
         df = yf.download(symbol, start=start_date, end=end_date)
     except Exception as e:
@@ -35,41 +34,39 @@ if st.button("🚀 Analyze Pattern"):
         st.stop()
 
     if df.empty:
-        st.warning("No data found. Check the symbol or date range.")
+        st.warning("No data found. Please check the symbol or date range.")
         st.stop()
 
-    # Clean & Prepare
+    # Reset, sort, and clean column names
     df = df.reset_index()
+    df.columns = [col.strip().replace(" ", "_") for col in df.columns]
     df["Date"] = pd.to_datetime(df["Date"])
     df.sort_values("Date", inplace=True)
 
-    # Create previous day columns
-    df["Prev_Open"] = df["Open"].shift(1)
-    df["Prev_High"] = df["High"].shift(1)
-    df["Prev_Low"] = df["Low"].shift(1)
-    df["Prev_Close"] = df["Close"].shift(1)
-    df["Prev_Volume"] = df["Volume"].shift(1)
+    # Lagged values
+    for col in ["Open", "High", "Low", "Close", "Volume"]:
+        df[f"Prev_{col}"] = df[col].shift(1)
 
-    # Recovery detection
     df["Low_Diff"] = df["Open"] - df["Low"]
     df["Recovered"] = np.where(df["Close"] >= df["Open"], "Yes", "No")
 
-    # Metric Comparison
-    metric_list = ["Open", "High", "Low", "Close", "Volume"] if comparison == "All" else [comparison]
+    selected_metrics = ["Open", "High", "Low", "Close", "Volume"] if comparison == "All" else [comparison]
 
-    for metric in metric_list:
-        prev_col = f"Prev_{metric}"
-        if metric in df.columns and prev_col in df.columns:
-            try:
-                df[f"{metric}_Change_vs_Yest"] = df[metric] - df[prev_col]
-            except Exception as e:
-                st.warning(f"Couldn't compute difference for {metric}: {e}")
+    for metric in selected_metrics:
+        curr = df.get(metric)
+        prev = df.get(f"Prev_{metric}")
+        if curr is not None and prev is not None:
+            diff_series = curr - prev
+            df[f"{metric}_Change_vs_Yest"] = diff_series
         else:
-            st.warning(f"Missing data for {metric}. Skipping.")
+            st.warning(f"Skipping {metric}: missing data.")
 
-    # Show Results
-    st.success(f"📈 Analysis complete for {symbol.upper()} from {start_date} to {end_date}")
+    st.success(f"✅ Analysis complete for {symbol.upper()} from {start_date} to {end_date}")
     st.dataframe(df.tail(25), use_container_width=True)
 
-    st.subheader("📉 Price Trend Overview")
-    st.line_chart(df.set_index("Date")[["Open", "High", "Low", "Close"]])
+    st.subheader("📈 Price Trend")
+    chart_cols = [col for col in ["Open", "High", "Low", "Close"] if col in df.columns]
+    try:
+        st.line_chart(df.set_index("Date")[chart_cols])
+    except Exception as chart_error:
+        st.warning(f"Chart error: {chart_error}")
