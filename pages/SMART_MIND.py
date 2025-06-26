@@ -41,7 +41,6 @@ if st.button("🚀 Analyze Pattern"):
     
     # Handle MultiIndex columns
     if isinstance(df.columns, pd.MultiIndex):
-        # Extract the first level of the MultiIndex and map to clean names
         column_mapping = {
             ('Date', ''): 'Date',
             ('Open', symbol): 'Open',
@@ -49,11 +48,10 @@ if st.button("🚀 Analyze Pattern"):
             ('Low', symbol): 'Low',
             ('Close', symbol): 'Close',
             ('Volume', symbol): 'Volume',
-            ('Adj Close', symbol): 'Adj_Close'  # Handle Adj Close if present
+            ('Adj Close', symbol): 'Adj_Close'
         }
         df.columns = [column_mapping.get(col, col[0]) for col in df.columns]
     else:
-        # Clean column names for single-level index
         df.columns = [str(col).strip().replace(" ", "_") for col in df.columns]
 
     # Verify if 'Date' column exists
@@ -76,8 +74,11 @@ if st.button("🚀 Analyze Pattern"):
     if all(col in df.columns for col in ["Open", "Low", "Close"]):
         df["Low_Diff"] = df["Open"] - df["Low"]
         df["Recovered"] = np.where(df["Close"] >= df["Open"], "Yes", "No")
+        # --- Profit Analysis: Buy at Low, Sell at Close ---
+        df["Profit_Low_to_Close"] = df["Close"] - df["Low"]
+        df["Profit_Percent"] = (df["Profit_Low_to_Close"] / df["Low"]) * 100
     else:
-        st.warning("Required columns for recovery pattern (Open, Low, Close) not found.")
+        st.warning("Required columns for recovery pattern and profit analysis (Open, Low, Close) not found.")
 
     # --- Metric Comparisons ---
     selected_metrics = ["Open", "High", "Low", "Close", "Volume"] if comparison == "All" else [comparison]
@@ -95,6 +96,23 @@ if st.button("🚀 Analyze Pattern"):
     st.success(f"✅ Analysis complete for {symbol.upper()} from {start_date} to {end_date}")
     st.subheader("📋 Recent Pattern Data")
     st.dataframe(df.tail(25), use_container_width=True)
+
+    # --- Profit Analysis Summary ---
+    if "Profit_Low_to_Close" in df.columns:
+        st.subheader("💰 Profit Analysis (Buy at Low, Sell at Close)")
+        profitable_days = len(df[df["Profit_Low_to_Close"] > 0])
+        total_days = len(df)
+        avg_profit = df["Profit_Low_to_Close"].mean()
+        avg_profit_percent = df["Profit_Percent"].mean()
+        total_profit = df["Profit_Low_to_Close"].sum()
+
+        st.write(f"**Profitable Days**: {profitable_days} out of {total_days} ({(profitable_days/total_days)*100:.2f}%)")
+        st.write(f"**Average Profit per Day**: ${avg_profit:.2f} ({avg_profit_percent:.2f}%)")
+        st.write(f"**Total Profit Over Period**: ${total_profit:.2f}")
+        
+        # Plot profit over time
+        st.subheader("📈 Profit Trend (Low to Close)")
+        st.line_chart(df.set_index("Date")["Profit_Low_to_Close"])
 
     # --- Price Trend Chart ---
     st.subheader("📈 Price Trend Chart")
