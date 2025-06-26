@@ -313,7 +313,7 @@ if data_source is not None:
     )
 
     # Report selection
-    st.markdown("<div class='report-container'>", unsafe_html=True)
+    st.markdown("<div class='report-container'>", unsafe_allow_html=True)
     report_type = st.selectbox("Select Report Type", ["Quick Scan", "Moderate Detail", "In-Depth Analysis", "Visual Summary", "Interactive Dashboard"])
 
     # Display report
@@ -376,7 +376,7 @@ if data_source is not None:
             fig.update_layout(title='Price with Bollinger Bands (Last 30 Days)', xaxis_title='Date', yaxis_title='Price')
             st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("</div>", unsafe_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # Download reports
     report_content = quick_scan if report_type == "Quick Scan" else moderate_detail if report_type == "Moderate Detail" else in_depth
