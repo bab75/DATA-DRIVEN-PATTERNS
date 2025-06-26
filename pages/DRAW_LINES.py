@@ -621,6 +621,8 @@ def add_candlestick_trace(fig, df, row):
         risk = latest_buy['close'] - latest_buy['stop_loss']
         reward = latest_buy['take_profit'] - latest_buy['close']
         rr_ratio = reward / risk if risk > 0 else 'N/A'
+        # Format rr_ratio for hovertext
+        rr_ratio_text = f"{rr_ratio:.2f}" if isinstance(rr_ratio, float) else str(rr_ratio)
         fig.add_trace(go.Scatter(
             x=[df['date'].min(), df['date'].max()], 
             y=[latest_buy['stop_loss'], latest_buy['stop_loss']],
@@ -637,13 +639,21 @@ def add_candlestick_trace(fig, df, row):
             mode='lines', 
             line=dict(color="#4CAF50", dash='dash', width=2),
             name="Take-Profit",
-            hovertext=[f"Take-Profit: ${latest_buy['take_profit']:.2f}<br>Reward: ${reward:.2f}<br>Risk-Reward Ratio: {rr_ratio:.2f if isinstance(rr_ratio, float) else str(rr_ratio)}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in range(2)],
+            hovertext=[f"Take-Profit: ${latest_buy['take_profit']:.2f}<br>Reward: ${reward:.2f}<br>Risk-Reward Ratio: {rr_ratio_text}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in range(2)],
             hoverinfo='text+name',
             showlegend=True
         ), row=row, col=1)
-        fig.add_trace(go.Scatter(x=[latest_buy['date'], latest_buy['date']], y=[latest_buy['stop_loss'], latest_buy['take_profit']],
-                                 mode='lines', line=dict(color='rgba(76,175,80,0.2)'), fill='toself', fillcolor='rgba(76,175,80,0.2)',
-                                 hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"], hoverinfo='text+name', showlegend=False), row=row, col=1)
+        fig.add_trace(go.Scatter(
+            x=[latest_buy['date'], latest_buy['date']], 
+            y=[latest_buy['stop_loss'], latest_buy['take_profit']],
+            mode='lines', 
+            line=dict(color='rgba(76,175,80,0.2)'), 
+            fill='toself', 
+            fillcolor='rgba(76,175,80,0.2)',
+            hovertext=[f"Risk-Reward Ratio: {rr_ratio_text}"], 
+            hoverinfo='text+name', 
+            showlegend=False
+        ), row=row, col=1)
 
 def add_rsi_trace(fig, df, row):
    # fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"),
