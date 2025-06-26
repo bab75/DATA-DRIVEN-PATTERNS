@@ -684,16 +684,17 @@ def add_win_loss_trace(fig, df, row):
 
 def consolidate_yaxis_layout(fig):
     layout_updates = {}
-    for i, subplot in enumerate(subplot_order, 1):
-        if subplot == "RSI":
-            layout_updates[f'yaxis{i}'] = dict(
-                range=[0, 100],
-                title="RSI"
-            )
-            break
+    candlestick_row = next(i for i, s in enumerate(subplot_order, 1) if s == "Candlestick")
+    
+    if "RSI" in show_indicators:
+        layout_updates[f'yaxis{candlestick_row + 12}'] = dict(
+            overlaying=f'y{candlestick_row}',
+            side='right',
+            range=[0, 100],
+            title="RSI"
+        )
     
     if "Stochastic" in show_indicators:
-        candlestick_row = next(i for i, s in enumerate(subplot_order, 1) if s == "Candlestick")
         layout_updates[f'yaxis{candlestick_row + 10}'] = dict(
             overlaying=f'y{candlestick_row}',
             side='right',
@@ -702,7 +703,6 @@ def consolidate_yaxis_layout(fig):
         )
     
     if "RVOL" in show_indicators:
-        candlestick_row = next(i for i, s in enumerate(subplot_order, 1) if s == "Candlestick")
         layout_updates[f'yaxis{candlestick_row + 11}'] = dict(
             overlaying=f'y{candlestick_row}',
             side='right',
