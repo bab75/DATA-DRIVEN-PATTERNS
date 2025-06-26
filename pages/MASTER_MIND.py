@@ -383,16 +383,64 @@ if data_source is not None:
         st.markdown("<div class='report-container'>", unsafe_allow_html=True)
         st.markdown(quick_scan)
         st.markdown("</div>", unsafe_allow_html=True)
+        # Download buttons for Quick Scan
+        buffer = io.StringIO()
+        buffer.write(quick_scan)
+        st.download_button(
+            label="📥 Download Markdown Report",
+            data=buffer.getvalue(),
+            file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.md",
+            mime="text/markdown"
+        )
+        pdf_buffer = generate_pdf_report(quick_scan, stock_name, "Quick Scan")
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
 
     with tabs[1]:
         st.markdown("<div class='report-container'>", unsafe_allow_html=True)
         st.markdown(moderate_detail)
         st.markdown("</div>", unsafe_allow_html=True)
+        # Download buttons for Moderate Detail
+        buffer = io.StringIO()
+        buffer.write(moderate_detail)
+        st.download_button(
+            label="📥 Download Markdown Report",
+            data=buffer.getvalue(),
+            file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.md",
+            mime="text/markdown"
+        )
+        pdf_buffer = generate_pdf_report(moderate_detail, stock_name, "Moderate Detail")
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
 
     with tabs[2]:
         st.markdown("<div class='report-container'>", unsafe_allow_html=True)
         st.markdown(in_depth)
         st.markdown("</div>", unsafe_allow_html=True)
+        # Download buttons for In-Depth Analysis
+        buffer = io.StringIO()
+        buffer.write(in_depth)
+        st.download_button(
+            label="📥 Download Markdown Report",
+            data=buffer.getvalue(),
+            file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.md",
+            mime="text/markdown"
+        )
+        pdf_buffer = generate_pdf_report(in_depth, stock_name, "In-Depth Analysis")
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
 
     with tabs[3]:
         st.markdown("<div class='report-container'>", unsafe_allow_html=True)
@@ -419,6 +467,23 @@ if data_source is not None:
         st.markdown(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}")
         st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})")
         st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}")
+        # Download buttons for Visual Summary
+        visual_summary = f"### Visual Summary: {stock_name} ({date_str})\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})\n- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}"
+        buffer = io.StringIO()
+        buffer.write(visual_summary)
+        st.download_button(
+            label="📥 Download Markdown Report",
+            data=buffer.getvalue(),
+            file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.md",
+            mime="text/markdown"
+        )
+        pdf_buffer = generate_pdf_report(visual_summary, stock_name, "Visual Summary")
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
 
     with tabs[4]:
         st.markdown("<div class='report-container'>", unsafe_allow_html=True)
@@ -461,24 +526,23 @@ if data_source is not None:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("⚠️ Candlestick chart unavailable with real-time data only. Upload a CSV/XLSX.")
-
-    # Download reports
-    report_content = quick_scan if st.session_state.selected_tab == "Quick Scan" else moderate_detail if st.session_state.selected_tab == "Moderate Detail" else in_depth
-    buffer = io.StringIO()
-    buffer.write(report_content)
-    st.download_button(
-        label="📥 Download Markdown Report",
-        data=buffer.getvalue(),
-        file_name=f"{stock_name}_{st.session_state.selected_tab.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.md",
-        mime="text/markdown"
-    )
-    pdf_buffer = generate_pdf_report(report_content, stock_name, st.session_state.selected_tab)
-    st.download_button(
-        label="📥 Download PDF Report",
-        data=pdf_buffer,
-        file_name=f"{stock_name}_{st.session_state.selected_tab.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf",
-        mime="application/pdf"
-    )
+        # Download buttons for Interactive Dashboard
+        interactive_dashboard = f"### Interactive Dashboard: {stock_name}\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f}\n- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})\n- **Stochastic %K**: {stoch_k_value:.2f}\n- **ADX**: {adx_value:.2f}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}\n- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}"
+        buffer = io.StringIO()
+        buffer.write(interactive_dashboard)
+        st.download_button(
+            label="📥 Download Markdown Report",
+            data=buffer.getvalue(),
+            file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.md",
+            mime="text/markdown"
+        )
+        pdf_buffer = generate_pdf_report(interactive_dashboard, stock_name, "Interactive Dashboard")
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
 
     if data_source is not None:
         export_df = data_source.copy()
