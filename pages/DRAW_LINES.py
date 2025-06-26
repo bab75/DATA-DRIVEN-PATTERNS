@@ -814,10 +814,10 @@ if st.session_state.get('secondary_file') and not st.session_state.pl_df.empty:
     try:
         pl_cum_return = (1 + st.session_state.pl_df['Profit/Loss (Percentage)'] / 100).cumprod() - 1
         fig_bench = go.Figure()
-        fig_bench.add_trace(go.Scatter(x=st.session_state.aapl_df['date'], y=st.session_state.aapl_df['cumulative_return'], name=st.session_state['symbol'], line=dict(color="#0288d1"),
-                                                                                   hovertext=[f"{st.session_state.symbol} Return: {x:.2%}" for x in st.session_state.aapl_df['cumulative_return']], hoverinfo='text+x'))
-        fig_bench.add_trace(go.Scatter(x=st.session_state.pl_df['End Date'], y=df_cum_return, name="Benchmark", line=dict(color="#ff9800"),
-                                                                                   hovertext=[f"Benchmark Return: {x:.4f}" for x in pl_cum_return], hoverinfo='text+x'))
+        fig_bench.add_trace(go.Scatter(x=st.session_state.aapl_df['date'], y=st.session_state.aapl_df['cumulative_return'], name=st.session_state.symbol, line=dict(color="#0288d1"),
+                                       hovertext=[f"{st.session_state.symbol} Return: {x:.2%}" for x in st.session_state.aapl_df['cumulative_return']], hoverinfo='text+x'))
+        fig_bench.add_trace(go.Scatter(x=st.session_state.pl_df['End Date'], y=pl_cum_return, name="Benchmark", line=dict(color="#ff9800"),
+                                       hovertext=[f"Benchmark Return: {x:.4f}" for x in pl_cum_return], hoverinfo='text+x'))
         fig_bench.update_layout(title=f"{st.session_state.symbol} vs. Benchmark Cumulative Returns (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})", height=400, template="plotly_white",
                                 hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"), xaxis_tickformat="%m-%d-%Y")
         st.plotly_chart(fig_bench, use_container_width=True)
