@@ -331,7 +331,7 @@ if data_source is not None:
             fig.add_scatter(x=df['Date'], y=df.get('SMA_50', df['Close']), name='SMA50', line=dict(color='green'))
         st.plotly_chart(fig, use_container_width=True)
 
-System: * Today's date and time is 04:20 PM EDT on Thursday, June 26, 2025.
+   #System: * Today's date and time is 04:20 PM EDT on Thursday, June 26, 2025.
 
 The error message suggests a `TypeError` in the Streamlit app, likely related to the `st.markdown` call with the CSS styling, possibly due to an environmental issue or Streamlit version incompatibility with `unsafe_html=True`. Since the full traceback is redacted, I’ll assume the issue is with the HTML/CSS injection or a related configuration problem. The simplified CSS in the previous code should mitigate this, but I’ll further refine the app to ensure compatibility, remove sentiment analysis as requested, and maintain PDF generation using `reportlab`. All features (real-time `yfinance` data, manual fundamental inputs, CSV upload, stock price display, and robust analysis) will be preserved, with enhancements like ADX and historical trend analysis.
 
