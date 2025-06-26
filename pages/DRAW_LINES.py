@@ -577,8 +577,8 @@ def add_candlestick_trace(fig, df, row):
     buy_signals = df[df['buy_signal'] == True]
     for _, signal_row in buy_signals.iterrows():
         fig.add_annotation(x=signal_row['date'], y=signal_row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=row, col=1)
-    if not buy_signals.empty:
-        latest_buy = buy_signals.iloc[-1]  # Indented with 4 spaces
+    if not buy_signals.empty:  # Line 638
+        latest_buy = buy_signals.iloc[-1]  # Line 639: Indented with 4 spaces
         risk = latest_buy['close'] - latest_buy['stop_loss']
         reward = latest_buy['take_profit'] - latest_buy['close']
         rr_ratio = reward / risk if risk > 0 else 'N/A'
