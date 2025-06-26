@@ -15,7 +15,7 @@ from reportlab.lib import colors
 st.set_page_config(page_title="Stock Technical Analysis", layout="wide", page_icon="📈")
 st.markdown("""
     <style>
-    body {background-color: #f5f5f5;}
+    .main {background-color: #f5f5f5;}
     .stButton>button {background-color: #1e3a8a; color: white; border-radius: 8px;}
     .stSelectbox, .stTextInput, .stNumberInput {background-color: #e5e7eb; border-radius: 8px;}
     .report-container {background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);}
