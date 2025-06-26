@@ -1282,7 +1282,7 @@ with st.expander("📚 Help: How the Analysis Works"):
     - **Consolidation Detection**: Identifies periods where the stock price is moving sideways with low volatility, indicating a potential buildup before a breakout. Calculated by checking if ATR is less than 80% of its 20-day mean and ADX < 20.
 
     #### 13. Latest Trade Setup Display
-      A buy signal is triggered when the close price exceeds the previous day’s 20-day high, with sufficient volume, RSI in a neutral range, MACD above the signal line, and Stochastic %K above %D.
+    - **A buy signal is triggered when the close price exceeds the previous day’s 20-day high, with sufficient volume, RSI in a neutral range, MACD above the signal line, and Stochastic %K above %D.
     - **Stop-loss and take-profit are calculated using ATR for a 2:1 reward-to-risk ratio.
     - **Latest Trade Setup Display:The latest_buy variable (in both add_candlestick_trace and the main script) selects the most recent buy signal.
     - **The add_candlestick_trace function plots horizontal stop-loss and take-profit lines for the latest buy signal.
