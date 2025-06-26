@@ -13,15 +13,20 @@ from reportlab.lib import colors
 
 # Streamlit app configuration
 st.set_page_config(page_title="Stock Technical Analysis", layout="wide", page_icon="📈")
-st.markdown("""
-    <style>
-    .main {background-color: #f5f5f5;}
-    .stButton>button {background-color: #1e3a8a; color: white; border-radius: 8px;}
-    .stSelectbox, .stTextInput, .stNumberInput {background-color: #e5e7eb; border-radius: 8px;}
-    .report-container {background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);}
-    h1, h2, h3 {color: #374151; font-family: Arial, sans-serif;}
-    </style>
-""", unsafe_html=True)
+# Simplified CSS with unsafe_allow_html
+try:
+    st.markdown("""
+        <style>
+        body {background-color: #f5f5f5;}
+        .stButton>button {background-color: #1e3a8a; color: white; border-radius: 8px;}
+        .stSelectbox, .stTextInput, .stNumberInput {background-color: #e5e7eb; border-radius: 8px;}
+        .report-container {background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);}
+        h1, h2, h3 {color: #374151; font-family: Arial, sans-serif;}
+        </style>
+    """, unsafe_allow_html=True)
+except TypeError:
+    # Fallback for newer Streamlit versions without CSS
+    st.markdown("<!-- Custom CSS not applied due to Streamlit version incompatibility -->")
 
 # Initialize session state
 if 'real_time_data' not in st.session_state:
