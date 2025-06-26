@@ -26,7 +26,6 @@ comparison = st.radio(
 
 # --- Analyze Button ---
 if st.button("🚀 Analyze Pattern"):
-
     try:
         df = yf.download(symbol, start=start_date, end=end_date)
     except Exception as e:
@@ -49,7 +48,8 @@ if st.button("🚀 Analyze Pattern"):
             ('High', symbol): 'High',
             ('Low', symbol): 'Low',
             ('Close', symbol): 'Close',
-            ('Volume', symbol): 'Volume'
+            ('Volume', symbol): 'Volume',
+            ('Adj Close', symbol): 'Adj_Close'  # Handle Adj Close if present
         }
         df.columns = [column_mapping.get(col, col[0]) for col in df.columns]
     else:
@@ -73,7 +73,7 @@ if st.button("🚀 Analyze Pattern"):
             st.warning(f"Column {col} not found in the data.")
 
     # --- Recovery Pattern Flag ---
-    if "Open" in df.columns and "Low" in df.columns and "Close" in df.columns.:
+    if all(col in df.columns for col in ["Open", "Low", "Close"]):
         df["Low_Diff"] = df["Open"] - df["Low"]
         df["Recovered"] = np.where(df["Close"] >= df["Open"], "Yes", "No")
     else:
