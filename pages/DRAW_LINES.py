@@ -573,29 +573,48 @@ fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical
                     subplot_titles=subplot_titles, row_heights=row_heights)
 
 def add_candlestick_trace(fig, df, row):
-    if not pd.api.types.is_datetime64_any_dtype(df['date']):
-        df['date'] = pd.to_datetime(df['date'], errors='coerce', format='%m-%d-%Y')
-    df['date'] = df['date'].fillna(pd.NaT)
-
-    hover_texts = [
-        "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}<br><b style='color:#006400'>Buy Signal: {buy_signal}</b>".format(
-            date=getattr(r, 'date').strftime('%m-%d-%Y') if pd.notna(getattr(r, 'date')) else 'N/A',
-            month=getattr(r, 'date').strftime('%B') if pd.notna(getattr(r, 'date')) else 'N/A',
-            open=getattr(r, 'open'), high=getattr(r, 'high'), low=getattr(r, 'low'),
-            close=getattr(r, 'close'), volume=getattr(r, 'volume'), rsi=getattr(r, 'rsi'), rvol=getattr(r, 'rvol'),
-            buy_signal='Yes' if getattr(r, 'buy_signal') else 'No'
-        )
-        for r in df.itertuples()
-    ]
-    fig.add_trace(go.Candlestick(
-        x=df['date'],
-        open=df['open'], high=df['high'], low=df['low'], close=df['close'],
-        name="Candlestick",
-        increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
-        hovertext=hover_texts,
-        hoverinfo='text+name',
-        customdata=df.index
-    ), row=row, col=1)
+    # ... (previous code for candlestick, Bollinger Bands, etc.) ...
+    buy_signals = df[df['buy_signal'] == True]
+    for _, signal_row in buy_signals.iterrows():
+        fig.add_annotation(x=signal_row['date'], y=signal_row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=row, col=1)
+    if not buy_signals.empty:
+        latest_buy = buy_signals.iloc[-1]  # Indented with 4 spaces
+        risk = latest_buy['close'] - latest_buy['stop_loss']
+        reward = latest_buy['take_profit'] - latest_buy['close']
+        rr_ratio = reward / risk if risk > 0 else 'N/A'
+        rr_ratio_text = f"{rr_ratio:.2f}" if isinstance(rr_ratio, float) else str(rr_ratio)
+        fig.add_trace(go.Scatter(
+            x=[df['date'].min(), df['date'].max()], 
+            y=[latest_buy['stop_loss'], latest_buy['stop_loss']],
+            mode='lines', 
+            line=dict(color="#f44336", dash='dash', width=2),
+            name="Stop-Loss",
+            hovertext=[f"Stop-Loss: ${latest_buy['stop_loss']:.2f}<br>Risk: ${risk:.2f}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in range(2)],
+            hoverinfo='text+name',
+            showlegend=True
+        ), row=row, col=1)
+        fig.add_trace(go.Scatter(
+            x=[df['date'].min(), df['date'].max()], 
+            y=[latest_buy['take_profit'], latest_buy['take_profit']],
+            mode='lines', 
+            line=dict(color="#4CAF50", dash='dash', width=2),
+            name="Take-Profit",
+            hovertext=[f"Take-Profit: ${latest_buy['take_profit']:.2f}<br>Reward: ${reward:.2f}<br>Risk-Reward Ratio: {rr_ratio_text}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in range(2)],
+            hoverinfo='text+name',
+            showlegend=True
+        ), row=row, col=1)
+        fig.add_trace(go.Scatter(
+            x=[latest_buy['date'], latest_buy['date']], 
+            y=[latest_buy['stop_loss'], latest_buy['take_profit']],
+            mode='lines', 
+            line=dict(color='rgba(76,175,80,0.2)'), 
+            fill='toself', 
+            fillcolor='rgba(76,175,80,0.2)',
+            hovertext=[f"Risk-Reward Ratio: {rr_ratio_text}"], 
+            hoverinfo='text+name', 
+            showlegend=False
+        ), row=row, col=1)
+        
     if "Bollinger Bands" in show_indicators and 'ma20' in df.columns and 'std_dev' in df.columns:
         fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] + 2*df['std_dev'], name="Bollinger Upper", line=dict(color="#0288d1"), hoverinfo='text+name',
                                  hovertext=[f"Bollinger Upper: ${x:.2f}" for x in df['ma20'] + 2*df['std_dev']]), row=row, col=1)
