@@ -25,7 +25,6 @@ try:
         </style>
     """, unsafe_allow_html=True)
 except TypeError:
-    # Fallback for newer Streamlit versions without CSS
     st.markdown("<!-- Custom CSS not applied due to Streamlit version incompatibility -->")
 
 # Initialize session state
@@ -47,24 +46,24 @@ submit_button = st.sidebar.button("Fetch Real-Time Data")
 # Manual fundamental inputs
 st.sidebar.subheader("Manual Fundamental Data (Optional)")
 with st.sidebar.form(key="fundamental_form"):
-    eps = st.number_input("EPS", value=st.session_state.fundamental_data['EPS'], step=0.01, format="%.2f", placeholder="Enter EPS or leave blank")
-    pe = st.number_input("P/E Ratio", value=st.session_state.fundamental_data['P/E'], step=0.01, format="%.2f", placeholder="Enter P/E or leave blank")
-    peg = st.number_input("PEG Ratio", value=st.session_state.fundamental_data['PEG'], step=0.01, format="%.2f", placeholder="Enter PEG or leave blank")
-    pb = st.number_input("P/B Ratio", value=st.session_state.fundamental_data['P/B'], step=0.01, format="%.2f", placeholder="Enter P/B or leave blank")
-    roe = st.number_input("ROE (%)", value=st.session_state.fundamental_data['ROE'], step=0.01, format="%.2f", placeholder="Enter ROE or leave blank")
-    revenue = st.number_input("Revenue (in millions)", value=st.session_state.fundamental_data['Revenue'], step=0.1, format="%.1f", placeholder="Enter Revenue or leave blank")
-    debt_equity = st.number_input("Debt/Equity Ratio", value=st.session_state.fundamental_data['Debt/Equity'], step=0.01, format="%.2f", placeholder="Enter Debt/Equity or leave blank")
+    eps = st.number_input("EPS", value=float(st.session_state.fundamental_data['EPS'] or 0.0), step=0.01, format="%.2f", placeholder="Enter EPS or leave blank")
+    pe = st.number_input("P/E Ratio", value=float(st.session_state.fundamental_data['P/E'] or 0.0), step=0.01, format="%.2f", placeholder="Enter P/E or leave blank")
+    peg = st.number_input("PEG Ratio", value=float(st.session_state.fundamental_data['PEG'] or 0.0), step=0.01, format="%.2f", placeholder="Enter PEG or leave blank")
+    pb = st.number_input("P/B Ratio", value=float(st.session_state.fundamental_data['P/B'] or 0.0), step=0.01, format="%.2f", placeholder="Enter P/B or leave blank")
+    roe = st.number_input("ROE (%)", value=float(st.session_state.fundamental_data['ROE'] or 0.0), step=0.01, format="%.2f", placeholder="Enter ROE or leave blank")
+    revenue = st.number_input("Revenue (in millions)", value=float(st.session_state.fundamental_data['Revenue'] or 0.0), step=0.1, format="%.1f", placeholder="Enter Revenue or leave blank")
+    debt_equity = st.number_input("Debt/Equity Ratio", value=float(st.session_state.fundamental_data['Debt/Equity'] or 0.0), step=0.01, format="%.2f", placeholder="Enter Debt/Equity or leave blank")
     submit_fundamentals = st.form_submit_button("Update Fundamentals")
 
 if submit_fundamentals:
     st.session_state.fundamental_data = {
-        'EPS': eps if eps != 0 else None,
-        'P/E': pe if pe != 0 else None,
-        'PEG': peg if peg != 0 else None,
-        'P/B': pb if pb != 0 else None,
-        'ROE': roe if roe != 0 else None,
-        'Revenue': revenue if revenue != 0 else None,
-        'Debt/Equity': debt_equity if debt_equity != 0 else None
+        'EPS': eps if eps != 0.0 else None,
+        'P/E': pe if pe != 0.0 else None,
+        'PEG': peg if peg != 0.0 else None,
+        'P/B': pb if pb != 0.0 else None,
+        'ROE': roe if roe != 0.0 else None,
+        'Revenue': revenue if revenue != 0.0 else None,
+        'Debt/Equity': debt_equity if debt_equity != 0.0 else None
     }
 
 # Fetch real-time data with yfinance
