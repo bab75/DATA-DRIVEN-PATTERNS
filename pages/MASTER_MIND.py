@@ -148,14 +148,17 @@ def combine_dataframes(csv_df, real_time_data):
     try:
         real_time_df = pd.DataFrame([real_time_data])
         real_time_df['Date'] = pd.to_datetime(real_time_df['Date'])
-        # Ensure common columns are aligned
-        common_cols = [col for col in csv_df.columns if col in real_time_df.columns]
-        combined_df = pd.concat([csv_df[common_cols], real_time_df[common_cols]], ignore_index=True)
+        # Define required columns
+        required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
+        # Align columns and fill missing with 0
+        combined_df = pd.concat([csv_df[required_columns], real_time_df[required_columns]], ignore_index=True, sort=False)
+        combined_df = combined_df.fillna(0)  # Fill NaN with 0 for missing columns
         combined_df = combined_df.sort_values('Date').drop_duplicates(subset=['Date'], keep='last')
         for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
             if col in real_time_df.columns:
                 combined_df[col].iloc[-1] = real_time_df[col].iloc[0]
         st.write("Debug: Combined DataFrame:", combined_df.head())  # Debug output
+        st.write("Debug: Combined Columns:", combined_df.columns.tolist())  # Debug column list
         return combined_df if not combined_df.empty else None
     except Exception as e:
         st.error(f"❌ Combine error: {str(e)}")
@@ -222,7 +225,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     prev = data_source.iloc[-2] if len(data_source) > 1 else latest
 
     price = latest['Close']
-    volatility = latest.get('Volatility', data_source['Volatility'].mean() if not is_real_time_only and len(data_source) > 1 else 0)
+    volatility = latest.get('Volatility', 0) if is_real_time_only or len(data_source) <= 1 else data_source['Volatility'].mean()
     rsi = latest.get('RSI', 50) if not is_real_time_only and len(data_source) > 1 else 50
     macd = latest.get('MACD', 0) if not is_real_time_only and len(data_source) > 1 else 0
     macd_signal = latest.get('MACD_Signal', 0) if not is_real_time_only and len(data_source) > 1 else 0
@@ -230,8 +233,8 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     bb_upper = latest.get('BB_Upper', price * 1.05) if not is_real_time_only and len(data_source) > 1 else price * 1.05
     bb_middle = latest.get('BB_Middle', price) if not is_real_time_only and len(data_source) > 1 else price
     bb_lower = latest.get('BB_Lower', price * 0.95) if not is_real_time_only and len(data_source) > 1 else price * 0.95
-    bb_width = latest.get('BB_Width', data_source['BB_Width'].mean() if not is_real_time_only and len(data_source) > 1 else 0)
-    bb_position = latest.get('BB_Position', data_source['BB_Position'].mean() if not is_real_time_only and len(data_source) > 1 else 0)
+    bb_width = latest.get('BB_Width', 0) if is_real_time_only or len(data_source) <= 1 else data_source['BB_Width'].mean()
+    bb_position = latest.get('BB_Position', 0) if is_real_time_only or len(data_source) <= 1 else data_source['BB_Position'].mean()
     sma_20 = latest.get('SMA_20', price) if not is_real_time_only and len(data_source) > 1 else price
     ema_20 = latest.get('EMA_20', price) if not is_real_time_only and len(data_source) > 1 else price
     sma_50 = latest.get('SMA_50', price) if not is_real_time_only and len(data_source) > 1 else price
@@ -251,7 +254,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     cci = latest.get('CCI', 0) if not is_real_time_only and len(data_source) > 1 else 0
     momentum = latest.get('Momentum', 0) if not is_real_time_only and len(data_source) > 1 else 0
     roc = latest.get('ROC', 0) if not is_real_time_only and len(data_source) > 1 else 0
-    atr = latest.get('ATR', data_source['ATR'].mean() if not is_real_time_only and len(data_source) > 1 else 0)
+    atr = latest.get('ATR', 0) if is_real_time_only or len(data_source) <= 1 else data_source['ATR'].mean()
     keltner_upper = latest.get('Keltner_Upper', price * 1.05) if not is_real_time_only and len(data_source) > 1 else price * 1.05
     keltner_lower = latest.get('Keltner_Lower', price * 0.95) if not is_real_time_only and len(data_source) > 1 else price * 0.95
     obv = latest.get('OBV', latest['Volume']) if not is_real_time_only and len(data_source) > 1 else latest['Volume']
@@ -423,16 +426,23 @@ st.write("Debug: data_source:", data_source)  # Debug output
 
 # Analyze data
 if data_source is not None and isinstance(data_source, pd.DataFrame) and not data_source.empty:
-    quick_scan, moderate_detail, in_depth, stock_name, df, is_real_time_only, adx_value = analyze_stock_data(data_source, None if process_file_button or submit_button else st.session_state.real_time_data, st.session_state.fundamental_data)
-    st.session_state.analysis_data = {
-        'quick_scan': quick_scan,
-        'moderate_detail': moderate_detail,
-        'in_depth': in_depth,
-        'stock_name': stock_name,
-        'df': df,
-        'is_real_time_only': is_real_time_only,
-        'adx_value': adx_value
-    }
+    # Validate required columns
+    required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
+    missing_cols = [col for col in required_columns if col not in data_source.columns]
+    if missing_cols:
+        st.error(f"❌ Missing required columns in data_source: {', '.join(missing_cols)}")
+        st.session_state.analysis_data = None
+    else:
+        quick_scan, moderate_detail, in_depth, stock_name, df, is_real_time_only, adx_value = analyze_stock_data(data_source, None if process_file_button or submit_button else st.session_state.real_time_data, st.session_state.fundamental_data)
+        st.session_state.analysis_data = {
+            'quick_scan': quick_scan,
+            'moderate_detail': moderate_detail,
+            'in_depth': in_depth,
+            'stock_name': stock_name,
+            'df': df,
+            'is_real_time_only': is_real_time_only,
+            'adx_value': adx_value
+        }
 else:
     st.session_state.analysis_data = None
 
@@ -452,7 +462,7 @@ if st.session_state.analysis_data is not None:
 
         with tabs[0]:
             st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-            st.markdown(f"<h2>Quick Scan: {stock_name}</h2>")
+            st.markdown(f"### Quick Scan: {stock_name}")  # Use Markdown header
             st.markdown(quick_scan.replace('### Quick Scan:', '').strip())  # Strip header
             col1, col2 = st.columns(2)
             with col1:
@@ -466,7 +476,7 @@ if st.session_state.analysis_data is not None:
 
         with tabs[1]:
             st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-            st.markdown(f"<h2>Moderate Detail: {stock_name}</h2>")
+            st.markdown(f"### Moderate Detail: {stock_name}")  # Use Markdown header
             st.markdown(moderate_detail.replace('### Moderate Detail:', '').strip())  # Strip header
             col1, col2 = st.columns(2)
             with col1:
@@ -480,7 +490,7 @@ if st.session_state.analysis_data is not None:
 
         with tabs[2]:
             st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-            st.markdown(f"<h2>In-Depth Analysis: {stock_name}</h2>")
+            st.markdown(f"### In-Depth Analysis: {stock_name}")  # Use Markdown header
             st.markdown(in_depth.replace('### In-Depth Analysis:', '').strip())  # Strip header
             col1, col2 = st.columns(2)
             with col1:
@@ -495,7 +505,7 @@ if st.session_state.analysis_data is not None:
         with tabs[3]:
             st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
             date_str = df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else datetime.now().strftime('%Y-%m-%d')
-            st.markdown(f"<h2>Visual Summary: {stock_name} ({date_str})</h2>")
+            st.markdown(f"### Visual Summary: {stock_name} ({date_str})")  # Use Markdown header
             st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}")
             st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df['SMA_20'].iloc[-1] else 'Bullish'}")
             if not is_real_time_only and len(df) > 1:
@@ -522,7 +532,7 @@ if st.session_state.analysis_data is not None:
 
         with tabs[4]:
             st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-            st.markdown(f"<h2>Interactive Dashboard: {stock_name}</h2>")
+            st.markdown(f"### Interactive Dashboard: {stock_name}")  # Use Markdown header
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("#### 📏 Technical Indicators")
@@ -562,7 +572,7 @@ if st.session_state.analysis_data is not None:
 
         with tabs[5]:
             st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-            st.markdown(f"<h2>Consolidated Recommendation: {stock_name}</h2>")
+            st.markdown(f"### Consolidated Recommendation: {stock_name}")  # Use Markdown header
             date_str = df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else datetime.now().strftime('%Y-%m-%d')
             recommendation = generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, stock_name, date_str)
             st.markdown(recommendation.replace('### Consolidated Recommendation:', '').strip())  # Strip header
