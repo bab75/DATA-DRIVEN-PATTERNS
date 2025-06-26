@@ -603,10 +603,39 @@ if 'alerts' not in st.session_state or submit:
     st.session_state.alerts = get_alerts(st.session_state.aapl_df)
 
 # Plotly candlestick chart with customizable subplots
-subplot_titles = [s for s in subplot_order]
-row_heights = [0.35 if s == "Candlestick" else 0.15 if s == "Win/Loss Distribution" else 0.1 for s in subplot_order]
-fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical_spacing=0.05,
-                    subplot_titles=subplot_titles, row_heights=row_heights)
+# Plotly candlestick chart with customizable subplots
+if not subplot_order:
+    st.warning("Please select at least one subplot in 'Customize Subplot Order' to display the chart.")
+else:
+    subplot_titles = [s for s in subplot_order]
+    row_heights = [0.35 if s == "Candlestick" else 0.15 if s == "Win/Loss Distribution" else 0.1 for s in subplot_order]
+    fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical_spacing=0.05,
+                        subplot_titles=subplot_titles, row_heights=row_heights)
+
+    for i, subplot in enumerate(subplot_order, 1):
+        if subplot == "Candlestick":
+            add_candlestick_trace(fig, st.session_state.aapl_df, i)
+        elif subplot == "RSI":
+            add_rsi_trace(fig, st.session_state.aapl_df, i)
+        elif subplot == "MACD & Stochastic":
+            add_macd_stochastic_trace(fig, st.session_state.aapl_df, i)
+        elif subplot == "ADX & Volatility":
+            add_adx_volatility_trace(fig, st.session_state.aapl_df, i)
+        elif subplot == "Volume":
+            add_volume_trace(fig, st.session_state.aapl_df, i)
+        elif subplot == "Win/Loss Distribution":
+            add_win_loss_trace(fig, st.session_state.aapl_df, i)
+
+    fig.update_layout(height=200 * len(subplot_order), showlegend=True, template="plotly_white",
+                      title_text=f"{st.session_state.symbol} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
+                      hovermode="x unified", font=dict(family="Arial", size=12, color="#000000"))
+    fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", row=len(subplot_order), col=1)
+
+    for trace in fig.data:
+        if trace.name == "Candlestick":
+            trace.on_click(on_click)
+
+    st.plotly_chart(fig, use_container_width=True)
 
 def add_candlestick_trace(fig, df, row):
     if not pd.api.types.is_datetime64_any_dtype(df['date']):
