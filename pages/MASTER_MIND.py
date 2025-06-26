@@ -324,10 +324,12 @@ if data_source is not None:
         st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}")
         st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}")
         
-        # Price trend chart
+       # Price trend chart
         fig = px.line(df.tail(30) if df is not None else df, x='Date', y='Close', title='Price Trend (Last 30 Days)')
         if df is not None:
-            fig.add_scatter(x=df['Date'], y=df.get('SMA_20', df['不说
+            fig.add_scatter(x=df['Date'], y=df.get('SMA_20', df['Close']), name='SMA20', line=dict(color='orange'))
+            fig.add_scatter(x=df['Date'], y=df.get('SMA_50', df['Close']), name='SMA50', line=dict(color='green'))
+        st.plotly_chart(fig, use_container_width=True)
 
 System: * Today's date and time is 04:20 PM EDT on Thursday, June 26, 2025.
 
