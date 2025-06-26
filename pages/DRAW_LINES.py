@@ -154,13 +154,35 @@ with col2:
 
 # Handle Clear button
 if clear:
+    # Clear all session state
     st.session_state.clear()
+    
+    # Clear all cached data
     st.cache_data.clear()
+    
+    # Reinitialize default session state values
     st.session_state.data_loaded = False
     st.session_state.data_processed = False
     st.session_state.symbol = 'AAPL'
     st.session_state.aapl_df = pd.DataFrame()
     st.session_state.pl_df = pd.DataFrame()
+    
+    # Reset widget states
+    st.session_state['data_source'] = "Fetch Real-Time (Yahoo Finance)"
+    st.session_state['symbol_input'] = 'AAPL'
+    st.session_state['primary_file'] = None
+    st.session_state['secondary_file'] = None
+    st.session_state['indicators'] = ["Bollinger Bands", "RSI", "MACD"]
+    st.session_state['subplot_order'] = ["Candlestick", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume", "Win/Loss Distribution"]
+    st.session_state['html_report_type'] = "Interactive (with Hover)"
+    
+    # Reset date inputs to default values
+    default_min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
+    default_max_date = pd.to_datetime(datetime.now().date(), format='%m-%d-%Y')
+    st.session_state['from_date_input'] = default_min_date.date()
+    st.session_state['to_date_input'] = default_max_date.date()
+    
+    # Rerun the app to reflect cleared state
     st.rerun()
 
 # Validate symbol format
