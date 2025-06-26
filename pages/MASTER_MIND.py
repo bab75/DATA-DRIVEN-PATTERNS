@@ -41,6 +41,8 @@ if 'csv_data' not in st.session_state:
     st.session_state.csv_data = None
 if 'combine_report' not in st.session_state:
     st.session_state.combine_report = False
+if 'analysis_data' not in st.session_state:  # New key to store analysis results
+    st.session_state.analysis_data = None
 
 # Clear Analysis Button
 def clear_analysis():
@@ -48,6 +50,7 @@ def clear_analysis():
     st.session_state.fundamental_data = {'EPS': None, 'P/E': None, 'PEG': None, 'P/B': None, 'ROE': None, 'Revenue': None, 'Debt/Equity': None}
     st.session_state.csv_data = None
     st.session_state.combine_report = False
+    st.session_state.analysis_data = None
     st.success("Analysis cleared. Start a new analysis.")
 
 # Sidebar for inputs with reorganized navigation
@@ -157,7 +160,7 @@ def combine_dataframes(csv_df, real_time_data):
     for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
         if col in real_time_df.columns:
             combined_df[col].iloc[-1] = real_time_df[col].iloc[0]
-    return combined_df
+    return combined_df if not combined_df.empty else None
 
 # Function to generate PDF report
 def generate_pdf_report(report_content, stock_name, report_type):
@@ -210,7 +213,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     is_real_time_only = real_time_data is not None and df is None
     data_source = df if df is not None else pd.DataFrame([real_time_data]) if real_time_data is not None else None
 
-    if data_source is None or not isinstance(data_source, pd.DataFrame):
+    if data_source is None or not isinstance(data_source, pd.DataFrame) or data_source.empty:
         return "", "", "", stock_name, None, is_real_time_only, 50
 
     latest = data_source.iloc[-1] if not data_source.empty else None
@@ -428,6 +431,26 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
         st.session_state.real_time_data if submit_button and st.session_state.real_time_data is not None else None,
         st.session_state.fundamental_data
     )
+    st.session_state.analysis_data = {
+        'quick_scan': quick_scan,
+        'moderate_detail': moderate_detail,
+        'in_depth': in_depth,
+        'stock_name': stock_name,
+        'df': df,
+        'is_real_time_only': is_real_time_only,
+        'adx_value': adx_value
+    }
+else:
+    st.session_state.analysis_data = None
+
+if st.session_state.analysis_data is not None:
+    quick_scan = st.session_state.analysis_data['quick_scan']
+    moderate_detail = st.session_state.analysis_data['moderate_detail']
+    in_depth = st.session_state.analysis_data['in_depth']
+    stock_name = st.session_state.analysis_data['stock_name']
+    df = st.session_state.analysis_data['df']
+    is_real_time_only = st.session_state.analysis_data['is_real_time_only']
+    adx_value = st.session_state.analysis_data['adx_value']
 
     if is_real_time_only and not all(col in df.columns for col in ['RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram']):
         st.warning("⚠️ Real-time data lacks historical indicators. Upload a CSV/XLSX for full analysis.")
@@ -450,7 +473,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download Markdown",
                 data=buffer.getvalue(),
                 file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown"
+                mime="text/markdown",
+                on_click=lambda: None  # No-op callback to prevent state reset
             )
         with col2:
             pdf_buffer = generate_pdf_report(quick_scan if isinstance(quick_scan, str) else "", stock_name, "Quick Scan")
@@ -458,7 +482,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download PDF",
                 data=pdf_buffer,
                 file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                on_click=lambda: None  # No-op callback to prevent state reset
             )
         st.markdown("</div></div>", unsafe_allow_html=True)
 
@@ -477,7 +502,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download Markdown",
                 data=buffer.getvalue(),
                 file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown"
+                mime="text/markdown",
+                on_click=lambda: None
             )
         with col2:
             pdf_buffer = generate_pdf_report(moderate_detail if isinstance(moderate_detail, str) else "", stock_name, "Moderate Detail")
@@ -485,7 +511,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download PDF",
                 data=pdf_buffer,
                 file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                on_click=lambda: None
             )
         st.markdown("</div></div>", unsafe_allow_html=True)
 
@@ -504,7 +531,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download Markdown",
                 data=buffer.getvalue(),
                 file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown"
+                mime="text/markdown",
+                on_click=lambda: None
             )
         with col2:
             pdf_buffer = generate_pdf_report(in_depth if isinstance(in_depth, str) else "", stock_name, "In-Depth Analysis")
@@ -512,7 +540,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download PDF",
                 data=pdf_buffer,
                 file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                on_click=lambda: None
             )
         st.markdown("</div></div>", unsafe_allow_html=True)
 
@@ -551,7 +580,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download Markdown",
                 data=buffer.getvalue(),
                 file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown"
+                mime="text/markdown",
+                on_click=lambda: None
             )
         with col2:
             pdf_buffer = generate_pdf_report(visual_summary, stock_name, "Visual Summary")
@@ -559,7 +589,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download PDF",
                 data=pdf_buffer,
                 file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                on_click=lambda: None
             )
         st.markdown("</div></div>", unsafe_allow_html=True)
 
@@ -605,7 +636,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download Markdown",
                 data=buffer.getvalue(),
                 file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown"
+                mime="text/markdown",
+                on_click=lambda: None
             )
         with col2:
             pdf_buffer = generate_pdf_report(interactive_dashboard, stock_name, "Interactive Dashboard")
@@ -613,7 +645,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download PDF",
                 data=pdf_buffer,
                 file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                on_click=lambda: None
             )
         st.markdown("</div></div>", unsafe_allow_html=True)
 
@@ -637,7 +670,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download Markdown",
                 data=buffer.getvalue(),
                 file_name=f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.md",
-                mime="text/markdown"
+                mime="text/markdown",
+                on_click=lambda: None
             )
         with col2:
             pdf_buffer = generate_pdf_report(recommendation if isinstance(recommendation, str) else "", stock_name, "Consolidated Recommendation")
@@ -645,7 +679,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
                 label="📥 Download PDF",
                 data=pdf_buffer,
                 file_name=f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                on_click=lambda: None
             )
         st.markdown("</div></div>", unsafe_allow_html=True)
 
@@ -660,7 +695,8 @@ if data_source is not None and isinstance(data_source, pd.DataFrame) and not dat
             label="📥 Export Data as CSV",
             data=csv_buffer.getvalue(),
             file_name=f"{stock_name}_data_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
+            mime="text/csv",
+            on_click=lambda: None
         )
 else:
     st.info("⚠️ Please fetch real-time data or upload a CSV/XLSX to begin analysis.")
