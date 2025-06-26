@@ -617,43 +617,48 @@ def add_candlestick_trace(fig, df, row):
     for _, signal_row in buy_signals.iterrows():
         fig.add_annotation(x=signal_row['date'], y=signal_row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=row, col=1)
     if not buy_signals.empty:
-        latest_buy = buy_signals.iloc[-1]
-        risk = latest_buy['close'] - latest_buy['stop_loss']
-        reward = latest_buy['take_profit'] - latest_buy['close']
-        rr_ratio = reward / risk if risk > 0 else 'N/A'
-        # Format rr_ratio for hovertext
-        rr_ratio_text = f"{rr_ratio:.2f}" if isinstance(rr_ratio, float) else str(rr_ratio)
-        fig.add_trace(go.Scatter(
-            x=[df['date'].min(), df['date'].max()], 
-            y=[latest_buy['stop_loss'], latest_buy['stop_loss']],
-            mode='lines', 
-            line=dict(color="#f44336", dash='dash', width=2),
-            name="Stop-Loss",
-            hovertext=[f"Stop-Loss: ${latest_buy['stop_loss']:.2f}<br>Risk: ${risk:.2f}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in range(2)],
-            hoverinfo='text+name',
-            showlegend=True
-        ), row=row, col=1)
-        fig.add_trace(go.Scatter(
-            x=[df['date'].min(), df['date'].max()], 
-            y=[latest_buy['take_profit'], latest_buy['take_profit']],
-            mode='lines', 
-            line=dict(color="#4CAF50", dash='dash', width=2),
-            name="Take-Profit",
-            hovertext=[f"Take-Profit: ${latest_buy['take_profit']:.2f}<br>Reward: ${reward:.2f}<br>Risk-Reward Ratio: {rr_ratio_text}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in range(2)],
-            hoverinfo='text+name',
-            showlegend=True
-        ), row=row, col=1)
-        fig.add_trace(go.Scatter(
-            x=[latest_buy['date'], latest_buy['date']], 
-            y=[latest_buy['stop_loss'], latest_buy['take_profit']],
-            mode='lines', 
-            line=dict(color='rgba(76,175,80,0.2)'), 
-            fill='toself', 
-            fillcolor='rgba(76,175,80,0.2)',
-            hovertext=[f"Risk-Reward Ratio: {rr_ratio_text}"], 
-            hoverinfo='text+name', 
-            showlegend=False
-        ), row=row, col=1)
+    latest_buy = buy_signals.iloc[-1]
+    risk = latest_buy['close'] - latest_buy['stop_loss']
+    reward = latest_buy['take_profit'] - latest_buy['close']
+    rr_ratio = reward / risk if risk > 0 else 'N/A'
+    rr_ratio_text = f"{rr_ratio:.2f}" if isinstance(rr_ratio, float) else str(rr_ratio)
+    
+    # Use all dates for the stop-loss and take-profit lines
+    dates = df['date']
+    stop_loss_y = [latest_buy['stop_loss']] * len(dates)
+    take_profit_y = [latest_buy['take_profit']] * len(dates)
+    
+    fig.add_trace(go.Scatter(
+        x=dates, 
+        y=stop_loss_y,
+        mode='lines', 
+        line=dict(color="#f44336", dash='dash', width=2),
+        name="Stop-Loss",
+        hovertext=[f"Stop-Loss: ${latest_buy['stop_loss']:.2f}<br>Risk: ${risk:.2f}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in dates],
+        hoverinfo='text+name',
+        showlegend=True
+    ), row=row, col=1)
+    fig.add_trace(go.Scatter(
+        x=dates, 
+        y=take_profit_y,
+        mode='lines', 
+        line=dict(color="#4CAF50", dash='dash', width=2),
+        name="Take-Profit",
+        hovertext=[f"Take-Profit: ${latest_buy['take_profit']:.2f}<br>Reward: ${reward:.2f}<br>Risk-Reward Ratio: {rr_ratio_text}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in dates],
+        hoverinfo='text+name',
+        showlegend=True
+    ), row=row, col=1)
+    fig.add_trace(go.Scatter(
+        x=[latest_buy['date'], latest_buy['date']], 
+        y=[latest_buy['stop_loss'], latest_buy['take_profit']],
+        mode='lines', 
+        line=dict(color='rgba(76,175,80,0.2)'), 
+        fill='toself', 
+        fillcolor='rgba(76,175,80,0.2)',
+        hovertext=[f"Risk-Reward Ratio: {rr_ratio_text}"], 
+        hoverinfo='text+name', 
+        showlegend=False
+    ), row=row, col=1)
 
 def add_rsi_trace(fig, df, row):
    # fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"),
