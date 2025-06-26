@@ -145,14 +145,21 @@ if clear_button:
 def combine_dataframes(csv_df, real_time_data):
     if csv_df is None or real_time_data is None:
         return csv_df if csv_df is not None else pd.DataFrame([real_time_data]) if real_time_data is not None else None
-    real_time_df = pd.DataFrame([real_time_data])
-    real_time_df['Date'] = pd.to_datetime(real_time_df['Date'])
-    combined_df = pd.concat([csv_df, real_time_df], ignore_index=True)
-    combined_df = combined_df.sort_values('Date').drop_duplicates(subset=['Date'], keep='last')
-    for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
-        if col in real_time_df.columns:
-            combined_df[col].iloc[-1] = real_time_df[col].iloc[0]
-    return combined_df if not combined_df.empty else None
+    try:
+        real_time_df = pd.DataFrame([real_time_data])
+        real_time_df['Date'] = pd.to_datetime(real_time_df['Date'])
+        # Ensure common columns are aligned
+        common_cols = [col for col in csv_df.columns if col in real_time_df.columns]
+        combined_df = pd.concat([csv_df[common_cols], real_time_df[common_cols]], ignore_index=True)
+        combined_df = combined_df.sort_values('Date').drop_duplicates(subset=['Date'], keep='last')
+        for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
+            if col in real_time_df.columns:
+                combined_df[col].iloc[-1] = real_time_df[col].iloc[0]
+        st.write("Debug: Combined DataFrame:", combined_df.head())  # Debug output
+        return combined_df if not combined_df.empty else None
+    except Exception as e:
+        st.error(f"❌ Combine error: {str(e)}")
+        return None
 
 # Function to generate PDF report
 def generate_pdf_report(report_content, stock_name, report_type):
@@ -412,6 +419,7 @@ if any(v is not None for v in st.session_state.fundamental_data.values()):
 
 # Data source determination
 data_source = st.session_state.csv_data if process_file_button and st.session_state.csv_data is not None else st.session_state.real_time_data if submit_button and st.session_state.real_time_data is not None else combine_dataframes(st.session_state.csv_data, st.session_state.real_time_data) if combine_button and st.session_state.combine_report and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else None
+st.write("Debug: data_source:", data_source)  # Debug output
 
 # Analyze data
 if data_source is not None and isinstance(data_source, pd.DataFrame) and not data_source.empty:
@@ -438,49 +446,49 @@ if st.session_state.analysis_data is not None:
     is_real_time_only = st.session_state.analysis_data['is_real_time_only']
     adx_value = st.session_state.analysis_data['adx_value']
 
-    st.write("Debug: df is valid")  # Temporary debug
+    st.write("Debug: df:", df)  # Debug output
     if isinstance(df, pd.DataFrame) and not df.empty and 'Date' in df.columns:
         tabs = st.tabs(["Quick Scan", "Moderate Detail", "In-Depth Analysis", "Visual Summary", "Interactive Dashboard", "Consolidated Recommendation"])
 
         with tabs[0]:
             st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
             st.markdown(f"<h2>Quick Scan: {stock_name}</h2>")
-            st.markdown(quick_scan.replace('### Quick Scan:', ''))
+            st.markdown(quick_scan.replace('### Quick Scan:', '').strip())  # Strip header
             col1, col2 = st.columns(2)
             with col1:
                 buffer = io.StringIO()
-                buffer.write(quick_scan)
+                buffer.write(quick_scan.replace('### Quick Scan:', '').strip())  # Strip header for export
                 st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
             with col2:
-                pdf_buffer = generate_pdf_report(quick_scan, stock_name, "Quick Scan")
+                pdf_buffer = generate_pdf_report(quick_scan.replace('### Quick Scan:', '').strip(), stock_name, "Quick Scan")
                 st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
             st.markdown("</div></div>", unsafe_allow_html=True)
 
         with tabs[1]:
             st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
             st.markdown(f"<h2>Moderate Detail: {stock_name}</h2>")
-            st.markdown(moderate_detail.replace('### Moderate Detail:', ''))
+            st.markdown(moderate_detail.replace('### Moderate Detail:', '').strip())  # Strip header
             col1, col2 = st.columns(2)
             with col1:
                 buffer = io.StringIO()
-                buffer.write(moderate_detail)
+                buffer.write(moderate_detail.replace('### Moderate Detail:', '').strip())  # Strip header for export
                 st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
             with col2:
-                pdf_buffer = generate_pdf_report(moderate_detail, stock_name, "Moderate Detail")
+                pdf_buffer = generate_pdf_report(moderate_detail.replace('### Moderate Detail:', '').strip(), stock_name, "Moderate Detail")
                 st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
             st.markdown("</div></div>", unsafe_allow_html=True)
 
         with tabs[2]:
             st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
             st.markdown(f"<h2>In-Depth Analysis: {stock_name}</h2>")
-            st.markdown(in_depth.replace('### In-Depth Analysis:', ''))
+            st.markdown(in_depth.replace('### In-Depth Analysis:', '').strip())  # Strip header
             col1, col2 = st.columns(2)
             with col1:
                 buffer = io.StringIO()
-                buffer.write(in_depth)
+                buffer.write(in_depth.replace('### In-Depth Analysis:', '').strip())  # Strip header for export
                 st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
             with col2:
-                pdf_buffer = generate_pdf_report(in_depth, stock_name, "In-Depth Analysis")
+                pdf_buffer = generate_pdf_report(in_depth.replace('### In-Depth Analysis:', '').strip(), stock_name, "In-Depth Analysis")
                 st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
             st.markdown("</div></div>", unsafe_allow_html=True)
 
@@ -505,10 +513,10 @@ if st.session_state.analysis_data is not None:
             col1, col2 = st.columns(2)
             with col1:
                 buffer = io.StringIO()
-                buffer.write(visual_summary)
+                buffer.write(visual_summary.replace('### Visual Summary:', '').strip())  # Strip header for export
                 st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
             with col2:
-                pdf_buffer = generate_pdf_report(visual_summary, stock_name, "Visual Summary")
+                pdf_buffer = generate_pdf_report(visual_summary.replace('### Visual Summary:', '').strip(), stock_name, "Visual Summary")
                 st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
             st.markdown("</div></div>", unsafe_allow_html=True)
 
@@ -545,10 +553,10 @@ if st.session_state.analysis_data is not None:
             col1, col2 = st.columns(2)
             with col1:
                 buffer = io.StringIO()
-                buffer.write(interactive_dashboard)
+                buffer.write(interactive_dashboard.replace('### Interactive Dashboard:', '').strip())  # Strip header for export
                 st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
             with col2:
-                pdf_buffer = generate_pdf_report(interactive_dashboard, stock_name, "Interactive Dashboard")
+                pdf_buffer = generate_pdf_report(interactive_dashboard.replace('### Interactive Dashboard:', '').strip(), stock_name, "Interactive Dashboard")
                 st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
             st.markdown("</div></div>", unsafe_allow_html=True)
 
@@ -557,14 +565,14 @@ if st.session_state.analysis_data is not None:
             st.markdown(f"<h2>Consolidated Recommendation: {stock_name}</h2>")
             date_str = df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else datetime.now().strftime('%Y-%m-%d')
             recommendation = generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, stock_name, date_str)
-            st.markdown(recommendation.replace('### Consolidated Recommendation:', ''))
+            st.markdown(recommendation.replace('### Consolidated Recommendation:', '').strip())  # Strip header
             col1, col2 = st.columns(2)
             with col1:
                 buffer = io.StringIO()
-                buffer.write(recommendation)
+                buffer.write(recommendation.replace('### Consolidated Recommendation:', '').strip())  # Strip header for export
                 st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
             with col2:
-                pdf_buffer = generate_pdf_report(recommendation, stock_name, "Consolidated Recommendation")
+                pdf_buffer = generate_pdf_report(recommendation.replace('### Consolidated Recommendation:', '').strip(), stock_name, "Consolidated Recommendation")
                 st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
             st.markdown("</div></div>", unsafe_allow_html=True)
 
