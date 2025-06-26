@@ -65,21 +65,71 @@ primary_file = st.sidebar.file_uploader("Upload Stock Data (CSV/XLSX)", type=["c
 secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV/XLSX)", type=["csv", "xlsx"], key="secondary_file")
 
 # Dynamic date inputs based on loaded data
-if 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
-    valid_dates = st.session_state.aapl_df['date'].dropna()
-    if not valid_dates.empty:
-        min_date = valid_dates.min()
-        max_date = valid_dates.max()
-    else:
-        min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-        max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+# Initialize default dates
+default_min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
+default_max_date = pd.to_datetime(datetime.now().date(), format='%m-%d-%Y')  # Current system date
+
+# Set min and max dates based on data source
+if data_source == "Upload CSV/XLSX" and primary_file:
+    # Load the file to check date range without processing the entire dataset
+    try:
+        if primary_file.name.endswith('.csv'):
+            temp_df = pd.read_csv(primary_file)
+        elif primary_file.name.endswith('.xlsx'):
+            temp_df = pd.read_excel(primary_file)
+        
+        temp_df.columns = temp_df.columns.str.lower().str.strip()
+        if 'date' not in temp_df.columns:
+            st.error("Uploaded file must contain a 'date' column.")
+            st.stop()
+        
+        temp_df['date'] = pd.to_datetime(temp_df['date'], errors='coerce', infer_datetime_format=True)
+        valid_dates = temp_df['date'].dropna()
+        
+        if not valid_dates.empty:
+            min_date = valid_dates.min()
+            max_date = valid_dates.max()
+        else:
+            st.error("No valid dates found in the uploaded file. Please ensure the 'date' column contains valid dates in formats like MM-DD-YYYY or YYYY-MM-DD.")
+            st.stop()
+    except Exception as e:
+        st.error(f"Error reading uploaded file: {str(e)}. Please check the file format.")
+        st.stop()
 else:
-    min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
-    max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+    # For Yahoo Finance, use default dates
+    min_date = default_min_date
+    max_date = default_max_date
 
-from_date = st.sidebar.date_input("From Date", value=min_date, min_value=min_date, max_value=max_date, key="from_date_input", format="MM-DD-YYYY")
-to_date = st.sidebar.date_input("To Date", value=max_date, min_value=min_date, max_value=max_date, key="to_date_input", format="MM-DD-YYYY")
+# Ensure dates are timezone-naive for date_input
+min_date = min_date if pd.api.types.is_datetime64_any_dtype(min_date) else pd.to_datetime(min_date)
+max_date = max_date if pd.api.types.is_datetime64_any_dtype(max_date) else pd.to_datetime(max_date)
+min_date = min_date.tz_localize(None) if min_date.tzinfo is not None else min_date
+max_date = max_date.tz_localize(None) if max_date.tzinfo is not None else max_date
 
+# Sidebar date inputs
+st.sidebar.header("Date Range")
+from_date = st.sidebar.date_input(
+    "From Date",
+    value=min_date.date() if data_source == "Upload CSV/XLSX" else default_min_date.date(),
+    min_value=min_date.date(),
+    max_value=max_date.date(),
+    key="from_date_input",
+    format="MM-DD-YYYY"
+)
+to_date = st.sidebar.date_input(
+    "To Date",
+    value=max_date.date(),
+    min_value=min_date.date(),
+    max_value=max_date.date() if data_source == "Upload CSV/XLSX" else datetime.now().date(),
+    key="to_date_input",
+    format="MM-DD-YYYY"
+)
+
+# Display date range for uploaded file
+if data_source == "Upload CSV/XLSX" and primary_file:
+    st.sidebar.write(f"File date range: {min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}")
+
+#########
 st.sidebar.header("Chart Settings")
 show_indicators = st.sidebar.multiselect(
     "Select Indicators",
