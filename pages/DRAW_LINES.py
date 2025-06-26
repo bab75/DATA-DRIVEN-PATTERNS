@@ -683,18 +683,11 @@ def add_win_loss_trace(fig, df, row):
         st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available.")
 
 def consolidate_yaxis_layout(fig):
-    """Consolidate all y-axis updates to prevent conflicts"""
     layout_updates = {}
-    
-    # Find candlestick subplot row
-    candlestick_row = 1
-    for i, subplot in enumerate(subplot_order, 1):
-        if subplot == "Candlestick":
-            candlestick_row = i
-            break
+    candlestick_row = next(i for i, s in enumerate(subplot_order, 1) if s == "Candlestick")
     
     if "RSI" in show_indicators:
-        layout_updates[f'yaxis{candlestick_row + 12}'] = dict(  # Use a unique y-axis number
+        layout_updates[f'yaxis{candlestick_row + 12}'] = dict(
             overlaying=f'y{candlestick_row}',
             side='right',
             range=[0, 100],
@@ -718,7 +711,6 @@ def consolidate_yaxis_layout(fig):
     
     if layout_updates:
         fig.update_layout(**layout_updates)
-    
     return fig
 
 for i, subplot in enumerate(subplot_order, 1):
