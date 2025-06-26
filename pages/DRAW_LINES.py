@@ -573,15 +573,55 @@ fig = make_subplots(rows=len(subplot_order), cols=1, shared_xaxes=True, vertical
                     subplot_titles=subplot_titles, row_heights=row_heights)
 
 def add_candlestick_trace(fig, df, row):
-    # ... (previous code for candlestick, Bollinger Bands, etc.) ...
+    if not pd.api.types.is_datetime64_any_dtype(df['date']):
+        df['date'] = pd.to_datetime(df['date'], errors='coerce', format='%m-%d-%Y')
+    df['date'] = df['date'].fillna(pd.NaT)
+
+    hover_texts = [
+        "Date: {date}<br>Month: {month}<br>Open: ${open:.2f}<br>High: ${high:.2f}<br>Low: ${low:.2f}<br>Close: ${close:.2f}<br>Volume: {volume:,.0f}<br>RSI: {rsi:.2f}<br>RVOL: {rvol:.2f}<br><b style='color:#006400'>Buy Signal: {buy_signal}</b>".format(
+            date=getattr(r, 'date').strftime('%m-%d-%Y') if pd.notna(getattr(r, 'date')) else 'N/A',
+            month=getattr(r, 'date').strftime('%B') if pd.notna(getattr(r, 'date')) else 'N/A',
+            open=getattr(r, 'open'), high=getattr(r, 'high'), low=getattr(r, 'low'),
+            close=getattr(r, 'close'), volume=getattr(r, 'volume'), rsi=getattr(r, 'rsi'), rvol=getattr(r, 'rvol'),
+            buy_signal='Yes' if getattr(r, 'buy_signal') else 'No'
+        )
+        for r in df.itertuples()
+    ]
+    fig.add_trace(go.Candlestick(
+        x=df['date'],
+        open=df['open'], high=df['high'], low=df['low'], close=df['close'],
+        name="Candlestick",
+        increasing_line_color='#4CAF50', decreasing_line_color='#f44336',
+        hovertext=hover_texts,
+        hoverinfo='text+name',
+        customdata=df.index
+    ), row=row, col=1)
+    if "Bollinger Bands" in show_indicators and 'ma20' in df.columns and 'std_dev' in df.columns:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] + 2*df['std_dev'], name="Bollinger Upper", line=dict(color="#0288d1"), hoverinfo='text+name',
+                                 hovertext=[f"Bollinger Upper: ${x:.2f}" for x in df['ma20'] + 2*df['std_dev']]), row=row, col=1)
+        fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] - 2*df['std_dev'], name="Bollinger Lower", line=dict(color="#0288d1"), fill='tonexty', fillcolor='rgba(2,136,209,0.1)', hoverinfo='text+name',
+                                 hovertext=[f"Bollinger Lower: ${x:.2f}" for x in df['ma20'] - 2*df['std_dev']]), row=row, col=1)
+    if "Ichimoku Cloud" in show_indicators:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['senkou_span_a'], name="Senkou Span A", line=dict(color="#4CAF50"), fill='tonexty', fillcolor='rgba(76,175,80,0.2)', hoverinfo='text+name',
+                                 hovertext=[f"Senkou Span A: ${x:.2f}" for x in df['senkou_span_a']]), row=row, col=1)
+        fig.add_trace(go.Scatter(x=df['date'], y=df['senkou_span_b'], name="Senkou Span B", line=dict(color="#f44336"), fill='tonexty', fillcolor='rgba(244,67,54,0.2)', hoverinfo='text+name',
+                                 hovertext=[f"Senkou Span B: ${x:.2f}" for x in df['senkou_span_b']]), row=row, col=1)
+    if "Fibonacci" in show_indicators:
+        for level, color in [('fib_236', '#ff9800'), ('fib_382', '#e91e63'), ('fib_50', '#9c27b0'), ('fib_618', '#3f51b5')]:
+            fig.add_trace(go.Scatter(x=df['date'], y=df[level], name=f"Fib {level[-3:]}%", line=dict(color=color, dash='dash'),
+                                     hovertext=[f"Fib {level[-3:]}%: ${x:.2f}" for x in df[level]], hoverinfo='text+name'), row=row, col=1)
+    if "RSI" in show_indicators and 'rsi' in df.columns:
+        fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"), yaxis="y13",
+                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>RSI: {rsi:.2f}" for date, rsi in zip(df['date'], df['rsi'])], hoverinfo='text+name'), row=row, col=1)
     buy_signals = df[df['buy_signal'] == True]
     for _, signal_row in buy_signals.iterrows():
         fig.add_annotation(x=signal_row['date'], y=signal_row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=row, col=1)
-    if not buy_signals.empty:  # Line 638
-        latest_buy = buy_signals.iloc[-1]  # Line 639: Indented with 4 spaces
+    if not buy_signals.empty:
+        latest_buy = buy_signals.iloc[-1]
         risk = latest_buy['close'] - latest_buy['stop_loss']
         reward = latest_buy['take_profit'] - latest_buy['close']
         rr_ratio = reward / risk if risk > 0 else 'N/A'
+        # Format rr_ratio for hovertext
         rr_ratio_text = f"{rr_ratio:.2f}" if isinstance(rr_ratio, float) else str(rr_ratio)
         fig.add_trace(go.Scatter(
             x=[df['date'].min(), df['date'].max()], 
@@ -614,70 +654,6 @@ def add_candlestick_trace(fig, df, row):
             hoverinfo='text+name', 
             showlegend=False
         ), row=row, col=1)
-        
-    if "Bollinger Bands" in show_indicators and 'ma20' in df.columns and 'std_dev' in df.columns:
-        fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] + 2*df['std_dev'], name="Bollinger Upper", line=dict(color="#0288d1"), hoverinfo='text+name',
-                                 hovertext=[f"Bollinger Upper: ${x:.2f}" for x in df['ma20'] + 2*df['std_dev']]), row=row, col=1)
-        fig.add_trace(go.Scatter(x=df['date'], y=df['ma20'] - 2*df['std_dev'], name="Bollinger Lower", line=dict(color="#0288d1"), fill='tonexty', fillcolor='rgba(2,136,209,0.1)', hoverinfo='text+name',
-                                 hovertext=[f"Bollinger Lower: ${x:.2f}" for x in df['ma20'] - 2*df['std_dev']]), row=row, col=1)
-    if "Ichimoku Cloud" in show_indicators:
-        fig.add_trace(go.Scatter(x=df['date'], y=df['senkou_span_a'], name="Senkou Span A", line=dict(color="#4CAF50"), fill='tonexty', fillcolor='rgba(76,175,80,0.2)', hoverinfo='text+name',
-                                 hovertext=[f"Senkou Span A: ${x:.2f}" for x in df['senkou_span_a']]), row=row, col=1)
-        fig.add_trace(go.Scatter(x=df['date'], y=df['senkou_span_b'], name="Senkou Span B", line=dict(color="#f44336"), fill='tonexty', fillcolor='rgba(244,67,54,0.2)', hoverinfo='text+name',
-                                 hovertext=[f"Senkou Span B: ${x:.2f}" for x in df['senkou_span_b']]), row=row, col=1)
-    if "Fibonacci" in show_indicators:
-        for level, color in [('fib_236', '#ff9800'), ('fib_382', '#e91e63'), ('fib_50', '#9c27b0'), ('fib_618', '#3f51b5')]:
-            fig.add_trace(go.Scatter(x=df['date'], y=df[level], name=f"Fib {level[-3:]}%", line=dict(color=color, dash='dash'),
-                                     hovertext=[f"Fib {level[-3:]}%: ${x:.2f}" for x in df[level]], hoverinfo='text+name'), row=row, col=1)
-    if "RSI" in show_indicators and 'rsi' in df.columns:
-        fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"), yaxis="y13",
-                                 hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>RSI: {rsi:.2f}" for date, rsi in zip(df['date'], df['rsi'])], hoverinfo='text+name'), row=row, col=1)
-    buy_signals = df[df['buy_signal'] == True]
-    for _, signal_row in buy_signals.iterrows():
-        fig.add_annotation(x=signal_row['date'], y=signal_row['high'], text="Buy", showarrow=True, arrowhead=2, ax=0, ay=-30, font=dict(color="#000000"), row=row, col=1)
-    if not buy_signals.empty:
-    latest_buy = buy_signals.iloc[-1]
-    risk = latest_buy['close'] - latest_buy['stop_loss']
-    reward = latest_buy['take_profit'] - latest_buy['close']
-    rr_ratio = reward / risk if risk > 0 else 'N/A'
-    rr_ratio_text = f"{rr_ratio:.2f}" if isinstance(rr_ratio, float) else str(rr_ratio)
-    
-    # Use all dates for the stop-loss and take-profit lines
-    dates = df['date']
-    stop_loss_y = [latest_buy['stop_loss']] * len(dates)
-    take_profit_y = [latest_buy['take_profit']] * len(dates)
-    
-    fig.add_trace(go.Scatter(
-        x=dates, 
-        y=stop_loss_y,
-        mode='lines', 
-        line=dict(color="#f44336", dash='dash', width=2),
-        name="Stop-Loss",
-        hovertext=[f"Stop-Loss: ${latest_buy['stop_loss']:.2f}<br>Risk: ${risk:.2f}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in dates],
-        hoverinfo='text+name',
-        showlegend=True
-    ), row=row, col=1)
-    fig.add_trace(go.Scatter(
-        x=dates, 
-        y=take_profit_y,
-        mode='lines', 
-        line=dict(color="#4CAF50", dash='dash', width=2),
-        name="Take-Profit",
-        hovertext=[f"Take-Profit: ${latest_buy['take_profit']:.2f}<br>Reward: ${reward:.2f}<br>Risk-Reward Ratio: {rr_ratio_text}<br>Date: {latest_buy['date'].strftime('%m-%d-%Y')}" for _ in dates],
-        hoverinfo='text+name',
-        showlegend=True
-    ), row=row, col=1)
-    fig.add_trace(go.Scatter(
-        x=[latest_buy['date'], latest_buy['date']], 
-        y=[latest_buy['stop_loss'], latest_buy['take_profit']],
-        mode='lines', 
-        line=dict(color='rgba(76,175,80,0.2)'), 
-        fill='toself', 
-        fillcolor='rgba(76,175,80,0.2)',
-        hovertext=[f"Risk-Reward Ratio: {rr_ratio_text}"], 
-        hoverinfo='text+name', 
-        showlegend=False
-    ), row=row, col=1)
 
 def add_rsi_trace(fig, df, row):
    # fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"),
@@ -920,7 +896,7 @@ else:
 
 latest_buy = st.session_state.aapl_df[st.session_state.aapl_df['buy_signal'] == True].iloc[-1] if not st.session_state.aapl_df[st.session_state.aapl_df['buy_signal'] == True].empty else None
 if latest_buy is not None:
-    st.header("Latest Trade Setup")  # Indented with 4 spaces
+    st.header("Latest Trade Setup")
     st.markdown(
         "<div class='trade-details'>"
         "<b>Date:</b> {date}<br>"
@@ -935,7 +911,7 @@ if latest_buy is not None:
         ),
         unsafe_allow_html=True
     )
-   
+
 st.plotly_chart(fig, use_container_width=True)
 
 fig_bench = None
