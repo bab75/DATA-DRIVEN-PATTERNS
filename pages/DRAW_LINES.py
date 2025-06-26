@@ -628,8 +628,8 @@ def add_candlestick_trace(fig, df, row):
                                  hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"], hoverinfo='text+name', showlegend=False), row=row, col=1)
 
 def add_rsi_trace(fig, df, row):
-    fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"),
-                             hovertext=[f"RSI: {x:.2f}" for x in df['rsi']], hoverinfo='text+name'), row=row, col=1)
+   # fig.add_trace(go.Scatter(x=df['date'], y=df['rsi'], name="RSI", line=dict(color="#9c27b0"),
+                             # hovertext=[f"RSI: {x:.2f}" for x in df['rsi']], hoverinfo='text+name'), row=row, col=1)
     fig.add_hline(y=70, line_dash="dash", line_color="#f44336", row=row, col=1)
     fig.add_hline(y=30, line_dash="dash", line_color="#4CAF50", row=row, col=1)
 
@@ -687,14 +687,22 @@ def consolidate_yaxis_layout(fig):
     layout_updates = {}
     
     # Find candlestick subplot row
-    candlestick_row = 1  # Assuming candlestick is first
+    candlestick_row = 1
     for i, subplot in enumerate(subplot_order, 1):
         if subplot == "Candlestick":
             candlestick_row = i
             break
     
+    if "RSI" in show_indicators:
+        layout_updates[f'yaxis{candlestick_row + 12}'] = dict(  # Use a unique y-axis number
+            overlaying=f'y{candlestick_row}',
+            side='right',
+            range=[0, 100],
+            title="RSI"
+        )
+    
     if "Stochastic" in show_indicators:
-        layout_updates[f'yaxis{candlestick_row + 10}'] = dict(  # Use higher number to avoid conflicts
+        layout_updates[f'yaxis{candlestick_row + 10}'] = dict(
             overlaying=f'y{candlestick_row}',
             side='right',
             range=[0, 100],
@@ -702,18 +710,10 @@ def consolidate_yaxis_layout(fig):
         )
     
     if "RVOL" in show_indicators:
-        layout_updates[f'yaxis{candlestick_row + 11}'] = dict(  # Use higher number to avoid conflicts
+        layout_updates[f'yaxis{candlestick_row + 11}'] = dict(
             overlaying=f'y{candlestick_row}',
             side='right',
             title="RVOL"
-        )
-    
-    if "RSI" in show_indicators:
-        layout_updates[f'yaxis{candlestick_row + 12}'] = dict(  # RSI y-axis
-            overlaying=f'y{candlestick_row}',
-            side='right',
-            range=[0, 100],
-            title="RSI"
         )
     
     if layout_updates:
