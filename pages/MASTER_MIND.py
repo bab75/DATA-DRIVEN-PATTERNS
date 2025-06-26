@@ -49,46 +49,37 @@ def clear_analysis():
     st.session_state.combine_report = False
     st.success("Analysis cleared. Start a new analysis.")
 
-# Sidebar for inputs
+# Sidebar for inputs with reorganized navigation
 st.sidebar.header("📊 Stock Analysis Controls")
+
+# Step 1: Export File and Process Button
+st.sidebar.subheader("📤 Upload Technical Data")
+uploaded_file = st.sidebar.file_uploader("Choose a CSV or XLSX file", type=["csv", "xlsx"], help="Upload a file with technical indicators.")
+process_file_button = st.sidebar.button("📥 Process File")
+
+if process_file_button and uploaded_file:
+    with st.spinner("📂 Processing file..."):
+        try:
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file, engine='openpyxl')
+            required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
+            if not all(col in df.columns for col in required_columns):
+                missing = [col for col in required_columns if col not in df.columns]
+                st.error(f"❌ Missing columns: {', '.join(missing)}. Ensure all required columns are present.")
+            else:
+                df['Date'] = pd.to_datetime(df['Date'])
+                st.session_state.csv_data = df
+                st.success("✅ File processed successfully! The 'Combine Report' checkbox is now enabled.")
+        except Exception as e:
+            st.error(f"❌ Error processing file: {str(e)}. Ensure the file is a valid CSV/XLSX with required columns.")
+
+# Step 2: Symbol Field and Fetch Real-Time Data Button
+st.sidebar.subheader("📡 Real-Time Data")
 ticker = st.sidebar.text_input("Enter Stock Ticker (e.g., KRRO)", value="KRRO", help="Enter a valid stock ticker symbol.")
 submit_button = st.sidebar.button("🔄 Fetch Real-Time Data")
-process_file_button = st.sidebar.button("📥 Process File")
-combine_button = st.sidebar.button("📊 Combine Process")
-clear_button = st.sidebar.button("🗑️ Clear Analysis")
-if clear_button:
-    clear_analysis()
 
-# Combine Report Checkbox
-st.sidebar.subheader("📈 Report Options")
-combine_checkbox = st.sidebar.checkbox("Combine Report", value=st.session_state.combine_report, disabled=st.session_state.csv_data is None)
-if combine_checkbox != st.session_state.combine_report:
-    st.session_state.combine_report = combine_checkbox
-
-# Manual fundamental inputs
-with st.sidebar.expander("📋 Manual Fundamental Data (Optional)", expanded=False):
-    with st.form(key="fundamental_form"):
-        eps = st.number_input("EPS", value=float(st.session_state.fundamental_data['EPS'] or 0.0), step=0.01, format="%.2f", placeholder="e.g., -9.42")
-        pe = st.number_input("P/E Ratio", value=float(st.session_state.fundamental_data['P/E'] or 0.0), step=0.01, format="%.2f")
-        peg = st.number_input("PEG Ratio", value=float(st.session_state.fundamental_data['PEG'] or 0.0), step=0.01, format="%.2f")
-        pb = st.number_input("P/B Ratio", value=float(st.session_state.fundamental_data['P/B'] or 0.0), step=0.01, format="%.2f")
-        roe = st.number_input("ROE (%)", value=float(st.session_state.fundamental_data['ROE'] or 0.0), step=0.01, format="%.2f")
-        revenue = st.number_input("Revenue (M)", value=float(st.session_state.fundamental_data['Revenue'] or 0.0), step=0.1, format="%.1f")
-        debt_equity = st.number_input("Debt/Equity", value=float(st.session_state.fundamental_data['Debt/Equity'] or 0.0), step=0.01, format="%.2f")
-        submit_fundamentals = st.form_submit_button("💾 Update Fundamentals")
-
-if submit_fundamentals:
-    st.session_state.fundamental_data = {
-        'EPS': eps if eps != 0.0 else None,
-        'P/E': pe if pe != 0.0 else None,
-        'PEG': peg if peg != 0.0 else None,
-        'P/B': pb if pb != 0.0 else None,
-        'ROE': roe if roe != 0.0 else None,
-        'Revenue': revenue if revenue != 0.0 else None,
-        'Debt/Equity': debt_equity if debt_equity != 0.0 else None
-    }
-
-# Fetch real-time data with yfinance
 if submit_button:
     with st.spinner("📡 Fetching real-time data..."):
         try:
@@ -119,27 +110,41 @@ if submit_button:
         except Exception as e:
             st.error(f"❌ Error fetching data: {str(e)}. Try a different ticker (e.g., AAPL) or upload a CSV/XLSX.")
 
-# CSV/XLSX upload
-st.sidebar.subheader("📤 Upload Technical Data")
-uploaded_file = st.sidebar.file_uploader("Choose a CSV or XLSX file", type=["csv", "xlsx"], help="Upload a file with technical indicators.")
+# Step 3: Combine Checkbox and Combine Report Button
+st.sidebar.subheader("📈 Report Options")
+combine_checkbox = st.sidebar.checkbox("Combine Report", value=st.session_state.combine_report, disabled=st.session_state.csv_data is None)
+if combine_checkbox != st.session_state.combine_report:
+    st.session_state.combine_report = combine_checkbox
+combine_button = st.sidebar.button("📊 Combine Process")
 
-if process_file_button and uploaded_file:
-    with st.spinner("📂 Processing file..."):
-        try:
-            if uploaded_file.name.endswith('.csv'):
-                df = pd.read_csv(uploaded_file)
-            else:
-                df = pd.read_excel(uploaded_file, engine='openpyxl')
-            required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
-            if not all(col in df.columns for col in required_columns):
-                missing = [col for col in required_columns if col not in df.columns]
-                st.error(f"❌ Missing columns: {', '.join(missing)}. Ensure all required columns are present.")
-            else:
-                df['Date'] = pd.to_datetime(df['Date'])
-                st.session_state.csv_data = df
-                st.success("✅ File processed successfully! The 'Combine Report' checkbox is now enabled.")
-        except Exception as e:
-            st.error(f"❌ Error processing file: {str(e)}. Ensure the file is a valid CSV/XLSX with required columns.")
+# Manual fundamental inputs
+with st.sidebar.expander("📋 Manual Fundamental Data (Optional)", expanded=False):
+    with st.form(key="fundamental_form"):
+        eps = st.number_input("EPS", value=float(st.session_state.fundamental_data['EPS'] or 0.0), step=0.01, format="%.2f", placeholder="e.g., -9.42")
+        pe = st.number_input("P/E Ratio", value=float(st.session_state.fundamental_data['P/E'] or 0.0), step=0.01, format="%.2f")
+        peg = st.number_input("PEG Ratio", value=float(st.session_state.fundamental_data['PEG'] or 0.0), step=0.01, format="%.2f")
+        pb = st.number_input("P/B Ratio", value=float(st.session_state.fundamental_data['P/B'] or 0.0), step=0.01, format="%.2f")
+        roe = st.number_input("ROE (%)", value=float(st.session_state.fundamental_data['ROE'] or 0.0), step=0.01, format="%.2f")
+        revenue = st.number_input("Revenue (M)", value=float(st.session_state.fundamental_data['Revenue'] or 0.0), step=0.1, format="%.1f")
+        debt_equity = st.number_input("Debt/Equity", value=float(st.session_state.fundamental_data['Debt/Equity'] or 0.0), step=0.01, format="%.2f")
+        submit_fundamentals = st.form_submit_button("💾 Update Fundamentals")
+
+if submit_fundamentals:
+    st.session_state.fundamental_data = {
+        'EPS': eps if eps != 0.0 else None,
+        'P/E': pe if pe != 0.0 else None,
+        'PEG': peg if peg != 0.0 else None,
+        'P/B': pb if pb != 0.0 else None,
+        'ROE': roe if roe != 0.0 else None,
+        'Revenue': revenue if revenue != 0.0 else None,
+        'Debt/Equity': debt_equity if debt_equity != 0.0 else None
+    }
+
+# Clear Analysis Button (placed at the bottom for easy access)
+st.sidebar.subheader("🗑️ Reset")
+clear_button = st.sidebar.button("Clear Analysis")
+if clear_button:
+    clear_analysis()
 
 # Function to combine data
 def combine_dataframes(csv_df, real_time_data):
