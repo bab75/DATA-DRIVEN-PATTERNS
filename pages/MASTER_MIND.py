@@ -25,7 +25,6 @@ try:
         h1 {color: #2c3e50; font-size: 2.5em; text-align: center; text-transform: uppercase; letter-spacing: 2px;}
         h2, h3 {color: #34495e; font-weight: 500;}
         .mode-banner {background: #e6f3fa; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid #3498db;}
-        .stSpinner > div {border-top-color: #3498db !important;}
         </style>
     """, unsafe_allow_html=True)
 except TypeError:
@@ -58,22 +57,21 @@ uploaded_file = st.sidebar.file_uploader("Choose a CSV or XLSX file", type=["csv
 process_file_button = st.sidebar.button("📥 Process File")
 
 if process_file_button and uploaded_file:
-    with st.spinner("📂 Processing file..."):
-        try:
-            if uploaded_file.name.endswith('.csv'):
-                df = pd.read_csv(uploaded_file)
-            else:
-                df = pd.read_excel(uploaded_file, engine='openpyxl')
-            required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
-            if not all(col in df.columns for col in required_columns):
-                missing = [col for col in required_columns if col not in df.columns]
-                st.error(f"❌ Missing columns: {', '.join(missing)}. Ensure all required columns are present.")
-            else:
-                df['Date'] = pd.to_datetime(df['Date'])
-                st.session_state.csv_data = df
-                st.success("✅ File processed successfully! The 'Combine Report' checkbox is now enabled.")
-        except Exception as e:
-            st.error(f"❌ Error processing file: {str(e)}. Ensure the file is a valid CSV/XLSX with required columns.")
+    try:
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file, engine='openpyxl')
+        required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
+        if not all(col in df.columns for col in required_columns):
+            missing = [col for col in required_columns if col not in df.columns]
+            st.error(f"❌ Missing columns: {', '.join(missing)}. Ensure all required columns are present.")
+        else:
+            df['Date'] = pd.to_datetime(df['Date'])
+            st.session_state.csv_data = df
+            st.success("✅ File processed successfully! The 'Combine Report' checkbox is now enabled.")
+    except Exception as e:
+        st.error(f"❌ Error processing file: {str(e)}. Ensure the file is a valid CSV/XLSX with required columns.")
 
 # Step 2: Symbol Field and Fetch Real-Time Data Button
 st.sidebar.subheader("📡 Real-Time Data")
@@ -81,34 +79,33 @@ ticker = st.sidebar.text_input("Enter Stock Ticker (e.g., KRRO)", value="KRRO", 
 submit_button = st.sidebar.button("🔄 Fetch Real-Time Data")
 
 if submit_button:
-    with st.spinner("📡 Fetching real-time data..."):
-        try:
-            stock = yf.Ticker(ticker)
-            data = stock.history(period="1d", interval="1d")
-            if data.empty:
-                st.error("❌ No data found for the ticker. Please check the ticker (e.g., AAPL) or upload a CSV/XLSX.")
-            else:
-                latest = data.iloc[-1]
-                st.session_state.real_time_data = {
-                    'Date': data.index[-1].strftime('%Y-%m-%d %H:%M:%S'),
-                    'Open': latest['Open'],
-                    'High': latest['High'],
-                    'Low': latest['Low'],
-                    'Close': latest['Close'],
-                    'Volume': latest['Volume']
-                }
-                info = stock.info
-                st.session_state.fundamental_data.update({
-                    'EPS': info.get('trailingEps', st.session_state.fundamental_data['EPS']),
-                    'P/E': info.get('trailingPE', st.session_state.fundamental_data['P/E']),
-                    'PEG': info.get('pegRatio', st.session_state.fundamental_data['PEG']),
-                    'P/B': info.get('priceToBook', st.session_state.fundamental_data['P/B']),
-                    'ROE': info.get('returnOnEquity', st.session_state.fundamental_data['ROE']),
-                    'Revenue': info.get('totalRevenue', st.session_state.fundamental_data['Revenue']),
-                    'Debt/Equity': info.get('debtToEquity', st.session_state.fundamental_data['Debt/Equity'])
-                })
-        except Exception as e:
-            st.error(f"❌ Error fetching data: {str(e)}. Try a different ticker (e.g., AAPL) or upload a CSV/XLSX.")
+    try:
+        stock = yf.Ticker(ticker)
+        data = stock.history(period="1d", interval="1d")
+        if data.empty:
+            st.error("❌ No data found for the ticker. Please try a different ticker (e.g., AAPL) or upload a CSV/XLSX.")
+        else:
+            latest = data.iloc[-1]
+            st.session_state.real_time_data = {
+                'Date': data.index[-1].strftime('%Y-%m-%d %H:%M:%S'),
+                'Open': latest['Open'],
+                'High': latest['High'],
+                'Low': latest['Low'],
+                'Close': latest['Close'],
+                'Volume': latest['Volume']
+            }
+            info = stock.info
+            st.session_state.fundamental_data.update({
+                'EPS': info.get('trailingEps', st.session_state.fundamental_data['EPS']),
+                'P/E': info.get('trailingPE', st.session_state.fundamental_data['P/E']),
+                'PEG': info.get('pegRatio', st.session_state.fundamental_data['PEG']),
+                'P/B': info.get('priceToBook', st.session_state.fundamental_data['P/B']),
+                'ROE': info.get('returnOnEquity', st.session_state.fundamental_data['ROE']),
+                'Revenue': info.get('totalRevenue', st.session_state.fundamental_data['Revenue']),
+                'Debt/Equity': info.get('debtToEquity', st.session_state.fundamental_data['Debt/Equity'])
+            })
+    except Exception as e:
+        st.error(f"❌ Error fetching data: {str(e)}. Please try a different ticker (e.g., AAPL) or upload a CSV/XLSX.")
 
 # Step 3: Combine Checkbox and Combine Report Button
 st.sidebar.subheader("📈 Report Options")
@@ -140,7 +137,7 @@ if submit_fundamentals:
         'Debt/Equity': debt_equity if debt_equity != 0.0 else None
     }
 
-# Clear Analysis Button (placed at the bottom for easy access)
+# Clear Analysis Button
 st.sidebar.subheader("🗑️ Reset")
 clear_button = st.sidebar.button("Clear Analysis")
 if clear_button:
@@ -568,7 +565,7 @@ if data_source is not None:
             mime="application/pdf"
         )
 
-    if data_source is not None:
+    if data_source is not None and isinstance(data_source, pd.DataFrame):
         export_df = data_source.copy()
         if st.session_state.fundamental_data and any(v is not None for v in st.session_state.fundamental_data.values()):
             for k, v in st.session_state.fundamental_data.items():
