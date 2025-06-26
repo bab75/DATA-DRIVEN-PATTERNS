@@ -134,7 +134,7 @@ st.sidebar.header("Chart Settings")
 show_indicators = st.sidebar.multiselect(
     "Select Indicators",
     ["Bollinger Bands", "Ichimoku Cloud", "RSI", "MACD", "Stochastic", "ADX", "Fibonacci", "RVOL"],
-    default=["Bollinger Bands", "RSI", "MACD"],
+    default=["Bollinger Bands", "RSI", "MACD","ADX"],
     key="indicators"
 )
 subplot_order = st.sidebar.multiselect(
