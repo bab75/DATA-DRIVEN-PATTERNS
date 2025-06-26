@@ -625,13 +625,38 @@ def add_candlestick_trace(fig, df, row):
 
             # Add Stop-Loss line
             fig.add_trace(go.Scatter(
-                x=[df['date'].min(), df['date'].max],
+                x=[df['date'].min(), df['date'].max'],
                 y=[latest_buy['stop_loss']] * 2,
                 mode='lines',
                 line=dict(color="#f44336", dash="dash"),
                 name="Stop-Loss",
                 hovertext=[f"Stop-Loss: ${latest_buy['stop_loss']:.2f}"] * 2,
                 hoverinfo='text+name'
+            ), row=row, col=1)
+
+            # Add Take-Profit line
+            fig.add_trace(go.Scatter(
+                x=[df['date'].min(), df['date'].max'],
+                y=[latest_buy['take_profit']] * 2,
+                mode='lines',
+                line=dict(color="#4CAF50", dash="dash"),
+                name="Take-Profit",
+                hovertext=[f"Take-Profit: ${latest_buy['take_profit']:.2f}"] * 2,
+                hoverinfo='text+name'
+            ), row=row, col=1)
+
+            # Add shaded area with Risk-Reward Ratio
+            fig.add_trace(go.Scatter(
+                x=[latest_buy['date'], latest_buy['date']],
+                y=[latest_buy['stop_loss'], latest_buy['take_profit']],
+                mode='lines',
+                line=dict(color='rgba(76,175,80,0.2)'),
+                fill='toself',
+                fillcolor='rgba(76,175,80,0.2)',
+                name="Risk-Reward Zone",
+                hovertext=[f"Risk-Reward Ratio: {rr_ratio:.2f}" if isinstance(rr_ratio, float) else f"Risk-Reward Ratio: {rr_ratio}"],
+                hoverinfo='text+name',
+                showlegend=False
             ), row=row, col=1)
 
             # Add Take-Profit line
