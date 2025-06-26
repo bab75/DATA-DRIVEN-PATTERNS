@@ -675,7 +675,7 @@ def add_macd_stochastic_trace(fig, df, row):
                                  hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %K: {k:.2f}" for date, k in zip(df['date'], df['stochastic_k'])], hoverinfo='text'), row=row, col=1)
         fig.add_trace(go.Scatter(x=df['date'], y=df['stochastic_d'], name="Stochastic %D", line=dict(color="#ff5722"), yaxis="y2",
                                  hovertext=[f"Date: {date.strftime('%m-%d-%Y')}<br>Stochastic %D: {d:.2f}" for date, d in zip(df['date'], df['stochastic_d'])], hoverinfo='text'), row=row, col=1)
-        fig.update_layout(yaxis2=dict(overlaying='y', side='right', range=[0, 100]))
+        fig.update_layout(yaxis2=dict(overlaying='y', side='right', range=[0, 100], title="Stochastic (%)"))
 
 def add_adx_volatility_trace(fig, df, row):
     if "ADX" in show_indicators:
@@ -714,6 +714,17 @@ def add_win_loss_trace(fig, df, row):
         st.warning("Cannot plot Win/Loss Distribution: No valid daily returns available.")
         
 
+# Fill NaN values to ensure hover text works
+st.session_state.aapl_df['rsi'] = st.session_state.aapl_df['rsi'].fillna(0)
+st.session_state.aapl_df['macd'] = st.session_state.aapl_df['macd'].fillna(0)
+st.session_state.aapl_df['signal'] = st.session_state.aapl_df['signal'].fillna(0)
+st.session_state.aapl_df['macd_diff'] = st.session_state.aapl_df['macd_diff'].fillna(0)
+st.session_state.aapl_df['stochastic_k'] = st.session_state.aapl_df['stochastic_k'].fillna(0)
+st.session_state.aapl_df['stochastic_d'] = st.session_state.aapl_df['stochastic_d'].fillna(0)
+st.session_state.aapl_df['adx'] = st.session_state.aapl_df['adx'].fillna(0)
+st.session_state.aapl_df['rvol'] = st.session_state.aapl_df['rvol'].fillna(0)
+
+row_heights = [0.4 if s == "Candlestick" else 0.3 if s == "MACD & Stochastic" else 0.2 if s == "RSI" else 0.1 for s in subplot_order]
 for i, subplot in enumerate(subplot_order, 1):
     if subplot == "Candlestick":
         add_candlestick_trace(fig, st.session_state.aapl_df, i)
@@ -729,14 +740,14 @@ for i, subplot in enumerate(subplot_order, 1):
         add_win_loss_trace(fig, st.session_state.aapl_df, i)
 
 fig.update_layout(
-    height=250 * len(subplot_order), 
+    height=300 * len(subplot_order), 
     showlegend=True, 
     template="plotly_white", 
     title_text=f"{st.session_state.symbol} Candlestick Analysis (Date Range: {st.session_state.start_date.strftime('%m-%d-%Y')} to {st.session_state.end_date.strftime('%m-%d-%Y')})",
     hovermode="x unified", 
     font=dict(family="Arial", size=12, color="#000000")
 )
-fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y")
+fig.update_xaxes(rangeslider_visible=True, tickformat="%m-%d-%Y", matches='x')
 
 def on_click(trace, points, state):
     if points.point_inds:
