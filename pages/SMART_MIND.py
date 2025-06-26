@@ -39,24 +39,41 @@ if st.button("🚀 Analyze Pattern"):
 
     # --- Clean and Format ---
     df = df.reset_index()
+    # Ensure column names are clean and standardized
     df.columns = [str(col).strip().replace(" ", "_") for col in df.columns]
+    
+    # Verify if 'Date' column exists
+    if 'Date' not in df.columns:
+        st.error("Date column not found in the data. Available columns: " + ", ".join(df.columns))
+        st.stop()
+    
+    # Convert Date column to datetime
     df["Date"] = pd.to_datetime(df["Date"])
     df.sort_values("Date", inplace=True)
 
     # --- Previous Day Columns ---
     for col in ["Open", "High", "Low", "Close", "Volume"]:
-        df[f"Prev_{col}"] = df[col].shift(1)
+        if col in df.columns:
+            df[f"Prev_{col}"] = df[col].shift(1)
+        else:
+            st.warning(f"Column {col} not found in the data.")
 
     # --- Recovery Pattern Flag ---
-    df["Low_Diff"] = df["Open"] - df["Low"]
-    df["Recovered"] = np.where(df["Close"] >= df["Open"], "Yes", "No")
+    if "Open" in df.columns and "Low" in df.columns and "Close" in df.columns:
+        df["Low_Diff"] = df["Open"] - df["Low"]
+        df["Recovered"] = np.where(df["Close"] >= df["Open"], "Yes", "No")
+    else:
+        st.warning("Required columns for recovery pattern (Open, Low, Close) not found.")
 
     # --- Metric Comparisons ---
     selected_metrics = ["Open", "High", "Low", "Close", "Volume"] if comparison == "All" else [comparison]
 
     for metric in selected_metrics:
         try:
-            df[f"{metric}_Change_vs_Yest"] = df[metric] - df[f"Prev_{metric}"]
+            if metric in df.columns and f"Prev_{metric}" in df.columns:
+                df[f"{metric}_Change_vs_Yest"] = df[metric] - df[f"Prev_{metric}"]
+            else:
+                st.warning(f"Could not compute difference for {metric}: Required columns not found.")
         except Exception as e:
             st.warning(f"Could not compute difference for {metric}: {e}")
 
@@ -68,6 +85,9 @@ if st.button("🚀 Analyze Pattern"):
     # --- Price Trend Chart ---
     st.subheader("📈 Price Trend Chart")
     try:
-        st.line_chart(df.set_index("Date")[["Open", "High", "Low", "Close"]])
+        if all(col in df.columns for col in ["Date", "Open", "High", "Low", "Close"]):
+            st.line_chart(df.set_index("Date")[["Open", "High", "Low", "Close"]])
+        else:
+            st.warning("Required columns for plotting (Date, Open, High, Low, Close) not found.")
     except Exception as e:
         st.warning(f"Could not plot chart: {e}")
