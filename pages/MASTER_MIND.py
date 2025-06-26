@@ -21,11 +21,12 @@ try:
         .stButton>button {background: linear-gradient(45deg, #4a90e2, #63b3ed); color: white; border: none; border-radius: 10px; padding: 10px 20px; transition: all 0.3s;}
         .stButton>button:hover {background: linear-gradient(45deg, #357abd, #4a90e2); transform: scale(1.05);}
         .stSelectbox, .stTextInput, .stNumberInput {background: #ffffff; border: 1px solid #d1d9e6; border-radius: 10px; padding: 5px;}
-        .report-container {background: #ffffff; padding: 20px; border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.1); margin-bottom: 20px;}
-        .data-card {background: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin: 10px 0;}
-        h1 {color: #2c3e50; font-size: 2.5em; text-align: center; text-transform: uppercase; letter-spacing: 2px;}
-        h2, h3 {color: #34495e; font-weight: 500;}
+        .report-container {background: #ffffff; padding: 20px; border-radius: 15px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); margin: 10px 0; text-align: center;}
+        .data-card {background: #e8f4f8; padding: 15px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin: 10px 0; text-align: left;}
+        h1 {color: #2c3e50; font-size: 2.5em; text-align: center; text-transform: uppercase; letter-spacing: 2px; background: #3498db; padding: 10px; border-radius: 10px; color: white;}
+        h2, h3 {color: #34495e; font-weight: 500; text-align: center;}
         .mode-banner {background: #e6f3fa; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid #3498db;}
+        .tab-content {padding: 20px; background: #f9f9f9; border-radius: 10px;}
         </style>
     """, unsafe_allow_html=True)
 except TypeError:
@@ -70,7 +71,7 @@ if process_file_button and uploaded_file:
         else:
             df['Date'] = pd.to_datetime(df['Date'])
             st.session_state.csv_data = df
-            st.success("✅ File processed successfully! The 'Combine Report' checkbox is now enabled.")
+            st.success("✅ File processed successfully! The 'Combine Report' checkbox is now usable.")
     except Exception as e:
         st.error(f"❌ Error processing file: {str(e)}. Ensure the file is a valid CSV/XLSX with required columns.")
 
@@ -110,7 +111,7 @@ if submit_button:
 
 # Step 3: Combine Checkbox and Combine Report Button
 st.sidebar.subheader("📈 Report Options")
-combine_checkbox = st.sidebar.checkbox("Combine Report", value=st.session_state.combine_report, disabled=st.session_state.csv_data is None)
+combine_checkbox = st.sidebar.checkbox("Combine Report", value=st.session_state.combine_report)
 if combine_checkbox != st.session_state.combine_report:
     st.session_state.combine_report = combine_checkbox
 combine_button = st.sidebar.button("📊 Combine Process", disabled=not combine_checkbox)
@@ -390,73 +391,85 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
     if is_real_time_only and not all(col in df.columns for col in ['RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram']):
         st.warning("⚠️ Real-time data lacks historical indicators. Upload a CSV/XLSX for full analysis.")
 
-    # Report tabs
+    # Report tabs with enhanced UI
     tabs = st.tabs(["Quick Scan", "Moderate Detail", "In-Depth Analysis", "Visual Summary", "Interactive Dashboard"])
 
     with tabs[0]:
-        st.markdown("<div class='report-container'>", unsafe_allow_html=True)
-        st.markdown(quick_scan)
-        st.markdown("</div>", unsafe_allow_html=True)
-        buffer = io.StringIO()
-        buffer.write(quick_scan)
-        st.download_button(
-            label="📥 Download Markdown Report",
-            data=buffer.getvalue(),
-            file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.md",
-            mime="text/markdown"
-        )
-        pdf_buffer = generate_pdf_report(quick_scan, stock_name, "Quick Scan")
-        st.download_button(
-            label="📥 Download PDF Report",
-            data=pdf_buffer,
-            file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mime="application/pdf"
-        )
+        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
+        st.markdown(f"<h2>Quick Scan: {stock_name}</h2>")
+        st.markdown(quick_scan.replace('### Quick Scan:', ''))
+        col1, col2 = st.columns(2)
+        with col1:
+            buffer = io.StringIO()
+            buffer.write(quick_scan)
+            st.download_button(
+                label="📥 Download Markdown",
+                data=buffer.getvalue(),
+                file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.md",
+                mime="text/markdown"
+            )
+        with col2:
+            pdf_buffer = generate_pdf_report(quick_scan, stock_name, "Quick Scan")
+            st.download_button(
+                label="📥 Download PDF",
+                data=pdf_buffer,
+                file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf"
+            )
+        st.markdown("</div></div>", unsafe_allow_html=True)
 
     with tabs[1]:
-        st.markdown("<div class='report-container'>", unsafe_allow_html=True)
-        st.markdown(moderate_detail)
-        st.markdown("</div>", unsafe_allow_html=True)
-        buffer = io.StringIO()
-        buffer.write(moderate_detail)
-        st.download_button(
-            label="📥 Download Markdown Report",
-            data=buffer.getvalue(),
-            file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.md",
-            mime="text/markdown"
-        )
-        pdf_buffer = generate_pdf_report(moderate_detail, stock_name, "Moderate Detail")
-        st.download_button(
-            label="📥 Download PDF Report",
-            data=pdf_buffer,
-            file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mime="application/pdf"
-        )
+        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
+        st.markdown(f"<h2>Moderate Detail: {stock_name}</h2>")
+        st.markdown(moderate_detail.replace('### Moderate Detail:', ''))
+        col1, col2 = st.columns(2)
+        with col1:
+            buffer = io.StringIO()
+            buffer.write(moderate_detail)
+            st.download_button(
+                label="📥 Download Markdown",
+                data=buffer.getvalue(),
+                file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.md",
+                mime="text/markdown"
+            )
+        with col2:
+            pdf_buffer = generate_pdf_report(moderate_detail, stock_name, "Moderate Detail")
+            st.download_button(
+                label="📥 Download PDF",
+                data=pdf_buffer,
+                file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf"
+            )
+        st.markdown("</div></div>", unsafe_allow_html=True)
 
     with tabs[2]:
-        st.markdown("<div class='report-container'>", unsafe_allow_html=True)
-        st.markdown(in_depth)
-        st.markdown("</div>", unsafe_allow_html=True)
-        buffer = io.StringIO()
-        buffer.write(in_depth)
-        st.download_button(
-            label="📥 Download Markdown Report",
-            data=buffer.getvalue(),
-            file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.md",
-            mime="text/markdown"
-        )
-        pdf_buffer = generate_pdf_report(in_depth, stock_name, "In-Depth Analysis")
-        st.download_button(
-            label="📥 Download PDF Report",
-            data=pdf_buffer,
-            file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mime="application/pdf"
-        )
+        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
+        st.markdown(f"<h2>In-Depth Analysis: {stock_name}</h2>")
+        st.markdown(in_depth.replace('### In-Depth Analysis:', ''))
+        col1, col2 = st.columns(2)
+        with col1:
+            buffer = io.StringIO()
+            buffer.write(in_depth)
+            st.download_button(
+                label="📥 Download Markdown",
+                data=buffer.getvalue(),
+                file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.md",
+                mime="text/markdown"
+            )
+        with col2:
+            pdf_buffer = generate_pdf_report(in_depth, stock_name, "In-Depth Analysis")
+            st.download_button(
+                label="📥 Download PDF",
+                data=pdf_buffer,
+                file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf"
+            )
+        st.markdown("</div></div>", unsafe_allow_html=True)
 
     with tabs[3]:
-        st.markdown("<div class='report-container'>", unsafe_allow_html=True)
+        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
         date_str = (df['Date'].iloc[-1] if isinstance(df['Date'].iloc[-1], str) else df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else df.get('Date', 'N/A'))
-        st.markdown(f"### 📊 Visual Summary: {stock_name} ({date_str})")
+        st.markdown(f"<h2>Visual Summary: {stock_name} ({date_str})</h2>")
         st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}")
         st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}")
         
@@ -479,25 +492,29 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
         st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})")
         st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}")
         visual_summary = f"### Visual Summary: {stock_name} ({date_str})\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})\n- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}"
-        buffer = io.StringIO()
-        buffer.write(visual_summary)
-        st.download_button(
-            label="📥 Download Markdown Report",
-            data=buffer.getvalue(),
-            file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.md",
-            mime="text/markdown"
-        )
-        pdf_buffer = generate_pdf_report(visual_summary, stock_name, "Visual Summary")
-        st.download_button(
-            label="📥 Download PDF Report",
-            data=pdf_buffer,
-            file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mime="application/pdf"
-        )
+        col1, col2 = st.columns(2)
+        with col1:
+            buffer = io.StringIO()
+            buffer.write(visual_summary)
+            st.download_button(
+                label="📥 Download Markdown",
+                data=buffer.getvalue(),
+                file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.md",
+                mime="text/markdown"
+            )
+        with col2:
+            pdf_buffer = generate_pdf_report(visual_summary, stock_name, "Visual Summary")
+            st.download_button(
+                label="📥 Download PDF",
+                data=pdf_buffer,
+                file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf"
+            )
+        st.markdown("</div></div>", unsafe_allow_html=True)
 
     with tabs[4]:
-        st.markdown("<div class='report-container'>", unsafe_allow_html=True)
-        st.markdown(f"### 📉 Interactive Dashboard: {stock_name}")
+        st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
+        st.markdown(f"<h2>Interactive Dashboard: {stock_name}</h2>")
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("#### 📏 Technical Indicators")
@@ -537,21 +554,25 @@ if data_source is not None and isinstance(data_source, pd.DataFrame):
         else:
             st.info("⚠️ Candlestick chart unavailable with real-time data only. Upload a CSV/XLSX.")
         interactive_dashboard = f"### Interactive Dashboard: {stock_name}\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f}\n- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})\n- **Stochastic %K**: {stoch_k_value:.2f}\n- **ADX**: {adx_value:.2f}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}\n- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}"
-        buffer = io.StringIO()
-        buffer.write(interactive_dashboard)
-        st.download_button(
-            label="📥 Download Markdown Report",
-            data=buffer.getvalue(),
-            file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.md",
-            mime="text/markdown"
-        )
-        pdf_buffer = generate_pdf_report(interactive_dashboard, stock_name, "Interactive Dashboard")
-        st.download_button(
-            label="📥 Download PDF Report",
-            data=pdf_buffer,
-            file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.pdf",
-            mime="application/pdf"
-        )
+        col1, col2 = st.columns(2)
+        with col1:
+            buffer = io.StringIO()
+            buffer.write(interactive_dashboard)
+            st.download_button(
+                label="📥 Download Markdown",
+                data=buffer.getvalue(),
+                file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.md",
+                mime="text/markdown"
+            )
+        with col2:
+            pdf_buffer = generate_pdf_report(interactive_dashboard, stock_name, "Interactive Dashboard")
+            st.download_button(
+                label="📥 Download PDF",
+                data=pdf_buffer,
+                file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf"
+            )
+        st.markdown("</div></div>", unsafe_allow_html=True)
 
     if data_source is not None and isinstance(data_source, pd.DataFrame):
         export_df = data_source.copy()
