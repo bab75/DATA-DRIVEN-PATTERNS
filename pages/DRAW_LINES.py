@@ -286,6 +286,12 @@ if st.session_state.aapl_df.empty:
     st.error(f"Failed to load valid data for {st.session_state.symbol}. Please check the file, symbol, or date range.")
     st.stop()
 
+# Display searched symbols in UI
+symbol_display = st.session_state.symbol
+if hasattr(st.session_state, 'benchmark_symbol') and st.session_state.benchmark_symbol:
+    symbol_display += f" vs {st.session_state.benchmark_symbol}"
+st.markdown(f"### Analysis for {symbol_display}")
+
 # Calculate daily return and metrics
 @st.cache_data
 def calculate_metrics(df):
