@@ -1,45 +1,124 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import yfinance as yf
-from datetime import datetime, timedelta
-import pytz
 import io
-import base64
-from ta.trend import MACD, RSIIndicator, SMAIndicator
-from ta.momentum import StochasticOscillator
-import reportlab
-from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.pdfgen import canvas
+from datetime import datetime, timedelta
+import base64
+import ta
+import uuid
+import openpyxl
+import re
+import calendar
+import json
+from sklearn.linear_model import LinearRegression
+import pytz
 
-# Sidebar for inputs
-st.sidebar.header("Stock Analysis Inputs")
-data_source = st.sidebar.selectbox("Data Source", ["Fetch Real-Time (Yahoo Finance)", "Upload CSV/XLSX"])
-st.session_state.symbol = st.sidebar.text_input("Stock Symbol (e.g., AAPL)", value="AAPL")
-st.session_state.benchmark_symbol = st.sidebar.text_input("Benchmark Symbol (e.g., SPY)", value="SPY")
+# Check Plotly version
+if plotly.__version__ < '5.0.0':
+    st.warning(f"Plotly version {plotly.__version__} detected. Please upgrade to Plotly 5.x or higher with: `pip install plotly --upgrade`")
 
-# Set default dates to current date
-default_start_date = datetime(2020, 1, 1)  # Fixed start date
-default_end_date = datetime.now(pytz.timezone('America/New_York')).date()  # System date as default end date
-st.session_state.start_date = st.sidebar.date_input("From Date", value=default_start_date, min_value=datetime(2000, 1, 1), max_value=default_end_date)
-st.session_state.end_date = st.sidebar.date_input("To Date", value=default_end_date, min_value=st.session_state.start_date, max_value=default_end_date + timedelta(days=365))
+# Streamlit page config
+st.set_page_config(page_title="Stock Investment Analysis", layout="wide", initial_sidebar_state="expanded")
 
-if st.sidebar.button("Submit"):
+# Custom CSS for white background and readable text
+st.markdown("""
+    <style>
+    .main { background-color: #ffffff; color: #000000; }
+    .sidebar .sidebar-content { background-color: #f0f0f0; color: #000000; }
+    .stButton>button { background-color: #4CAF50; color: #ffffff; border-radius: 5px; }
+    .stFileUploader label { color: #000000; }
+    .stTextInput label { color: #000000; }
+    h1, h2, h3 { color: #0288d1; font-family: 'Arial', sans-serif; }
+    .stExpander { background-color: #f5f5f5; border-radius: 5px; }
+    .metric-box { background-color: #e0e0e0; padding: 10px; border-radius: 5px; color: #000000; }
+    .trade-details { background-color: #f0f0f0; padding: 10px; border-radius: 5px; color: #000000; }
+    .alert-box { background-color: #fff3e0; padding: 10px; border-radius: 5px; color: #000000; }
+    </style>
+""", unsafe_allow_html=True)
+
+# Initialize session state with defaults
+st.session_state.setdefault('trade_details', None)
+st.session_state.setdefault('data_loaded', False)
+st.session_state.setdefault('data_processed', False)
+st.session_state.setdefault('symbol', 'AAPL')
+if 'aapl_df' not in st.session_state:
+    st.session_state.aapl_df = pd.DataFrame()
+if 'pl_df' not in st.session_state:
+    st.session_state.pl_df = pd.DataFrame()
+
+# Title
+st.title("📊 Stock Analysis: Consolidation & Breakout")
+
+# Sidebar for data source and settings
+st.sidebar.header("Data Source")
+data_source = st.sidebar.radio("Select Data Source", ["Upload CSV/XLSX", "Fetch Real-Time (Yahoo Finance)"], key="data_source")
+symbol = st.sidebar.text_input("Stock Symbol (e.g., AAPL)", value=st.session_state.symbol, key="symbol_input")
+
+# File uploaders
+primary_file = st.sidebar.file_uploader("Upload Stock Data (CSV/XLSX)", type=["csv", "xlsx"], key="primary_file")
+secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV/XLSX)", type=["csv", "xlsx"], key="secondary_file")
+
+# Dynamic date inputs based on loaded data
+if 'aapl_df' in st.session_state and not st.session_state.aapl_df.empty:
+    valid_dates = st.session_state.aapl_df['date'].dropna()
+    if not valid_dates.empty:
+        min_date = valid_dates.min()
+        max_date = valid_dates.max()
+    else:
+        min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
+        max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+else:
+    min_date = pd.to_datetime('01-01-2020', format='%m-%d-%Y')
+    max_date = pd.to_datetime('06-24-2025 21:47:00', format='%m-%d-%Y %H:%M:%S').tz_localize('America/New_York')
+
+from_date = st.sidebar.date_input("From Date", value=min_date, min_value=min_date, max_value=max_date, key="from_date_input", format="MM-DD-YYYY")
+to_date = st.sidebar.date_input("To Date", value=max_date, min_value=min_date, max_value=max_date, key="to_date_input", format="MM-DD-YYYY")
+
+st.sidebar.header("Chart Settings")
+show_indicators = st.sidebar.multiselect(
+    "Select Indicators",
+    ["Bollinger Bands", "Ichimoku Cloud", "RSI", "MACD", "Stochastic", "ADX", "Fibonacci", "RVOL"],
+    default=["Bollinger Bands", "RSI", "MACD"],
+    key="indicators"
+)
+subplot_order = st.sidebar.multiselect(
+    "Customize Subplot Order",
+    ["Candlestick", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume", "Win/Loss Distribution"],
+    default=["Candlestick", "RSI", "MACD & Stochastic", "ADX & Volatility", "Volume", "Win/Loss Distribution"],
+    key="subplot_order"
+)
+html_report_type = st.sidebar.radio("HTML Report Type", ["Interactive (with Hover)", "Static Images"], key="html_report_type")
+
+# Submit and Clear buttons
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    submit = st.button("Submit")
+with col2:
+    clear = st.button("Clear")
+
+# Handle Clear button
+if clear:
+    st.session_state.clear()
+    st.cache_data.clear()
     st.session_state.data_loaded = False
-    primary_file = st.sidebar.file_uploader("Upload Stock Data (CSV/XLSX)", type=["csv", "xlsx"], key="primary_file")
-    secondary_file = st.sidebar.file_uploader("Upload Benchmark Data (CSV/XLSX)", type=["csv", "xlsx"], key="secondary_file")
-    st.session_state.data_loaded = True
+    st.session_state.data_processed = False
+    st.session_state.symbol = 'AAPL'
+    st.session_state.aapl_df = pd.DataFrame()
+    st.session_state.pl_df = pd.DataFrame()
+    st.rerun()
 
-# Clear button
-if st.sidebar.button("Clear"):
-    for key in st.session_state.keys():
-        del st.session_state[key]
-    st.experimental_rerun()
+# Validate symbol format
+def validate_symbol(symbol):
+    return bool(re.match(r'^[A-Za-z0-9.]+$', symbol.strip()))
 
+# Load and validate data
+@st.cache_data
 @st.cache_data
 def load_data(primary_file, data_source, symbol, start_date, end_date, secondary_file=None, benchmark_symbol=None):
     aapl_df = pd.DataFrame()
@@ -100,15 +179,15 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
             max_date = aapl_df['date'].max()
             st.sidebar.write(f"File date range: {min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}")
             
-            # Warn if selected range is outside file's range, but use available data
+            # Adjust selected date range to fit file's range
             adjusted_start_date = max(start_date, min_date)
             adjusted_end_date = min(end_date, max_date)
-            if start_date < min_date or end_date > max_date:
-                st.warning(
-                    f"Selected date range ({start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}) is outside the file's range "
-                    f"({min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}). Using available data from "
-                    f"{adjusted_start_date.strftime('%m-%d-%Y')} to {adjusted_end_date.strftime('%m-%d-%Y')}. Adjust the date range if needed."
+            if adjusted_start_date > adjusted_end_date:
+                st.error(
+                    f"Adjusted date range ({adjusted_start_date.strftime('%m-%d-%Y')} to {adjusted_end_date.strftime('%m-%d-%Y')}) is invalid. "
+                    f"File range is {min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}. Adjust the date range."
                 )
+                return pd.DataFrame(), pd.DataFrame()
             
             aapl_df = aapl_df[(aapl_df['date'] >= adjusted_start_date) & (aapl_df['date'] <= adjusted_end_date)]
             if aapl_df.empty:
@@ -166,7 +245,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
             if aapl_df.empty or len(aapl_df) < 10:
                 st.error(
                     f"Insufficient data points ({len(aapl_df)}) for {symbol}. Select a wider date range "
-                    f"(e.g., 01-01-2020 to {datetime.now(pytz.timezone('America/New_York')).strftime('%m-%d-%Y')})."
+                    f"(e.g., 01-01-2020 to {datetime.now().strftime('%m-%d-%Y')})."
                 )
                 return pd.DataFrame(), pd.DataFrame()
         
