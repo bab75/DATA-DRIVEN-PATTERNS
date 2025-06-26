@@ -176,13 +176,42 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
     
     if data_source == "Upload CSV/XLSX" and primary_file:
         try:
+            # Check file size
+            primary_file.seek(0, 2)  # Move to end of file
+            file_size = primary_file.tell()
+            primary_file.seek(0)  # Reset to start
+            if file_size == 0:
+                st.error("Uploaded file is empty. Please upload a valid CSV/XLSX file with stock data.")
+                return pd.DataFrame(), pd.DataFrame()
+            
+            # Read the file
             if primary_file.name.endswith('.csv'):
-                aapl_df = pd.read_csv(primary_file)
+                # Try reading with different delimiters if comma fails
+                try:
+                    aapl_df = pd.read_csv(primary_file, sep=',')
+                except pd.errors.EmptyDataError:
+                    st.error("CSV file is empty or contains no valid data. Please check the file content.")
+                    return pd.DataFrame(), pd.DataFrame()
+                except pd.errors.ParserError:
+                    # Try alternative delimiters (e.g., semicolon, tab)
+                    primary_file.seek(0)
+                    try:
+                        aapl_df = pd.read_csv(primary_file, sep=';')
+                    except:
+                        primary_file.seek(0)
+                        aapl_df = pd.read_csv(primary_file, sep='\t')
             elif primary_file.name.endswith('.xlsx'):
                 aapl_df = pd.read_excel(primary_file)
             
+            # Check if DataFrame is empty
+            if aapl_df.empty:
+                st.error("No data could be loaded from the file. Please ensure the file contains valid data with columns: date, open, high, low, close, volume.")
+                return pd.DataFrame(), pd.DataFrame()
+            
+            # Standardize column names
             aapl_df.columns = aapl_df.columns.str.lower().str.strip()
             
+            # Check for benchmark columns
             benchmark_cols = ['year', 'start date', 'end date', 'profit/loss (percentage)', 'profit/loss (value)']
             if any(col in aapl_df.columns for col in benchmark_cols):
                 st.error(
@@ -190,6 +219,7 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                 )
                 return pd.DataFrame(), pd.DataFrame()
             
+            # Check for required columns
             required_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
             actual_cols = aapl_df.columns.tolist()
             missing_cols = [col for col in required_cols if col not in actual_cols]
@@ -198,21 +228,22 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                     f"Missing required columns in stock data: {', '.join(missing_cols)}. Required columns: date, open, high, low, close, volume."
                 )
                 st.write("Available columns:", actual_cols)
-                st.write("Sample data (first 5 rows):", aapl_df.head())
-                st.write("Data types:", aapl_df.dtypes)
+                st.write("Sample data (first 5 rows):", aapl_df.head() if not aapl_df.empty else "No data loaded")
+                st.write("Data types:", aapl_df.dtypes if not aapl_df.empty else "No data loaded")
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Flexible date parsing for M-D-YYYY, MM-DD-YYYY, and YYYY-MM-DD
+            # Flexible date parsing
             aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', infer_datetime_format=True)
             if aapl_df['date'].isna().all():
                 st.error("All dates in the 'date' column are invalid. Supported formats include M-D-YYYY (e.g., 1-2-2025), MM-DD-YYYY (e.g., 01-02-2025), and YYYY-MM-DD (e.g., 2025-01-02).")
-                st.write("Sample data (first 5 rows):", aapl_df.head())
+                st.write("Sample data (first 5 rows):", aapl_df.head() if not aapl_df.empty else "No data loaded")
                 return pd.DataFrame(), pd.DataFrame()
             
             aapl_df = aapl_df.dropna(subset=['date'])  # Remove rows with NaT dates
             aapl_df['date'] = aapl_df['date'].dt.strftime('%m-%d-%Y')  # Standardize to MM-DD-YYYY
             aapl_df['date'] = pd.to_datetime(aapl_df['date'], format='%m-%d-%Y')  # Re-convert to datetime
             
+            # Check numeric columns
             numeric_cols = ['open', 'high', 'low', 'close', 'volume']
             for col in numeric_cols:
                 aapl_df[col] = pd.to_numeric(aapl_df[col], errors='coerce')
@@ -220,16 +251,17 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
                     st.warning(f"Non-numeric values found in '{col}' column. Interpolating missing values.")
                     aapl_df[col] = aapl_df[col].interpolate(method='linear', limit_direction='both')
             
+            # Check data sufficiency
             if aapl_df.empty or len(aapl_df) < 10:
                 st.error(f"Insufficient data points ({len(aapl_df)}) after processing. Please upload a file with at least 10 trading days.")
-                st.write("Sample data (first 5 rows):", aapl_df.head())
+                st.write("Sample data (first 5 rows):", aapl_df.head() if not aapl_df.empty else "No data loaded")
                 return pd.DataFrame(), pd.DataFrame()
             
             min_date = aapl_df['date'].min()
             max_date = aapl_df['date'].max()
             st.sidebar.write(f"File date range: {min_date.strftime('%m-%d-%Y')} to {max_date.strftime('%m-%d-%Y')}")
             
-            # Adjust selected date range to fit file's range
+            # Adjust selected date range to fit file’s range
             adjusted_start_date = max(start_date, min_date)
             adjusted_end_date = min(end_date, max_date)
             if adjusted_start_date > adjusted_end_date:
@@ -285,9 +317,9 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
             aapl_df = aapl_df.reset_index().rename(columns={
                 'Date': 'date', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'
             })
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', infer_datetime_format=True)  # Flexible parsing
-            aapl_df['date'] = aapl_df['date'].dt.strftime('%m-%d-%Y')  # Standardize to MM-DD-YYYY
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], format='%m-%d-%Y')  # Re-convert to datetime
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', infer_datetime_format=True)
+            aapl_df['date'] = aapl_df['date'].dt.strftime('%m-%d-%Y')
+            aapl_df['date'] = pd.to_datetime(aapl_df['date'], format='%m-%d-%Y')
             
             aapl_df = aapl_df.dropna(subset=['date'])
             aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
@@ -327,7 +359,6 @@ def load_data(primary_file, data_source, symbol, start_date, end_date, secondary
             st.warning(f"Error loading benchmark data: {str(e)}. Proceeding without benchmark.")
     
     return aapl_df, pl_df
-
 
 # Load data only if Submit is pressed and not already processed
 if submit and not st.session_state.data_processed:
