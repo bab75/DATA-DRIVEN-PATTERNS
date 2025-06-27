@@ -22,11 +22,13 @@ def fetch_data(ticker, start_date, end_date):
         if data.empty:
             st.error(f"No data found for {ticker}. Please check the ticker or date range.")
             return None
-        # Ensure required columns exist
+        # Ensure required columns and lowercase them
         required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
         if not all(col in data.columns for col in required_columns):
             st.error(f"Data for {ticker} missing required columns: {required_columns}")
             return None
+        # Convert column names to lowercase strings to avoid tuple issue
+        data.columns = [str(col).lower() for col in data.columns]
         data.index = pd.to_datetime(data.index)
         return data
     except Exception as e:
@@ -70,7 +72,15 @@ def run_backtrader(ticker, start_date, end_date, capital_base):
     
     # Create Backtrader data feed
     try:
-        data_feed = bt.feeds.PandasData(dataname=data)
+        data_feed = bt.feeds.PandasData(
+            dataname=data,
+            datetime=None,  # Use index
+            open='open',
+            high='high',
+            low='low',
+            close='close',
+            volume='volume'
+        )
     except Exception as e:
         st.error(f"Error creating Backtrader data feed: {str(e)}")
         return None, None
@@ -92,9 +102,9 @@ def run_backtrader(ticker, start_date, end_date, capital_base):
         results = pd.DataFrame({
             'Date': data.index[:len(strategy.portfolio_value)],
             'Portfolio Value': strategy.portfolio_value,
-            'Price': data['Close'],
-            'Short MA': data['Close'].rolling(window=50).mean(),
-            'Long MA': data['Close'].rolling(window=200).mean()
+            'Price': data['close'],
+            'Short MA': data['close'].rolling(window=50).mean(),
+            'Long MA': data['close'].rolling(window=200).mean()
         })
         return results, final_value
     except Exception as e:
