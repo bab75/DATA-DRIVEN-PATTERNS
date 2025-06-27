@@ -18,9 +18,12 @@ def fetch_data(symbol, start_date, end_date):
         if data.empty or len(data) < 50:  # Ensure enough data for strategies
             st.error(f"Insufficient data for {symbol}. Need at least 50 days.")
             return None
-        # Clean data: remove NaN and ensure numeric values
+        # Clean data: remove NaN and ensure positive prices
         data = data.dropna()
         data = data[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+        if (data['Close'] <= 0).any():
+            st.error(f"Invalid data for {symbol}: Contains zero or negative prices.")
+            return None
         return data
     except Exception as e:
         st.error(f"Error fetching data: {e}")
@@ -44,20 +47,21 @@ def sma_crossover_backtest(data, short_period=20, long_period=50):
         if pd.isna(data['SMA_short'].iloc[i]) or pd.isna(data['SMA_long'].iloc[i]):
             equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
             continue
-        if data['SMA_short'].iloc[i] > data['SMA_long'].iloc[i] and data['SMA_short'].iloc[i-1] <= data['SMA_long'].iloc[i-1]:
-            if position == 0:
-                if data['Close'].iloc[i] > 0:  # Avoid division by zero
-                    shares = cash / data['Close'].iloc[i]
+        close_price = data['Close'].iloc[i]
+        if not pd.isna(close_price) and close_price > 0:
+            if data['SMA_short'].iloc[i] > data['SMA_long'].iloc[i] and data['SMA_short'].iloc[i-1] <= data['SMA_long'].iloc[i-1]:
+                if position == 0:
+                    shares = cash / close_price
                     cash = 0
                     position = 1
-                    trades.append(('BUY', data.index[i], data['Close'].iloc[i], shares))
-        elif data['SMA_short'].iloc[i] < data['SMA_long'].iloc[i] and data['SMA_short'].iloc[i-1] >= data['SMA_long'].iloc[i-1]:
-            if position == 1:
-                cash = shares * data['Close'].iloc[i]
-                shares = 0
-                position = 0
-                trades.append(('SELL', data.index[i], data['Close'].iloc[i], shares))
-        equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
+                    trades.append(('BUY', data.index[i], close_price, shares))
+            elif data['SMA_short'].iloc[i] < data['SMA_long'].iloc[i] and data['SMA_short'].iloc[i-1] >= data['SMA_long'].iloc[i-1]:
+                if position == 1:
+                    cash = shares * close_price
+                    shares = 0
+                    position = 0
+                    trades.append(('SELL', data.index[i], close_price, shares))
+        equity.append(cash + (shares * close_price if position == 1 else 0))
     
     final_value = cash + (shares * data['Close'].iloc[-1] if position == 1 else 0)
     return trades, final_value, equity
@@ -83,18 +87,19 @@ def rsi_mean_reversion_backtest(data, rsi_period=14, oversold=30, overbought=70)
         if pd.isna(data['RSI'].iloc[i]):
             equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
             continue
-        if data['RSI'].iloc[i] < oversold and position == 0:
-            if data['Close'].iloc[i] > 0:
-                shares = cash / data['Close'].iloc[i]
+        close_price = data['Close'].iloc[i]
+        if not pd.isna(close_price) and close_price > 0:
+            if data['RSI'].iloc[i] < oversold and position == 0:
+                shares = cash / close_price
                 cash = 0
                 position = 1
-                trades.append(('BUY', data.index[i], data['Close'].iloc[i], shares))
-        elif data['RSI'].iloc[i] > overbought and position == 1:
-            cash = shares * data['Close'].iloc[i]
-            shares = 0
-            position = 0
-            trades.append(('SELL', data.index[i], data['Close'].iloc[i], shares))
-        equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
+                trades.append(('BUY', data.index[i], close_price, shares))
+            elif data['RSI'].iloc[i] > overbought and position == 1:
+                cash = shares * close_price
+                shares = 0
+                position = 0
+                trades.append(('SELL', data.index[i], close_price, shares))
+        equity.append(cash + (shares * close_price if position == 1 else 0))
     
     final_value = cash + (shares * data['Close'].iloc[-1] if position == 1 else 0)
     return trades, final_value, equity
@@ -119,18 +124,19 @@ def bollinger_bands_backtest(data, period=20, std_dev=2):
         if pd.isna(data['Upper'].iloc[i]) or pd.isna(data['Lower'].iloc[i]) or pd.isna(data['STD'].iloc[i]):
             equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
             continue
-        if data['Close'].iloc[i] < data['Lower'].iloc[i] and position == 0:
-            if data['Close'].iloc[i] > 0:
-                shares = cash / data['Close'].iloc[i]
+        close_price = data['Close'].iloc[i]
+        if not pd.isna(close_price) and close_price > 0:
+            if data['Close'].iloc[i] < data['Lower'].iloc[i] and position == 0:
+                shares = cash / close_price
                 cash = 0
                 position = 1
-                trades.append(('BUY', data.index[i], data['Close'].iloc[i], shares))
-        elif data['Close'].iloc[i] > data['Upper'].iloc[i] and position == 1:
-            cash = shares * data['Close'].iloc[i]
-            shares = 0
-            position = 0
-            trades.append(('SELL', data.index[i], data['Close'].iloc[i], shares))
-        equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
+                trades.append(('BUY', data.index[i], close_price, shares))
+            elif data['Close'].iloc[i] > data['Upper'].iloc[i] and position == 1:
+                cash = shares * close_price
+                shares = 0
+                position = 0
+                trades.append(('SELL', data.index[i], close_price, shares))
+        equity.append(cash + (shares * close_price if position == 1 else 0))
     
     final_value = cash + (shares * data['Close'].iloc[-1] if position == 1 else 0)
     return trades, final_value, equity
@@ -140,12 +146,13 @@ def buy_and_hold_backtest(data):
     if len(data) < 1:
         st.warning("No data available for Buy and Hold strategy.")
         return [], 10000, []
-    cash = 10000
-    if data['Close'].iloc[0] <= 0:
+    close_price_first = data['Close'].iloc[0]
+    if pd.isna(close_price_first) or close_price_first <= 0:
         st.warning("Invalid price data for Buy and Hold strategy.")
         return [], 10000, [10000] * len(data)
-    shares = cash / data['Close'].iloc[0]
-    trades = [('BUY', data.index[0], data['Close'].iloc[0], shares)]
+    cash = 10000
+    shares = cash / close_price_first
+    trades = [('BUY', data.index[0], close_price_first, shares)]
     final_value = shares * data['Close'].iloc[-1]
     equity = [shares * data['Close'].iloc[i] for i in range(len(data))]
     return trades, final_value, equity
@@ -187,7 +194,6 @@ def calculate_metrics(equity, data):
         return {
             'Total Return (%)': total_return,
             'Annualized Return (%)': annualized_return,
-            'Volatility (%)': volatility,
             'Sharpe Ratio': sharpe_ratio,
             'Max Drawdown (%)': max_drawdown
         }
@@ -205,8 +211,8 @@ def calculate_metrics(equity, data):
 def plot_price(data, trades, strategy_name):
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=data.index, y=data['Close'], name='Price', line=dict(color='blue')))
-    buy_signals = [(t[1], t[2]) for t in trades if t[0] == 'BUY' and isinstance(t[2], (int, float))]
-    sell_signals = [(t[1], t[2]) for t in trades if t[0] == 'SELL' and isinstance(t[2], (int, float))]
+    buy_signals = [(t[1], t[2]) for t in trades if t[0] == 'BUY' and isinstance(t[2], (int, float)) and not pd.isna(t[2])]
+    sell_signals = [(t[1], t[2]) for t in trades if t[0] == 'SELL' and isinstance(t[2], (int, float)) and not pd.isna(t[2])]
     fig.add_trace(go.Scatter(x=[t[0] for t in buy_signals], y=[t[1] for t in buy_signals], mode='markers', name='Buy', marker=dict(symbol='triangle-up', size=10, color='green')))
     fig.add_trace(go.Scatter(x=[t[0] for t in sell_signals], y=[t[1] for t in sell_signals], mode='markers', name='Sell', marker=dict(symbol='triangle-down', size=10, color='red')))
     fig.update_layout(title=f'{strategy_name} - Price with Signals', xaxis_title='Date', yaxis_title='Price')
@@ -236,7 +242,7 @@ with st.form("backtest_form"):
         symbol = st.text_input("Stock Symbol (e.g., AAPL)", "AAPL")
         start_date = st.date_input("Start Date", value=datetime(2020, 1, 1))
     with col2:
-        end_date = st.date_input("End Date", value=datetime(2023, 12, 31))
+        end_date = st.date_input("End_date", value=datetime(2023, 12, 31))
         st.write("")  # Spacer
     
     st.markdown("<h3 class='text-lg font-semibold text-gray-700'>Select Strategies</h3>", unsafe_allow_html=True)
@@ -258,6 +264,8 @@ if submitted:
     else:
         data = fetch_data(symbol, start_date, end_date)
         if data is not None and not data.empty:
+            # Debug: Display data summary
+            st.write(f"Data fetched: {len(data)} rows")
             results = {}
             for strategy_name, selected in strategies.items():
                 if selected:
@@ -299,12 +307,14 @@ if submitted:
                         st.table(metrics_df)
                         st.write("**Trades**")
                         trades_df = pd.DataFrame(result['trades'], columns=['Action', 'Date', 'Price', 'Shares'])
-                        # Ensure Price is numeric before formatting
-                        trades_df['Price'] = pd.to_numeric(trades_df['Price'], errors='coerce')
-                        if not trades_df.empty and not trades_df['Price'].isna().all():
-                            trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
-                            trades_df['Shares'] = trades_df['Shares'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
-                            st.dataframe(trades_df)
+                        if not trades_df.empty:
+                            trades_df['Price'] = pd.to_numeric(trades_df['Price'], errors='coerce')
+                            if not trades_df['Price'].isna().all():
+                                trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+                                trades_df['Shares'] = trades_df['Shares'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
+                                st.dataframe(trades_df)
+                            else:
+                                st.write("No valid trades executed.")
                         else:
                             st.write("No trades executed.")
                     with col2:
