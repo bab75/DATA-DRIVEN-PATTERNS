@@ -451,8 +451,8 @@ if st.button("Run Analysis"):
                 with st.expander("Daily Stock Increase Analysis", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write(f"Daily stock increase analysis for {ticker} ({start_date} to {end_date}):")
-                    increase_df = raw_data[['Date', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
-                    increase_df['Date'] = increase_df.index
+                    # Use index as Date and select only the required columns
+                    increase_df = raw_data.reset_index()[['Date', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
                     styled_increase_df = increase_df.style.format({
                         "Daily Increase ($)": "{:.2f}",
                         "Open vs Prev Close ($)": "{:.2f}",
