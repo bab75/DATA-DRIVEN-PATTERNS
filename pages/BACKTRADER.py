@@ -114,6 +114,10 @@ def calculate_profits(data, strategies, start_date, end_date):
             **daily_profit
         })
     
+    # Convert daily results to DataFrame
+    daily_df = pd.DataFrame(daily_results)
+    daily_df.set_index("Date", inplace=True)
+    
     # Aggregated analysis
     first_open = data['Open'].iloc[0]
     last_close = data['Close'].iloc[-1]
@@ -178,30 +182,25 @@ def calculate_profits(data, strategies, start_date, end_date):
             dollar_col = f"{strategy} ($)"
             volume_weighted_profits[strategy] = (daily_df[dollar_col] * (data['Volume'] / avg_volume)).sum()
     
-    # Convert daily results to DataFrame
-    daily_df = pd.DataFrame(daily_results)
-    daily_df.set_index("Date", inplace=True)
-    
     # Comparison table
     comparison = []
     for strategy, selected in strategies.items():
-        if selected:
+        if selected and f"{strategy} ($)" in daily_df.columns:
             dollar_col = f"{strategy} ($)"
             percent_col = f"{strategy} (%)"
-            if dollar_col in daily_df.columns:
-                max_daily_profit = daily_df[dollar_col].max()
-                max_daily_percent = daily_df[percent_col].max()
-                max_day = daily_df[dollar_col].idxmax() if max_daily_profit else None
-                agg_profit = aggregated_profit.get(dollar_col, None)
-                agg_percent = aggregated_profit.get(percent_col, None)
-                comparison.append({
-                    "Strategy": strategy,
-                    "Max Daily Profit ($)": max_daily_profit,
-                    "Max Daily Return (%)": max_daily_percent,
-                    "Best Day": max_day,
-                    "Aggregated Profit ($)": agg_profit,
-                    "Aggregated Return (%)": agg_percent
-                })
+            max_daily_profit = daily_df[dollar_col].max()
+            max_daily_percent = daily_df[percent_col].max()
+            max_day = daily_df[dollar_col].idxmax() if max_daily_profit else None
+            agg_profit = aggregated_profit.get(dollar_col, None)
+            agg_percent = aggregated_profit.get(percent_col, None)
+            comparison.append({
+                "Strategy": strategy,
+                "Max Daily Profit ($)": max_daily_profit,
+                "Max Daily Return (%)": max_daily_percent,
+                "Best Day": max_day,
+                "Aggregated Profit ($)": agg_profit,
+                "Aggregated Return (%)": agg_percent
+            })
     
     comparison_df = pd.DataFrame(comparison)
     if not comparison_df.empty:
