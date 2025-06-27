@@ -243,45 +243,49 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
             elif strategy == "Min-Low to Max-High":
                 daily_diffs[strategy] = data['High'] - data['Low']
     
-    # Historical prediction for each strategy (using provided values)
-    strategy_predictions = {
-        "Min-Low to End-Close": {"Mean": 2.96, "Conf Lower": 2.42, "Conf Upper": 3.50, "Std": 3.04},
-        "Open-High": {"Mean": 2.96, "Conf Lower": 2.35, "Conf Upper": 3.58, "Std": 3.44},
-        "Open-Close": {"Mean": 0.19, "Conf Lower": -0.60, "Conf Upper": 0.97, "Std": 4.42},
-        "Min-Low to Max-High": {"Mean": 5.74, "Conf Lower": 5.07, "Conf Upper": 6.40, "Std": 3.74}
-    }
+    # Historical prediction for each strategy
+    strategy_predictions = {}
+    for strategy, diffs in daily_diffs.items():
+        if len(diffs) > 1:
+            mean = diffs.mean()
+            std = diffs.std()
+            conf_interval = [mean - 1.96 * std, mean + 1.96 * std]  # 95% confidence interval
+            strategy_predictions[strategy] = {
+                "Mean": mean,
+                "Conf Lower": conf_interval[0],
+                "Conf Upper": conf_interval[1],
+                "Std": std
+            }
     
-    # ML Prediction
+    # ML Prediction for all strategies
     ml_predictions = {}
-    if len(data) > 1:
-        # Prepare features: lagged close and volume
+    if len(data) > 1 and any(strategies.values()):
         data_ml = data[['Close', 'Volume']].copy()
         data_ml['Lag_Close'] = data_ml['Close'].shift(1)
         data_ml['Lag_Volume'] = data_ml['Volume'].shift(1)
         data_ml = data_ml.dropna()
         
-        # Train-test split (80-20)
         train_size = int(len(data_ml) * 0.8)
         train_data = data_ml[:train_size]
         test_data = data_ml[train_size:]
         
-        X_train = train_data[['Lag_Close', 'Lag_Volume']]
-        y_train = train_data['Close'] - train_data['Lag_Close']  # Daily increase
-        X_test = test_data[['Lag_Close', 'Lag_Volume']]
-        y_test = test_data['Close'] - test_data['Lag_Close']
-        
-        # Train Linear Regression model
-        model = LinearRegression()
-        model.fit(X_train, y_train)
-        
-        # Predict on test data
-        ml_pred = model.predict(X_test)
-        ml_rmse = np.sqrt(np.mean((ml_pred - y_test) ** 2))
-        
-        # Predict next day using last known data
-        last_data = data_ml.iloc[-1][['Lag_Close', 'Lag_Volume']].values.reshape(1, -1)
-        ml_next_pred = model.predict(last_data)[0]
-        ml_predictions['Min-Low to Max-High'] = {"Predicted Increase": ml_next_pred, "RMSE": ml_rmse}
+        for strategy in strategies:
+            if strategies[strategy]:
+                # Prepare target based on strategy difference
+                y_train = daily_diffs[strategy].iloc[:train_size].values
+                y_test = daily_diffs[strategy].iloc[train_size:].values
+                X_train = train_data[['Lag_Close', 'Lag_Volume']].values
+                X_test = test_data[['Lag_Close', 'Lag_Volume']].values
+                
+                model = LinearRegression()
+                model.fit(X_train, y_train)
+                
+                ml_pred = model.predict(X_test)
+                ml_rmse = np.sqrt(np.mean((ml_pred - y_test) ** 2))
+                
+                last_data = data_ml.iloc[-1][['Lag_Close', 'Lag_Volume']].values.reshape(1, -1)
+                ml_next_pred = model.predict(last_data)[0]
+                ml_predictions[strategy] = {"Predicted Increase": ml_next_pred, "RMSE": ml_rmse}
     
     # Raw data color-coding for Close
     raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
@@ -334,6 +338,16 @@ if st.button("Run Analysis"):
             data = fetch_data(ticker, start_date, end_date)
             if data is not None:
                 daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions, ml_predictions = calculate_profits(data, strategies, strategy_variant, start_date, end_date)
+                
+                # Quick Summary
+                st.subheader("Quick Summary")
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                if strategy_predictions and ml_predictions:
+                    best_confident = max(strategy_predictions.items(), key=lambda x: x[1]["Conf Lower"])
+                    best_ml = max(ml_predictions.items(), key=lambda x: x[1]["Predicted Increase"])
+                    st.write(f"Best confident gain: {best_confident[0]} (${best_confident[1]['Conf Lower']:.2f}). "
+                             f"Best ML prediction: {best_ml[0]} (${best_ml[1]['Predicted Increase']:.2f}).")
+                st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Raw stock data
                 with st.expander("Raw Stock Data", expanded=False):
@@ -516,27 +530,27 @@ if st.button("Run Analysis"):
                 
                 with tabs[0]:
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.write("**Average Contribution to Daily Increase:**")
+                    st.write("**Average Contribution to Daily Increase:** (How the daily gain splits after market open)")
                     st.write("- Opening Price vs Previous Close: 20.0%")
                     st.write("- Intraday Movement: 80.0%")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with tabs[1]:
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.write("**Predicted Daily Increase by Strategy (based on historical data):**")
+                    st.write("**Predicted Daily Increase by Strategy:** (Reliable gains and smart predictions for tomorrow, June 28, 2025)")
                     data = {
                         "Strategy": ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"],
-                        "Mean Daily Increase ($)": ["$2.96", "$2.96", "$0.19", "$5.74"],
-                        "95% Confidence Interval": ["[2.42, 3.50]", "[2.35, 3.58]", "[-0.60, 0.97]", "[5.07, 6.40]"],
-                        "Standard Deviation": ["$3.04", "$3.44", "$4.42", "$3.74"],
-                        "ML Predicted Increase": ["", "", "", "$1.49 (RMSE: 2.97)"] if ml_predictions else ["", "", "", ""]
+                        "Confident Number ($)": [f"${v['Conf Lower']:.2f}" if strategy_predictions else "N/A" for v in [strategy_predictions.get(s) for s in data["Strategy"]]],
+                        "Confidence Range ($)": [f"[{v['Conf Lower']:.2f}, {v['Conf Upper']:.2f}]" if strategy_predictions else "N/A" for v in [strategy_predictions.get(s) for s in data["Strategy"]]],
+                        "Variation ($)": [f"${v['Std']:.2f}" if strategy_predictions else "N/A" for v in [strategy_predictions.get(s) for s in data["Strategy"]]],
+                        "ML Prediction ($)": [f"${ml_predictions.get(s, {'Predicted Increase': 0.0})['Predicted Increase']:.2f}" if ml_predictions else "N/A" for s in data["Strategy"]]
                     }
                     df_predictions = pd.DataFrame(data)
                     styled_df = df_predictions.style.format({
-                        "Mean Daily Increase ($)": lambda x: x,
-                        "95% Confidence Interval": lambda x: x,
-                        "Standard Deviation": lambda x: x,
-                        "ML Predicted Increase": lambda x: x if x else ""
+                        "Confident Number ($)": lambda x: x,
+                        "Confidence Range ($)": lambda x: x,
+                        "Variation ($)": lambda x: x,
+                        "ML Prediction ($)": lambda x: x
                     }).set_properties(**{'text-align': 'left'})
                     st.dataframe(styled_df)
                     st.markdown('</div>', unsafe_allow_html=True)
