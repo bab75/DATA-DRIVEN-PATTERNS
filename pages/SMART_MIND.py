@@ -74,12 +74,41 @@ if submit_button:
                 df["Date"] = pd.to_datetime(df["Date"])
                 df.sort_values("Date", inplace=True)
 
+                # --- Handle Missing Data ---
+                if df.isnull().any().any():
+                    st.warning("Some data points are missing. Filling with previous valid values where possible.")
+                    df = df.fillna(method='ffill').fillna(method='bfill')
+
                 # --- Previous Day Columns ---
                 for col in ["Open", "High", "Low", "Close", "Volume"]:
                     if col in df.columns:
                         df[f"Prev_{col}"] = df[col].shift(1)
                     else:
                         st.warning(f"Column {col} not found in the data.")
+
+                # --- Technical Indicators ---
+                if all(col in df.columns for col in ["Close", "High", "Low", "Volume"]):
+                    # Moving Averages
+                    df['SMA_20'] = df['Close'].rolling(window=20).mean()
+                    df['EMA_10'] = df['Close'].ewm(span=10, adjust=False).mean()
+                    
+                    # Bollinger Bands
+                    df['BB_Middle'] = df['Close'].rolling(window=20).mean()
+                    df['BB_Std'] = df['Close'].rolling(window=20).std()
+                    df['BB_Upper'] = df['BB_Middle'] + (df['BB_Std'] * 2)
+                    df['BB_Lower'] = df['BB_Middle'] - (df['BB_Std'] * 2)
+                    
+                    # RSI
+                    delta = df['Close'].diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                    rs = gain / loss
+                    df['RSI'] = 100 - (100 / (1 + rs))
+                    
+                    # On-Balance Volume
+                    df['OBV'] = (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
+                else:
+                    st.warning("Required columns for technical indicators (Close, High, Low, Volume) not found.")
 
                 # --- Recovery Pattern Flag and Profit Analysis ---
                 if all(col in df.columns for col in ["Open", "Low", "Close", "Prev_Close"]):
@@ -178,29 +207,49 @@ if submit_button:
                     st.subheader("📈 Profit Trend (Low to Close)")
                     st.line_chart(filtered_df.set_index("Date")["Profit_Low_to_Close"])
 
-                # --- Price Trend Chart ---
+                # --- Price Trend Chart with Indicators ---
                 st.subheader("📈 Price Trend Chart")
                 try:
-                    if all(col in filtered_df.columns for col in ["Date", "Open", "High", "Low", "Close"]):
-                        fig = go.Figure(data=[go.Candlestick(x=filtered_df['Date'],
-                                                            open=filtered_df['Open'],
-                                                            high=filtered_df['High'],
-                                                            low=filtered_df['Low'],
-                                                            close=filtered_df['Close'],
-                                                            increasing_line_color='green',
-                                                            decreasing_line_color='red')])
+                    if all(col in filtered_df.columns for col in ["Date", "Open", "High", "Low", "Close", "SMA_20", "BB_Upper", "BB_Lower"]):
+                        fig = go.Figure(data=[
+                            go.Candlestick(x=filtered_df['Date'],
+                                          open=filtered_df['Open'],
+                                          high=filtered_df['High'],
+                                          low=filtered_df['Low'],
+                                          close=filtered_df['Close'],
+                                          increasing_line_color='green',
+                                          decreasing_line_color='red'),
+                            go.Scatter(x=filtered_df['Date'], y=filtered_df['SMA_20'], name='SMA 20', line=dict(color='blue')),
+                            go.Scatter(x=filtered_df['Date'], y=filtered_df['BB_Upper'], name='BB Upper', line=dict(color='gray', dash='dash')),
+                            go.Scatter(x=filtered_df['Date'], y=filtered_df['BB_Lower'], name='BB Lower', line=dict(color='gray', dash='dash'))
+                        ])
                         fig.update_layout(
-                            title=f"{symbol.upper()} Candlestick Chart",
+                            title=f"{symbol.upper()} Candlestick Chart with Indicators",
                             xaxis_title="Date",
                             yaxis_title="Price",
                             xaxis_rangeslider_visible=False,
-                            hovermode='x unified'
+                            hovermode='x unified',
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                         )
                         st.plotly_chart(fig, use_container_width=True)
                     else:
-                        st.warning("Required columns for plotting (Date, Open, High, Low, Close) not found.")
+                        st.warning("Required columns for plotting (Date, Open, High, Low, Close, SMA_20, BB_Upper, BB_Lower) not found.")
                 except Exception as e:
                     st.warning(f"Could not plot chart: {e}")
+
+                # --- RSI Chart ---
+                if 'RSI' in filtered_df.columns:
+                    st.subheader("📉 RSI Trend")
+                    fig_rsi = go.Figure(data=[go.Scatter(x=filtered_df['Date'], y=filtered_df['RSI'], mode='lines', name='RSI')])
+                    fig_rsi.update_layout(
+                        title=f"{symbol.upper()} RSI",
+                        xaxis_title="Date",
+                        yaxis_title="RSI",
+                        yaxis_range=[0, 100],
+                        xaxis_rangeslider_visible=False,
+                        hovermode='x unified'
+                    )
+                    st.plotly_chart(fig_rsi, use_container_width=True)
 
                 # Option to download as CSV
                 csv = filtered_df.to_csv()
