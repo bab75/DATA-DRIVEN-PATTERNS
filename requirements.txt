@@ -17,5 +17,5 @@ pdfkit
 yfinance>=0.2.44
 ta
 uuid
-zipline-reloaded
+
 
