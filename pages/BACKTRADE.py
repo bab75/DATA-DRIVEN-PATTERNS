@@ -182,27 +182,27 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         aggregated_profit["Open-Close Buy Date"] = first_open_date
         aggregated_profit["Open-Close Sell Date"] = last_close_date
     if strategies["Min-Low to Max-High"]:
-    # Find the best buy (at Low) and sell (at High) pair with buy before sell
-    best_profit = float('-inf')
-    buy_date = sell_date = None
-    buy_price = sell_price = None
-
-    min_low = float('inf')
-    min_low_date = None
-
-    for idx, row in data.iterrows():
-        # Update minimum low found so far
-        if row['Low'] < min_low:
-            min_low = row['Low']
-            min_low_date = idx
-        # Calculate profit for selling at today's high, buying at earliest min_low
-        profit = row['High'] - min_low
-        if profit > best_profit and idx > min_low_date:
-            best_profit = profit
-            buy_date = min_low_date
-            sell_date = idx
-            buy_price = min_low
-            sell_price = row['High']
+        # Find the best buy (at Low) and sell (at High) pair with buy before sell
+        best_profit = float('-inf')
+        buy_date = sell_date = None
+        buy_price = sell_price = None
+    
+        min_low = float('inf')
+        min_low_date = None
+    
+        for idx, row in data.iterrows():
+            # Update minimum low found so far
+            if row['Low'] < min_low:
+                min_low = row['Low']
+                min_low_date = idx
+            # Calculate profit for selling at today's high, buying at earliest min_low
+            profit = row['High'] - min_low
+            if profit > best_profit and idx > min_low_date:
+                best_profit = profit
+                buy_date = min_low_date
+                sell_date = idx
+                buy_price = min_low
+                sell_price = row['High']
 
     if buy_date and sell_date:
         aggregated_profit["Min-Low to Max-High ($)"] = best_profit
