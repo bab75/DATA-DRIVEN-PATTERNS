@@ -14,7 +14,7 @@ st.markdown("""
 # Function to fetch and clean data
 def fetch_data(symbol, start_date, end_date):
     try:
-        data = yf.download(symbol, start=start_date, end=end_date)
+        data = yf.download(symbol, start=start_date, end=end_date, progress=False)
         if data.empty or len(data) < 50:  # Ensure enough data for strategies
             st.error(f"Insufficient data for {symbol}. Need at least 50 days.")
             return None
@@ -30,14 +30,15 @@ def fetch_data(symbol, start_date, end_date):
 def sma_crossover_backtest(data, short_period=20, long_period=50):
     data = data.copy()
     if len(data) < long_period:
-        return [], 10000, []
+        st.warning(f"Insufficient data for SMA Crossover ({len(data)} days, need {long_period}).")
+        return [], 10000, [10000] * len(data)
     data['SMA_short'] = data['Close'].rolling(window=short_period).mean()
     data['SMA_long'] = data['Close'].rolling(window=long_period).mean()
     position = 0
     trades = []
     cash = 10000
     shares = 0
-    equity = [10000]  # Initialize with starting capital
+    equity = [10000]
     
     for i in range(1, len(data)):
         if pd.isna(data['SMA_short'].iloc[i]) or pd.isna(data['SMA_long'].iloc[i]):
@@ -45,10 +46,11 @@ def sma_crossover_backtest(data, short_period=20, long_period=50):
             continue
         if data['SMA_short'].iloc[i] > data['SMA_long'].iloc[i] and data['SMA_short'].iloc[i-1] <= data['SMA_long'].iloc[i-1]:
             if position == 0:
-                shares = cash / data['Close'].iloc[i]
-                cash = 0
-                position = 1
-                trades.append(('BUY', data.index[i], data['Close'].iloc[i], shares))
+                if data['Close'].iloc[i] > 0:  # Avoid division by zero
+                    shares = cash / data['Close'].iloc[i]
+                    cash = 0
+                    position = 1
+                    trades.append(('BUY', data.index[i], data['Close'].iloc[i], shares))
         elif data['SMA_short'].iloc[i] < data['SMA_long'].iloc[i] and data['SMA_short'].iloc[i-1] >= data['SMA_long'].iloc[i-1]:
             if position == 1:
                 cash = shares * data['Close'].iloc[i]
@@ -64,7 +66,8 @@ def sma_crossover_backtest(data, short_period=20, long_period=50):
 def rsi_mean_reversion_backtest(data, rsi_period=14, oversold=30, overbought=70):
     data = data.copy()
     if len(data) < rsi_period:
-        return [], 10000, []
+        st.warning(f"Insufficient data for RSI Mean Reversion ({len(data)} days, need {rsi_period}).")
+        return [], 10000, [10000] * len(data)
     delta = data['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=rsi_period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=rsi_period).mean()
@@ -81,10 +84,11 @@ def rsi_mean_reversion_backtest(data, rsi_period=14, oversold=30, overbought=70)
             equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
             continue
         if data['RSI'].iloc[i] < oversold and position == 0:
-            shares = cash / data['Close'].iloc[i]
-            cash = 0
-            position = 1
-            trades.append(('BUY', data.index[i], data['Close'].iloc[i], shares))
+            if data['Close'].iloc[i] > 0:
+                shares = cash / data['Close'].iloc[i]
+                cash = 0
+                position = 1
+                trades.append(('BUY', data.index[i], data['Close'].iloc[i], shares))
         elif data['RSI'].iloc[i] > overbought and position == 1:
             cash = shares * data['Close'].iloc[i]
             shares = 0
@@ -99,7 +103,8 @@ def rsi_mean_reversion_backtest(data, rsi_period=14, oversold=30, overbought=70)
 def bollinger_bands_backtest(data, period=20, std_dev=2):
     data = data.copy()
     if len(data) < period:
-        return [], 10000, []
+        st.warning(f"Insufficient data for Bollinger Bands ({len(data)} days, need {period}).")
+        return [], 10000, [10000] * len(data)
     data['SMA'] = data['Close'].rolling(window=period).mean()
     data['STD'] = data['Close'].rolling(window=period).std()
     data['Upper'] = data['SMA'] + (data['STD'] * std_dev)
@@ -111,14 +116,15 @@ def bollinger_bands_backtest(data, period=20, std_dev=2):
     equity = [10000]
     
     for i in range(1, len(data)):
-        if pd.isna(data['Upper'].iloc[i]) or pd.isna(data['Lower'].iloc[i]):
+        if pd.isna(data['Upper'].iloc[i]) or pd.isna(data['Lower'].iloc[i]) or pd.isna(data['STD'].iloc[i]):
             equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
             continue
         if data['Close'].iloc[i] < data['Lower'].iloc[i] and position == 0:
-            shares = cash / data['Close'].iloc[i]
-            cash = 0
-            position = 1
-            trades.append(('BUY', data.index[i], data['Close'].iloc[i], shares))
+            if data['Close'].iloc[i] > 0:
+                shares = cash / data['Close'].iloc[i]
+                cash = 0
+                position = 1
+                trades.append(('BUY', data.index[i], data['Close'].iloc[i], shares))
         elif data['Close'].iloc[i] > data['Upper'].iloc[i] and position == 1:
             cash = shares * data['Close'].iloc[i]
             shares = 0
@@ -132,8 +138,12 @@ def bollinger_bands_backtest(data, period=20, std_dev=2):
 # Buy and Hold Strategy
 def buy_and_hold_backtest(data):
     if len(data) < 1:
+        st.warning("No data available for Buy and Hold strategy.")
         return [], 10000, []
     cash = 10000
+    if data['Close'].iloc[0] <= 0:
+        st.warning("Invalid price data for Buy and Hold strategy.")
+        return [], 10000, [10000] * len(data)
     shares = cash / data['Close'].iloc[0]
     trades = [('BUY', data.index[0], data['Close'].iloc[0], shares)]
     final_value = shares * data['Close'].iloc[-1]
@@ -143,6 +153,7 @@ def buy_and_hold_backtest(data):
 # Performance Metrics
 def calculate_metrics(equity, data):
     if not equity or len(equity) < 2:
+        st.warning("Equity list is empty or too short for metrics calculation.")
         return {
             'Total Return (%)': 0,
             'Annualized Return (%)': 0,
@@ -154,6 +165,7 @@ def calculate_metrics(equity, data):
     try:
         equity = np.array(equity, dtype=float)
         if np.any(np.isnan(equity)) or np.any(np.isinf(equity)):
+            st.warning("Equity contains NaN or inf values.")
             return {
                 'Total Return (%)': 0,
                 'Annualized Return (%)': 0,
@@ -193,8 +205,8 @@ def calculate_metrics(equity, data):
 def plot_price(data, trades, strategy_name):
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=data.index, y=data['Close'], name='Price', line=dict(color='blue')))
-    buy_signals = [(t[1], t[2]) for t in trades if t[0] == 'BUY']
-    sell_signals = [(t[1], t[2]) for t in trades if t[0] == 'SELL']
+    buy_signals = [(t[1], t[2]) for t in trades if t[0] == 'BUY' and isinstance(t[2], (int, float))]
+    sell_signals = [(t[1], t[2]) for t in trades if t[0] == 'SELL' and isinstance(t[2], (int, float))]
     fig.add_trace(go.Scatter(x=[t[0] for t in buy_signals], y=[t[1] for t in buy_signals], mode='markers', name='Buy', marker=dict(symbol='triangle-up', size=10, color='green')))
     fig.add_trace(go.Scatter(x=[t[0] for t in sell_signals], y=[t[1] for t in sell_signals], mode='markers', name='Sell', marker=dict(symbol='triangle-down', size=10, color='red')))
     fig.update_layout(title=f'{strategy_name} - Price with Signals', xaxis_title='Date', yaxis_title='Price')
@@ -204,8 +216,8 @@ def plot_price(data, trades, strategy_name):
 def plot_equity_curves(results, data):
     fig = go.Figure()
     for strategy_name, result in results.items():
-        if result['equity']:  # Only plot if equity is non-empty
-            fig.add_trace(go.Scatter(x=data.index[:len(result['equity'])], y=result['equity'], name=strategy_name))
+        if result['equity'] and len(result['equity']) == len(data):
+            fig.add_trace(go.Scatter(x=data.index, y=result['equity'], name=strategy_name))
     fig.update_layout(title='Equity Curves Comparison', xaxis_title='Date', yaxis_title='Portfolio Value ($)')
     return fig
 
@@ -259,8 +271,8 @@ if submitted:
                         elif strategy_name == "Buy and Hold":
                             trades, final_value, equity = buy_and_hold_backtest(data)
                         
-                        if not equity:
-                            st.warning(f"No equity data generated for {strategy_name}. Check data or parameters.")
+                        if not equity or len(equity) != len(data):
+                            st.warning(f"Invalid equity data for {strategy_name}. Length: {len(equity)}")
                             continue
                         
                         results[strategy_name] = {
@@ -287,9 +299,14 @@ if submitted:
                         st.table(metrics_df)
                         st.write("**Trades**")
                         trades_df = pd.DataFrame(result['trades'], columns=['Action', 'Date', 'Price', 'Shares'])
-                        trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}")
-                        trades_df['Shares'] = trades_df['Shares'].apply(lambda x: f"{x:.2f}")
-                        st.dataframe(trades_df)
+                        # Ensure Price is numeric before formatting
+                        trades_df['Price'] = pd.to_numeric(trades_df['Price'], errors='coerce')
+                        if not trades_df.empty and not trades_df['Price'].isna().all():
+                            trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+                            trades_df['Shares'] = trades_df['Shares'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
+                            st.dataframe(trades_df)
+                        else:
+                            st.write("No trades executed.")
                     with col2:
                         st.plotly_chart(plot_price(data, result['trades'], strategy_name))
                 
