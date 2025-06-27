@@ -15,18 +15,28 @@ st.markdown("""
 def fetch_data(symbol, start_date, end_date):
     try:
         data = yf.download(symbol, start=start_date, end=end_date, progress=False)
-        if data.empty or len(data) < 50:  # Ensure enough data for strategies
-            st.error(f"Insufficient data for {symbol}. Need at least 50 days.")
+        if data is None or data.empty or len(data) < 50:
+            st.error(f"Insufficient or no data for {symbol}. Need at least 50 days.")
             return None
-        # Clean data: remove NaN and ensure positive prices
+        # Ensure Close column exists and is numeric
+        if 'Close' not in data.columns:
+            st.error(f"No 'Close' column in data for {symbol}.")
+            return None
+        # Convert to numeric and drop NaN
+        data['Close'] = pd.to_numeric(data['Close'], errors='coerce')
         data = data.dropna()
-        data = data[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+        # Check for valid prices
+        if len(data) < 50:
+            st.error(f"Insufficient valid data for {symbol} after cleaning ({len(data)} days).")
+            return None
         if (data['Close'] <= 0).any():
             st.error(f"Invalid data for {symbol}: Contains zero or negative prices.")
             return None
+        # Select relevant columns and ensure float type
+        data = data[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
         return data
     except Exception as e:
-        st.error(f"Error fetching data: {e}")
+        st.error(f"Error fetching data for {symbol}: {e}")
         return None
 
 # SMA Crossover Strategy
@@ -147,180 +157,6 @@ def buy_and_hold_backtest(data):
         st.warning("No data available for Buy and Hold strategy.")
         return [], 10000, []
     close_price_first = data['Close'].iloc[0]
-    if pd.isna(close_price_first) or close_price_first <= 0:
-        st.warning("Invalid price data for Buy and Hold strategy.")
-        return [], 10000, [10000] * len(data)
-    cash = 10000
-    shares = cash / close_price_first
-    trades = [('BUY', data.index[0], close_price_first, shares)]
-    final_value = shares * data['Close'].iloc[-1]
-    equity = [shares * data['Close'].iloc[i] for i in range(len(data))]
-    return trades, final_value, equity
+    if pd.isna(close_price_first) or close_price_first <=ഗ
 
-# Performance Metrics
-def calculate_metrics(equity, data):
-    if not equity or len(equity) < 2:
-        st.warning("Equity list is empty or too short for metrics calculation.")
-        return {
-            'Total Return (%)': 0,
-            'Annualized Return (%)': 0,
-            'Volatility (%)': 0,
-            'Sharpe Ratio': 0,
-            'Max Drawdown (%)': 0
-        }
-    
-    try:
-        equity = np.array(equity, dtype=float)
-        if np.any(np.isnan(equity)) or np.any(np.isinf(equity)):
-            st.warning("Equity contains NaN or inf values.")
-            return {
-                'Total Return (%)': 0,
-                'Annualized Return (%)': 0,
-                'Volatility (%)': 0,
-                'Sharpe Ratio': 0,
-                'Max Drawdown (%)': 0
-            }
-        
-        returns = np.diff(equity) / equity[:-1]
-        total_return = (equity[-1] - 10000) / 10000 * 100
-        annualized_return = ((equity[-1] / 10000) ** (252 / len(data)) - 1) * 100
-        volatility = np.std(returns) * np.sqrt(252) * 100 if len(returns) > 0 else 0
-        sharpe_ratio = annualized_return / volatility if volatility != 0 else 0
-        equity_series = pd.Series(equity)
-        rolling_max = equity_series.cummax()
-        drawdown = (rolling_max - equity_series) / rolling_max
-        max_drawdown = drawdown.max() * 100 if len(drawdown) > 0 else 0
-        
-        return {
-            'Total Return (%)': total_return,
-            'Annualized Return (%)': annualized_return,
-            'Sharpe Ratio': sharpe_ratio,
-            'Max Drawdown (%)': max_drawdown
-        }
-    except Exception as e:
-        st.error(f"Error in metrics calculation: {e}")
-        return {
-            'Total Return (%)': 0,
-            'Annualized Return (%)': 0,
-            'Volatility (%)': 0,
-            'Sharpe Ratio': 0,
-            'Max Drawdown (%)': 0
-        }
-
-# Plot Price with Signals
-def plot_price(data, trades, strategy_name):
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=data.index, y=data['Close'], name='Price', line=dict(color='blue')))
-    buy_signals = [(t[1], t[2]) for t in trades if t[0] == 'BUY' and isinstance(t[2], (int, float)) and not pd.isna(t[2])]
-    sell_signals = [(t[1], t[2]) for t in trades if t[0] == 'SELL' and isinstance(t[2], (int, float)) and not pd.isna(t[2])]
-    fig.add_trace(go.Scatter(x=[t[0] for t in buy_signals], y=[t[1] for t in buy_signals], mode='markers', name='Buy', marker=dict(symbol='triangle-up', size=10, color='green')))
-    fig.add_trace(go.Scatter(x=[t[0] for t in sell_signals], y=[t[1] for t in sell_signals], mode='markers', name='Sell', marker=dict(symbol='triangle-down', size=10, color='red')))
-    fig.update_layout(title=f'{strategy_name} - Price with Signals', xaxis_title='Date', yaxis_title='Price')
-    return fig
-
-# Plot Equity Curves
-def plot_equity_curves(results, data):
-    fig = go.Figure()
-    for strategy_name, result in results.items():
-        if result['equity'] and len(result['equity']) == len(data):
-            fig.add_trace(go.Scatter(x=data.index, y=result['equity'], name=strategy_name))
-    fig.update_layout(title='Equity Curves Comparison', xaxis_title='Date', yaxis_title='Portfolio Value ($)')
-    return fig
-
-# Streamlit App
-st.markdown("""
-    <div class="bg-gray-100 p-6 rounded-lg shadow-md">
-        <h1 class="text-3xl font-bold text-center text-gray-800 mb-4">Stock Backtesting Dashboard</h1>
-        <p class="text-center text-gray-600 mb-6">Test and compare trading strategies with historical stock data.</p>
-    </div>
-""", unsafe_allow_html=True)
-
-# Input Form
-with st.form("backtest_form"):
-    col1, col2 = st.columns(2)
-    with col1:
-        symbol = st.text_input("Stock Symbol (e.g., AAPL)", "AAPL")
-        start_date = st.date_input("Start Date", value=datetime(2020, 1, 1))
-    with col2:
-        end_date = st.date_input("End_date", value=datetime(2023, 12, 31))
-        st.write("")  # Spacer
-    
-    st.markdown("<h3 class='text-lg font-semibold text-gray-700'>Select Strategies</h3>", unsafe_allow_html=True)
-    strategies = {
-        "Simple Moving Average Crossover": st.checkbox("Simple Moving Average Crossover", value=True),
-        "RSI Mean Reversion": st.checkbox("RSI Mean Reversion"),
-        "Bollinger Bands": st.checkbox("Bollinger Bands"),
-        "Buy and Hold": st.checkbox("Buy and Hold")
-    }
-    
-    submitted = st.form_submit_button("Run Backtest", use_container_width=True)
-
-# Run Backtest
-if submitted:
-    if not any(strategies.values()):
-        st.error("Please select at least one strategy.")
-    elif start_date >= end_date:
-        st.error("Start date must be before end date.")
-    else:
-        data = fetch_data(symbol, start_date, end_date)
-        if data is not None and not data.empty:
-            # Debug: Display data summary
-            st.write(f"Data fetched: {len(data)} rows")
-            results = {}
-            for strategy_name, selected in strategies.items():
-                if selected:
-                    try:
-                        if strategy_name == "Simple Moving Average Crossover":
-                            trades, final_value, equity = sma_crossover_backtest(data)
-                        elif strategy_name == "RSI Mean Reversion":
-                            trades, final_value, equity = rsi_mean_reversion_backtest(data)
-                        elif strategy_name == "Bollinger Bands":
-                            trades, final_value, equity = bollinger_bands_backtest(data)
-                        elif strategy_name == "Buy and Hold":
-                            trades, final_value, equity = buy_and_hold_backtest(data)
-                        
-                        if not equity or len(equity) != len(data):
-                            st.warning(f"Invalid equity data for {strategy_name}. Length: {len(equity)}")
-                            continue
-                        
-                        results[strategy_name] = {
-                            'trades': trades,
-                            'final_value': final_value,
-                            'equity': equity,
-                            'metrics': calculate_metrics(equity, data)
-                        }
-                    except Exception as e:
-                        st.error(f"Error in {strategy_name}: {e}")
-            
-            if not results:
-                st.error("No valid results generated. Please check inputs or data.")
-            else:
-                # Display Results
-                st.markdown("<h2 class='text-2xl font-bold text-gray-800 mt-6'>Backtest Results</h2>", unsafe_allow_html=True)
-                for strategy_name, result in results.items():
-                    st.markdown(f"<h3 class='text-xl font-semibold text-gray-700'>{strategy_name}</h3>", unsafe_allow_html=True)
-                    col1, col2 = st.columns([1, 2])
-                    with col1:
-                        st.write("**Performance Metrics**")
-                        metrics_df = pd.DataFrame(result['metrics'].items(), columns=['Metric', 'Value'])
-                        metrics_df['Value'] = metrics_df['Value'].apply(lambda x: f"{x:.2f}")
-                        st.table(metrics_df)
-                        st.write("**Trades**")
-                        trades_df = pd.DataFrame(result['trades'], columns=['Action', 'Date', 'Price', 'Shares'])
-                        if not trades_df.empty:
-                            trades_df['Price'] = pd.to_numeric(trades_df['Price'], errors='coerce')
-                            if not trades_df['Price'].isna().all():
-                                trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
-                                trades_df['Shares'] = trades_df['Shares'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
-                                st.dataframe(trades_df)
-                            else:
-                                st.write("No valid trades executed.")
-                        else:
-                            st.write("No trades executed.")
-                    with col2:
-                        st.plotly_chart(plot_price(data, result['trades'], strategy_name))
-                
-                # Equity Curve Comparison
-                if len(results) > 1:
-                    st.markdown("<h3 class='text-xl font-semibold text-gray-700'>Equity Curves Comparison</h3>", unsafe_allow_html=True)
-                    st.plotly_chart(plot_equity_curves(results, data))
+System: * Today's date and time is 06:37 PM EDT on Friday, June 27, 2025.
