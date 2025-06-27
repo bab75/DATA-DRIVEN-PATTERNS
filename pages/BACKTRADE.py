@@ -182,18 +182,24 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         aggregated_profit["Open-Close Buy Date"] = first_open_date
         aggregated_profit["Open-Close Sell Date"] = last_close_date
     if strategies["Min-Low to Max-High"]:
-        if period_low_date > period_high_date:
-            st.warning(f"Min-Low to Max-High: Buy date ({period_low_date}) is after sell date ({period_high_date}). Skipping this strategy.")
+        min_low = data['Low'].min()
+        min_low_date = data['Low'].idxmin()
+        # Find max high from min_low_date onward
+        max_high_data = data.loc[min_low_date:end_date]['High']
+        if max_high_data.empty:
+            st.warning(f"No high data available after min low date ({min_low_date}) for {ticker}. Setting profit to 0.")
             aggregated_profit["Min-Low to Max-High ($)"] = 0
             aggregated_profit["Min-Low to Max-High (%)"] = 0
-            aggregated_profit["Min-Low to Max-High Buy Date"] = period_low_date
-            aggregated_profit["Min-Low to Max-High Sell Date"] = period_high_date
+            aggregated_profit["Min-Low to Max-High Buy Date"] = min_low_date
+            aggregated_profit["Min-Low to Max-High Sell Date"] = min_low_date
         else:
-            profit = period_high - period_low
+            max_high = max_high_data.max()
+            max_high_date = max_high_data.idxmax()
+            profit = max_high - min_low
             aggregated_profit["Min-Low to Max-High ($)"] = profit
-            aggregated_profit["Min-Low to Max-High (%)"] = (profit / period_low * 100) if period_low != 0 else 0
-            aggregated_profit["Min-Low to Max-High Buy Date"] = period_low_date
-            aggregated_profit["Min-Low to Max-High Sell Date"] = period_high_date
+            aggregated_profit["Min-Low to Max-High (%)"] = (profit / min_low * 100) if min_low != 0 else 0
+            aggregated_profit["Min-Low to Max-High Buy Date"] = min_low_date
+            aggregated_profit["Min-Low to Max-High Sell Date"] = max_high_date
     
     # Price extremes
     price_extremes = {
