@@ -12,6 +12,9 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+import base64  # Added missing import
+
+# Rest of your code...
 
 # Streamlit app configuration
 st.set_page_config(page_title="Stock Technical Analysis", layout="wide", page_icon="📈")
