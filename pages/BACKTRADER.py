@@ -17,6 +17,7 @@ st.markdown("""
     h1 { color: #2c3e50; font-family: 'Arial', sans-serif; }
     h2 { color: #34495e; border-bottom: 2px solid #3498db; padding-bottom: 5px; }
     .metric-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 10px; }
+    .stExpander { background: #f8f9fa; border-radius: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -72,10 +73,12 @@ def fetch_data(ticker, start_date, end_date):
 def color_profit_loss(val):
     return 'background-color: lightgreen' if val > 0 else 'background-color: lightcoral' if val < 0 else ''
 
-def color_volume(val, avg_volume):
-    return 'background-color: lightgreen' if val > avg_volume else 'background-color: lightcoral' if val < avg_volume else ''
+def color_volume(val, prev_volume):
+    if pd.isna(prev_volume):
+        return ''
+    return 'background-color: lightgreen' if val > prev_volume else 'background-color: lightcoral' if val < prev_volume else ''
 
-# Calculate profits and volume metrics
+# Calculate profits, volume metrics, and additional metrics
 def calculate_profits(data, strategies, start_date, end_date):
     daily_results = []
     aggregated_results = {}
@@ -158,13 +161,22 @@ def calculate_profits(data, strategies, start_date, end_date):
     
     # Volume analysis
     volume_data = data[['Volume']].copy()
-    volume_data['Date'] = volume_data.index
+    volume_data['Volume Change'] = volume_data['Volume'].diff()
     avg_volume = data['Volume'].mean()
     total_volume = data['Volume'].sum()
     max_volume = data['Volume'].max()
     min_volume = data['Volume'].min()
     max_volume_date = data['Volume'].idxmax()
     min_volume_date = data['Volume'].idxmin()
+    
+    # Additional metrics
+    volatility = data['Close'].std()
+    avg_daily_range = (data['High'] - data['Low']).mean()
+    volume_weighted_profits = {}
+    for strategy, selected in strategies.items():
+        if selected and f"{strategy} ($)" in daily_df.columns:
+            dollar_col = f"{strategy} ($)"
+            volume_weighted_profits[strategy] = (daily_df[dollar_col] * (data['Volume'] / avg_volume)).sum()
     
     # Convert daily results to DataFrame
     daily_df = pd.DataFrame(daily_results)
@@ -195,7 +207,7 @@ def calculate_profits(data, strategies, start_date, end_date):
     if not comparison_df.empty:
         comparison_df.sort_values(by="Aggregated Return (%)", ascending=False, inplace=True)
     
-    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date
+    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits
 
 # Run analysis on button click
 if st.button("Run Analysis"):
@@ -205,81 +217,120 @@ if st.button("Run Analysis"):
         else:
             data = fetch_data(ticker, start_date, end_date)
             if data is not None:
-                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date = calculate_profits(data, strategies, start_date, end_date)
+                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits = calculate_profits(data, strategies, start_date, end_date)
                 
-                # Display price extremes
-                st.subheader("Price Extremes")
+                # Summary metrics card
+                st.subheader("Summary Metrics")
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                extremes_df = pd.DataFrame(price_extremes)
-                extremes_df.set_index("Metric", inplace=True)
-                st.dataframe(extremes_df.style.format({"Highest Value": "{:.2f}", "Lowest Value": "{:.2f}"}))
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Volatility (Close Price Std)", f"{volatility:.2f}")
+                col2.metric("Average Daily Range (High-Low)", f"{avg_daily_range:.2f}")
+                col3.metric("Total Volume", f"{total_volume:.0f}")
                 st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Display daily profit/loss
-                st.subheader("Daily Profit/Loss")
-                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                st.write("Profit/loss per day for selected strategies (assuming 1 share):")
-                st.dataframe(daily_df.style.format({col: "{:.2f}" for col in daily_df.columns}).applymap(color_profit_loss, subset=[col for col in daily_df.columns if col.endswith("($)")]))
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Display aggregated profit/loss
-                st.subheader(f"Aggregated Profit/Loss ({start_date} to {end_date})")
-                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                agg_df = pd.DataFrame([aggregated_profit], index=[f"{start_date} to {end_date}"])
-                st.dataframe(agg_df.style.format({col: "{:.2f}" for col in agg_df.columns if not col.endswith("Date")}).applymap(color_profit_loss, subset=[col for col in agg_df.columns if col.endswith("($)")]))
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Display volume analysis
-                st.subheader("Volume Analysis")
-                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                st.write("Daily trading volume (shares):")
-                st.dataframe(volume_data.style.format({"Volume": "{:.0f}"}).applymap(lambda x: color_volume(x, avg_volume), subset=["Volume"]))
-                st.write(f"**Average Daily Volume**: {avg_volume:.0f} shares")
-                st.write(f"**Total Volume**: {total_volume:.0f} shares")
-                st.write(f"**Highest Volume**: {max_volume:.0f} shares on {max_volume_date}")
-                st.write(f"**Lowest Volume**: {min_volume:.0f} shares on {min_volume_date}")
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Display comparison
-                st.subheader("Comparison of Strategies")
-                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                st.write("Comparing max daily profit vs. aggregated profit (sorted by aggregated return):")
-                st.dataframe(comparison_df.style.format({
-                    "Max Daily Profit ($)": "{:.2f}",
-                    "Max Daily Return (%)": "{:.2f}",
-                    "Aggregated Profit ($)": "{:.2f}",
-                    "Aggregated Return (%)": "{:.2f}"
-                }).applymap(color_profit_loss, subset=["Max Daily Profit ($)", "Aggregated Profit ($)"]))
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Plot profits and volume
-                if not daily_df.empty:
-                    st.subheader("Profit/Loss and Volume Trends")
+                # Price extremes
+                with st.expander("Price Extremes", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    dollar_cols = [col for col in daily_df.columns if col.endswith("($)")]
-                    fig = px.line(daily_df, x=daily_df.index, y=dollar_cols,
-                                 title=f"Daily Profit/Loss for {ticker}",
-                                 labels={"value": "Profit/Loss ($)", "Date": "Date", "variable": "Strategy"})
-                    fig.add_scatter(x=volume_data['Date'], y=volume_data['Volume'], yaxis="y2", name="Volume", line=dict(color="purple", dash="dash"))
-                    fig.update_layout(
-                        hovermode='x unified',
-                        yaxis2=dict(title="Volume (shares)", overlaying="y", side="right"),
-                        showlegend=True
-                    )
-                    fig.update_traces(hovertemplate='%{y:.2f}' if 'Volume' not in fig.data[-1].name else '%{y:.0f} shares', selector=dict(name="Volume"))
-                    for trace in fig.data:
-                        if trace.name != "Volume":
-                            trace.hovertemplate = f"{trace.name}: %{{y:.2f}} $"
-                    st.plotly_chart(fig, use_container_width=True)
+                    extremes_df = pd.DataFrame(price_extremes)
+                    extremes_df.set_index("Metric", inplace=True)
+                    st.dataframe(extremes_df.style.format({"Highest Value": "{:.2f}", "Lowest Value": "{:.2f}"}))
                     st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Daily profit/loss
+                with st.expander("Daily Profit/Loss", expanded=True):
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.write("Profit/loss per day for selected strategies (assuming 1 share):")
+                    st.dataframe(daily_df.style.format({col: "{:.2f}" for col in daily_df.columns}).applymap(color_profit_loss, subset=[col for col in daily_df.columns if col.endswith("($)")]))
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Aggregated profit/loss
+                with st.expander("Aggregated Profit/Loss", expanded=True):
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.write(f"Aggregated Profit/Loss ({start_date} to {end_date}):")
+                    agg_df = pd.DataFrame([aggregated_profit], index=[f"{start_date} to {end_date}"])
+                    st.dataframe(agg_df.style.format({col: "{:.2f}" for col in agg_df.columns if not col.endswith("Date")}).applymap(color_profit_loss, subset=[col for col in agg_df.columns if col.endswith("($)")]))
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Volume analysis
+                with st.expander("Volume Analysis", expanded=True):
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.write("Daily trading volume and change (shares):")
+                    st.dataframe(volume_data.style.format({"Volume": "{:.0f}", "Volume Change": "{:.0f}"}).apply(lambda x: color_volume(x['Volume'], volume_data['Volume'].shift(1)[x.name]), axis=1, subset=["Volume"]).applymap(color_profit_loss, subset=["Volume Change"]))
+                    st.write(f"**Average Daily Volume**: {avg_volume:.0f} shares")
+                    st.write(f"**Total Volume**: {total_volume:.0f} shares")
+                    st.write(f"**Highest Volume**: {max_volume:.0f} shares on {max_volume_date}")
+                    st.write(f"**Lowest Volume**: {min_volume:.0f} shares on {min_volume_date}")
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Comparison
+                with st.expander("Comparison of Strategies", expanded=True):
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.write("Comparing max daily profit vs. aggregated profit (sorted by aggregated return):")
+                    st.dataframe(comparison_df.style.format({
+                        "Max Daily Profit ($)": "{:.2f}",
+                        "Max Daily Return (%)": "{:.2f}",
+                        "Aggregated Profit ($)": "{:.2f}",
+                        "Aggregated Return (%)": "{:.2f}"
+                    }).applymap(color_profit_loss, subset=["Max Daily Profit ($)", "Aggregated Profit ($)"]))
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Profit/loss and volume trends
+                if not daily_df.empty:
+                    with st.expander("Profit/Loss and Volume Trends", expanded=True):
+                        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                        dollar_cols = [col for col in daily_df.columns if col.endswith("($)")]
+                        fig = px.line(daily_df, x=daily_df.index, y=dollar_cols,
+                                     title=f"Daily Profit/Loss for {ticker}",
+                                     labels={"value": "Profit/Loss ($)", "Date": "Date", "variable": "Strategy"})
+                        fig.add_scatter(x=volume_data.index, y=volume_data['Volume'], yaxis="y2", name="Volume", line=dict(color="purple", dash="dash"))
+                        fig.update_layout(
+                            hovermode='x unified',
+                            yaxis2=dict(title="Volume (shares)", overlaying="y", side="right"),
+                            showlegend=True
+                        )
+                        fig.update_traces(hovertemplate='%{y:.0f} shares', selector=dict(name="Volume"))
+                        for trace in fig.data:
+                            if trace.name != "Volume":
+                                trace.hovertemplate = f"{trace.name}: %{{y:.2f}} $"
+                        st.plotly_chart(fig, use_container_width=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Sunburst chart
+                if not daily_df.empty:
+                    with st.expander("Profit Contribution (Sunburst)", expanded=True):
+                        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                        sunburst_data = []
+                        for strategy, selected in strategies.items():
+                            if selected and f"{strategy} ($)" in daily_df.columns:
+                                for date, profit in daily_df[f"{strategy} ($)"].items():
+                                    if profit > 0:  # Only include positive profits
+                                        sunburst_data.append({
+                                            "Strategy": strategy,
+                                            "Date": date.strftime('%Y-%m-%d'),
+                                            "Profit": profit
+                                        })
+                        sunburst_df = pd.DataFrame(sunburst_data)
+                        if not sunburst_df.empty:
+                            fig_sunburst = px.sunburst(sunburst_df, path=['Strategy', 'Date'], values='Profit',
+                                                      title=f"Profit Contribution by Strategy and Day for {ticker}")
+                            fig_sunburst.update_traces(hovertemplate='%{label}: %{value:.2f} $')
+                            st.plotly_chart(fig_sunburst, use_container_width=True)
+                        else:
+                            st.write("No positive profits to display in sunburst chart.")
+                        st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Highlight most profitable strategy
                 if not comparison_df.empty:
-                    best_daily = comparison_df.loc[comparison_df["Max Daily Profit ($)"].idxmax()]
-                    best_agg = comparison_df.loc[comparison_df["Aggregated Profit ($)"].idxmax()]
-                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.write(f"**Most Profitable Daily Strategy**: {best_daily['Strategy']} on {best_daily['Best Day']} "
-                             f"(${best_daily['Max Daily Profit ($)']:.2f}, {best_daily['Max Daily Return (%)']:.2f}%)")
-                    st.write(f"**Most Profitable Aggregated Strategy**: {best_agg['Strategy']} "
-                             f"(${best_agg['Aggregated Profit ($)']:.2f}, {best_agg['Aggregated Return (%)']:.2f}%)")
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    with st.expander("Key Insights", expanded=True):
+                        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                        best_daily = comparison_df.loc[comparison_df["Max Daily Profit ($)"].idxmax()]
+                        best_agg = comparison_df.loc[comparison_df["Aggregated Profit ($)"].idxmax()]
+                        st.write(f"**Most Profitable Daily Strategy**: {best_daily['Strategy']} on {best_daily['Best Day']} "
+                                 f"(${best_daily['Max Daily Profit ($)']:.2f}, {best_daily['Max Daily Return (%)']:.2f}%)")
+                        st.write(f"**Most Profitable Aggregated Strategy**: {best_agg['Strategy']} "
+                                 f"(${best_agg['Aggregated Profit ($)']:.2f}, {best_agg['Aggregated Return (%)']:.2f}%) "
+                                 f"from buy on {aggregated_profit[f'{best_agg['Strategy']} Buy Date']} "
+                                 f"to sell on {aggregated_profit[f'{best_agg['Strategy']} Sell Date']}")
+                        for strategy, profit in volume_weighted_profits.items():
+                            st.write(f"**Volume-Weighted Profit ({strategy})**: ${profit:.2f}")
+                        st.markdown('</div>', unsafe_allow_html=True)
