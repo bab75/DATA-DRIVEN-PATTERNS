@@ -275,27 +275,43 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
             for strategy in strategies:
                 if strategies[strategy]:
                     # Prepare target based on strategy difference
-                    y_train_full = daily_diffs[strategy].dropna().values
-                    if len(y_train_full) < 3:  # Minimum data points for ML
+                    y_full = daily_diffs[strategy].dropna()
+                    if len(y_full) < 3:  # Minimum data points for ML
                         ml_predictions[strategy] = {"Predicted Increase": 0.0, "RMSE": 0.0}
                         continue
                     
-                    y_train = y_train_full[:int(len(y_train_full) * 0.8)]
-                    y_test = y_train_full[int(len(y_train_full) * 0.8):]
-                    X_train = train_data[['Lag_Close', 'Lag_Volume']].values[:len(y_train)]
-                    X_test = test_data[['Lag_Close', 'Lag_Volume']].values[:len(y_test)] if len(test_data) > 0 else np.array([])
+                    # Align indices with data_ml
+                    common_indices = y_full.index.intersection(data_ml.index)
+                    y_aligned = y_full.loc[common_indices].values
+                    X_aligned = data_ml.loc[common_indices, ['Lag_Close', 'Lag_Volume']].values
+                    
+                    train_size_strategy = int(len(y_aligned) * 0.8)
+                    y_train = y_aligned[:train_size_strategy]
+                    y_test = y_aligned[train_size_strategy:]
+                    X_train = X_aligned[:train_size_strategy]
+                    X_test = X_aligned[train_size_strategy:] if len(y_test) > 0 else np.array([])
+                    
+                    if len(y_train) < 1 or len(X_train) < 1:
+                        ml_predictions[strategy] = {"Predicted Increase": 0.0, "RMSE": 0.0}
+                        continue
                     
                     model = LinearRegression()
                     model.fit(X_train, y_train)
                     
-                    ml_pred = model.predict(X_test) if len(X_test) > 0 else np.array([])
-                    if len(ml_pred) == 0 or len(y_test) == 0:
-                        ml_predictions[strategy] = {"Predicted Increase": model.predict(X_train[-1].reshape(1, -1))[0], "RMSE": 0.0}
-                    else:
-                        ml_rmse = np.sqrt(np.mean((ml_pred - y_test) ** 2))
+                    if len(X_test) > 0 and len(y_test) > 0:
+                        ml_pred = model.predict(X_test)
+                        if len(ml_pred) == len(y_test):
+                            ml_rmse = np.sqrt(np.mean((ml_pred - y_test) ** 2))
+                        else:
+                            ml_rmse = 0.0  # Fallback if lengths don't match
                         last_data = data_ml.iloc[-1][['Lag_Close', 'Lag_Volume']].values.reshape(1, -1)
                         ml_next_pred = model.predict(last_data)[0]
                         ml_predictions[strategy] = {"Predicted Increase": ml_next_pred, "RMSE": ml_rmse}
+                    else:
+                        # Fallback to predict using the last training point
+                        last_train_data = X_train[-1].reshape(1, -1)
+                        ml_next_pred = model.predict(last_train_data)[0]
+                        ml_predictions[strategy] = {"Predicted Increase": ml_next_pred, "RMSE": 0.0}
     
     # Raw data color-coding for Close
     raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
