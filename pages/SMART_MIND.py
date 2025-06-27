@@ -27,7 +27,7 @@ comparison = st.radio(
 # --- Analyze Button ---
 if st.button("🚀 Analyze Pattern"):
     try:
-        df = yf.download(symbol, start=start_date, end=end_date)
+        df = yf.download(symbol, start=start拱1st_page_input_1 = start_date, end=end_date)
     except Exception as e:
         st.error(f"Error fetching data: {e}")
         st.stop()
@@ -70,19 +70,24 @@ if st.button("🚀 Analyze Pattern"):
         else:
             st.warning(f"Column {col} not found in the data.")
 
-    # --- Recovery Pattern Flag ---
-    if all(col in df.columns for col in ["Open", "Low", "Close"]):
+    # --- Recovery Pattern Flag and Profit Analysis ---
+    if all(col in df.columns for col in ["Open", "Low", "Close", "Prev_Close"]):
         df["Low_Diff"] = df["Open"] - df["Low"]
         df["Recovered"] = np.where(df["Close"] >= df["Open"], "Yes", "No")
-        # --- Profit Analysis: Buy at Low, Sell at Close ---
         df["Profit_Low_to_Close"] = df["Close"] - df["Low"]
         df["Profit_Percent"] = (df["Profit_Low_to_Close"] / df["Low"]) * 100
+        # Additional Metrics
+        df["Volatility"] = df["High"] - df["Low"]
+        df["True_Range"] = np.maximum.reduce([
+            df["High"] - df["Low"],
+            abs(df["High"] - df["Prev_Close"]),
+            abs(df["Low"] - df["Prev_Close"])
+        ])
     else:
-        st.warning("Required columns for recovery pattern and profit analysis (Open, Low, Close) not found.")
+        st.warning("Required columns for recovery pattern and profit analysis (Open, Low, Close, Prev_Close) not found.")
 
     # --- Metric Comparisons ---
     selected_metrics = ["Open", "High", "Low", "Close", "Volume"] if comparison == "All" else [comparison]
-
     for metric in selected_metrics:
         try:
             if metric in df.columns and f"Prev_{metric}" in df.columns:
@@ -105,11 +110,48 @@ if st.button("🚀 Analyze Pattern"):
         avg_profit = df["Profit_Low_to_Close"].mean()
         avg_profit_percent = df["Profit_Percent"].mean()
         total_profit = df["Profit_Low_to_Close"].sum()
+        win_days = df[df["Profit_Low_to_Close"] > 0]
+        loss_days = df[df["Profit_Low_to_Close"] <= 0]
+        win_loss_ratio = len(win_days) / len(loss_days) if len(loss_days) > 0 else float('inf')
+        avg_win_profit = win_days["Profit_Low_to_Close"].mean() if not win_days.empty else 0
+        avg_loss = loss_days["Profit_Low_to_Close"].mean() if not loss_days.empty else 0
+        recovery_rate = (len(df[df["Recovered"] == "Yes"]) / total_days) * 100
+        avg_volatility = df["Volatility"].mean()
+        avg_atr = df["True_Range"].mean()
+        cumulative_profit = df["Profit_Low_to_Close"].cumsum()
+        max_drawdown = (cumulative_profit - cumulative_profit.cummax()).min()
 
-        st.write(f"**Profitable Days**: {profitable_days} out of {total_days} ({(profitable_days/total_days)*100:.2f}%)")
-        st.write(f"**Average Profit per Day**: ${avg_profit:.2f} ({avg_profit_percent:.2f}%)")
-        st.write(f"**Total Profit Over Period**: ${total_profit:.2f}")
-        
+        # Create table for profit analysis
+        profit_metrics = pd.DataFrame({
+            "Metric": [
+                "Profitable Days",
+                "Average Profit per Day ($)",
+                "Average Profit per Day (%)",
+                "Total Profit Over Period ($)",
+                "Win/Loss Ratio",
+                "Average Profit on Winning Days ($)",
+                "Average Loss on Losing Days ($)",
+                "Intraday Recovery Rate (%)",
+                "Average Daily Volatility ($)",
+                "Average True Range ($)",
+                "Maximum Drawdown ($)"
+            ],
+            "Value": [
+                f"{profitable_days} out of {total_days} ({(profitable_days/total_days)*100:.2f}%)",
+                f"{avg_profit:.2f}",
+                f"{avg_profit_percent:.2f}%",
+                f"{total_profit:.2f}",
+                f"{win_loss_ratio:.2f}" if win_loss_ratio != float('inf') else "No Losses",
+                f"{avg_win_profit:.2f}",
+                f"{avg_loss:.2f}" if avg_loss != 0 else "No Losses",
+                f"{recovery_rate:.2f}%",
+                f"{avg_volatility:.2f}",
+                f"{avg_atr:.2f}",
+                f"{max_drawdown:.2f}"
+            ]
+        })
+        st.table(profit_metrics)
+
         # Plot profit over time
         st.subheader("📈 Profit Trend (Low to Close)")
         st.line_chart(df.set_index("Date")["Profit_Low_to_Close"])
