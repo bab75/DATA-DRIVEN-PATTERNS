@@ -10,8 +10,8 @@ st.title("Stock Price Comparison Dashboard")
 
 # User inputs
 ticker = st.text_input("Enter Stock Ticker", "AAPL").upper()
-start_date = st.date_input("Start Date", value=datetime(2025, 6, 1))
-end_date = st.date_input("End Date", value=datetime(2025, 6, 30))
+start_date = st.date_input("Start Date", value=datetime(2024, 6, 1))
+end_date = st.date_input("End Date", value=datetime(2024, 6, 30))
 st.write("**Note**: Select a date range with trading days (e.g., avoid weekends). End date is the sell date for aggregated analysis.")
 
 # Validate date range
@@ -61,6 +61,11 @@ def fetch_data(ticker, start_date, end_date):
     except Exception as e:
         st.error(f"Error fetching data for {ticker}: {str(e)}")
         return None
+
+# Function to color-code profit/loss
+def color_profit_loss(val):
+    color = 'background-color: lightgreen' if val > 0 else 'background-color: lightcoral' if val < 0 else ''
+    return color
 
 # Function to calculate profit/loss and percentage returns
 def calculate_profits(data, strategies, start_date, end_date):
@@ -147,7 +152,6 @@ def calculate_profits(data, strategies, start_date, end_date):
                 })
     
     comparison_df = pd.DataFrame(comparison)
-    # Sort by aggregated return for clarity
     if not comparison_df.empty:
         comparison_df.sort_values(by="Aggregated Return (%)", ascending=False, inplace=True)
     
@@ -166,12 +170,12 @@ if st.button("Run Analysis"):
                 # Display daily results
                 st.subheader("Daily Profit/Loss")
                 st.write("Profit/loss per day for selected strategies (assuming 1 share):")
-                st.dataframe(daily_df.style.format({"{:.2f}" for col in daily_df.columns}))
+                st.dataframe(daily_df.style.format({col: "{:.2f}" for col in daily_df.columns}).applymap(color_profit_loss, subset=[col for col in daily_df.columns if col.endswith("($)")]))
                 
                 # Display aggregated results
                 st.subheader(f"Aggregated Profit/Loss ({start_date} to {end_date})")
                 agg_df = pd.DataFrame([aggregated_profit], index=[f"{start_date} to {end_date}"])
-                st.dataframe(agg_df.style.format({"{:.2f}" for col in agg_df.columns}))
+                st.dataframe(agg_df.style.format({col: "{:.2f}" for col in agg_df.columns}).applymap(color_profit_loss, subset=[col for col in agg_df.columns if col.endswith("($)")]))
                 
                 # Display comparison
                 st.subheader("Comparison of Strategies")
@@ -181,7 +185,7 @@ if st.button("Run Analysis"):
                     "Max Daily Return (%)": "{:.2f}",
                     "Aggregated Profit ($)": "{:.2f}",
                     "Aggregated Return (%)": "{:.2f}"
-                }))
+                }).applymap(color_profit_loss, subset=["Max Daily Profit ($)", "Aggregated Profit ($)"]))
                 
                 # Plot daily profits
                 if not daily_df.empty:
