@@ -67,7 +67,7 @@ if process_file_button and uploaded_file:
         required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
         if not all(col in df.columns for col in required_columns):
             missing = [col for col in required_columns if col not in df.columns]
-            st.error(f"❌ Missing columns: {', '.join(missing)}")
+            st.error(f"❌ Missing columns in uploaded file: {', '.join(missing)}. Please ensure all required technical indicators are present.")
         else:
             df['Date'] = pd.to_datetime(df['Date'])
             st.session_state.csv_data = df
@@ -105,8 +105,9 @@ if submit_button:
                 'Revenue': info.get('totalRevenue'),
                 'Debt/Equity': info.get('debtToEquity')
             })
+            st.success("✅ Real-time data fetched successfully!")
     except Exception as e:
-        st.error(f"❌ Error fetching data: {str(e)}")
+        st.error(f"❌ Error fetching real-time data: {str(e)}")
 
 st.sidebar.subheader("📈 Report Options")
 combine_checkbox = st.sidebar.checkbox("Combine Report", value=st.session_state.combine_report)
@@ -135,6 +136,7 @@ if submit_fundamentals:
         'Revenue': revenue if revenue != 0.0 else None,
         'Debt/Equity': debt_equity if debt_equity != 0.0 else None
     }
+    st.success("✅ Fundamental data updated successfully!")
 
 st.sidebar.subheader("🗑️ Reset")
 clear_button = st.sidebar.button("Clear Analysis")
@@ -204,6 +206,10 @@ def generate_pdf_report(report_content, stock_name, report_type):
 
 # Function to analyze stock data
 def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
+    """
+    Analyzes stock data using historical CSV for technical indicators and real-time data for current price context only.
+    Technical indicators are independent of fundamental data and real-time price.
+    """
     stock_name = ticker.upper()
     
     # Use historical data for technical analysis
@@ -334,6 +340,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 - **RSI**: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
 - **Volatility**: {volatility:.2f}%
 - **Recommendation**: {'Buy near support (${s1:.2f}) for bounce to ${r1:.2f}' if rsi < 30 else f'Wait for breakout above ${sma_20:.2f}'}
+- **Note**: Technical analysis based on historical data; real-time price used for current context only.
 """
 
     moderate_detail = f"""
@@ -351,6 +358,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 - **Recommendation**:
   - Traders: {'Buy near ${s1:.2f} for bounce to ${r1:.2f}' if rsi < 30 or price < bb_middle else f'Wait for breakout above ${r1:.2f}'}
   - Investors: Confirm trend reversal above ${sma_20:.2f}.
+- **Note**: Technical analysis based on historical data; real-time price used for current context only.
 """
 
     in_depth = f"""
@@ -378,8 +386,8 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 - **Keltner Channels**: Upper: ${keltner_upper:.2f}, Lower: ${keltner_lower:.2f}
 
 #### Volume
-- **OBV**: {obv:,.0f} ({'Declining' if obv < prev_historical['OBV'] if prev_historical is not None else obv else 'Stable'})
-- **Volume**: {real_time_data['Volume'] if real_time_data else latest_historical['Volume']:,.0f} (SMA: {volume_sma:,.0f})
+- **OBV**: {obv:,.0f} ({'Declining' if prev_historical is not None and obv < prev_historical['OBV'] else 'Stable' if prev_historical is not None else 'N/A'})
+- **Volume**: {real_time_data['Volume'] if real_time_data else (latest_historical['Volume'] if latest_historical is not None else 0):,.0f} (SMA: {volume_sma:,.0f})
 - **VWAP**: ${vwap:.2f}
 
 #### Ichimoku Cloud
@@ -400,7 +408,8 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 #### Recommendation
 - **Conservative Investors**: Wait for price to break above SMA20 (${sma_20:.2f}).
 - **Traders**: {'Buy near support (${s1:.2f}) for bounce to ${r1:.2f}' if rsi < 30 or stoch_k < 20 else f'Wait for breakout above ${r1:.2f}'}.
-- **Risk**: {'High' if (real_time_data['Volume'] if real_time_data else latest_historical['Volume'] if latest_historical is not None else 0) < (analysis_data['Volume'].mean() if analysis_data is not None else 0) else 'Moderate'} due to {'low volume' if (real_time_data['Volume'] if real_time_data else latest_historical['Volume'] if latest_historical is not None else 0) < (analysis_data['Volume'].mean() if analysis_data is not None else 0) else 'market volatility'}.
+- **Risk**: {'High' if (real_time_data['Volume'] if real_time_data else (latest_historical['Volume'] if latest_historical is not None else 0)) < (analysis_data['Volume'].mean() if analysis_data is not None and not analysis_data.empty else 0) else 'Moderate'} due to {'low volume' if (real_time_data['Volume'] if real_time_data else (latest_historical['Volume'] if latest_historical is not None else 0)) < (analysis_data['Volume'].mean() if analysis_data is not None and not analysis_data.empty else 0) else 'market volatility'}.
+- **Note**: Technical analysis based on historical data; real-time price used for current context only.
 """
 
     return quick_scan, moderate_detail, in_depth, stock_name, analysis_data, real_time_data is not None and analysis_data is None, adx_value
@@ -437,16 +446,17 @@ def generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, 
 - **Hold**: Advised if price is between support and resistance with a neutral trend ({trend}) and RSI is neutral (30-70). Current trend is {trend}, supporting a {'hold' if 30 <= float(rsi_value) <= 70 else 'reconsideration'}.
 - **Sell**: Suggested if RSI is overbought (>70) or price breaks below support (${support}) with declining volume. Current RSI is {rsi_value}, indicating {'a potential sell' if float(rsi_value) > 70 else 'no immediate sell signal'}.
 - **Additional Notes**: Volume trend ({volume_trend}) and ADX ({adx} {'Strong Trend' if float(adx) > 25 else 'Weak Trend'}) should be monitored for confirmation.
+- **Note**: Technical analysis based on historical data; real-time price used for current context only.
 """
 
     return recommendation
 
 # Main app
 st.title("📈 Stock Technical Analysis Dashboard")
-st.markdown("Analyze stocks with real-time data or uploaded CSV/XLSX files containing technical indicators.")
+st.markdown("Analyze stocks with real-time data or uploaded CSV/XLSX files containing technical indicators. Technical analysis is performed using historical data only, with real-time data providing current price context.")
 
 mode = "XLSX/CSV Only" if st.session_state.csv_data is not None and st.session_state.real_time_data is None else "Real-Time Only" if st.session_state.real_time_data is not None and st.session_state.csv_data is None else "Combined" if st.session_state.combine_report and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else "No Data"
-st.markdown(f"<div class='mode-banner'><b>Active Mode: {mode}</b><br>{'Historical data from CSV/XLSX.' if mode == 'XLSX/CSV Only' else 'Real-time data from yfinance.' if mode == 'Real-Time Only' else 'Historical data with real-time price context.' if mode == 'Combined' else 'Please provide data.'}</div>", unsafe_allow_html=True)
+st.markdown(f"<div class='mode-banner'><b>Active Mode: {mode}</b><br>{'Historical data from CSV/XLSX.' if mode == 'XLSX/CSV Only' else 'Real-time data from yfinance (limited analysis).' if mode == 'Real-Time Only' else 'Historical data with real-time price context.' if mode == 'Combined' else 'Please provide data.'}</div>", unsafe_allow_html=True)
 
 st.subheader("📊 Stock Data Overview")
 if st.session_state.real_time_data:
@@ -503,7 +513,7 @@ if st.session_state.analysis_data is not None:
             with col1:
                 buffer = io.StringIO()
                 buffer.write(quick_scan.replace('### Quick Scan:', '').strip())
-                st.download_button("📥 funkcDownload Markdown", buffer.getvalue(), f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
+                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
             with col2:
                 pdf_buffer = generate_pdf_report(quick_scan.replace('### Quick Scan:', '').strip(), stock_name, "Quick Scan")
                 st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
@@ -515,7 +525,7 @@ if st.session_state.analysis_data is not None:
             st.markdown(moderate_detail.replace('### Moderate Detail:', '').strip())
             col1, col2 = st.columns(2)
             with col1:
-                buffer代替buffer = io.StringIO()
+                buffer = io.StringIO()
                 buffer.write(moderate_detail.replace('### Moderate Detail:', '').strip())
                 st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
             with col2:
@@ -554,7 +564,7 @@ if st.session_state.analysis_data is not None:
             st.markdown(f"- **Support**: ${df['S1'].iloc[-1]:.2f}, **Resistance**: ${df['R1'].iloc[-1]:.2f}")
             st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})")
             st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}")
-            visual_summary = f"### Visual Summary: {stock_name} ({date_str})\n- **Price**: ${st.session_state.real_time_data['Close'] if st.session_state.real_time_data else df['Close'].iloc[-1]:.2f}\n- **Trend**: {'Bearish' if (st.session_state.real_time_data['Close'] if st.session_state.real_time_data else df['Close'].iloc[-1]) < df['SMA_20'].iloc[-1] else 'Bullish'}\n- **Support**: ${df['S1'].iloc[-1]:.2f}, **Resistance**: ${df['R1'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})\n- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}"
+            visual_summary = f"### Visual Summary: {stock_name} ({date_str})\n- **Price**: ${st.session_state.real_time_data['Close'] if st.session_state.real_time_data else df['Close'].iloc[-1]:.2f}\n- **Trend**: {'Bearish' if (st.session_state.real_time_data['Close'] if st.session_state.real_time_data else df['Close'].iloc[-1]) < df['SMA_20'].iloc[-1] else 'Bullish'}\n- **Support**: ${df['S1'].iloc[-1]:.2f}, **Resistance**: ${df['R1'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})\n- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}\n- **Note**: Technical analysis based on historical data; real-time price used for current context only."
             col1, col2 = st.columns(2)
             with col1:
                 buffer = io.StringIO()
@@ -594,7 +604,7 @@ if st.session_state.analysis_data is not None:
                     fig.add_trace(go.Scatter(x=df['Date'], y=df['BB_Upper'], name='BB Upper', line=dict(color='red')))
                     fig.add_trace(go.Scatter(x=df['Date'], y=df['BB_Lower'], name='BB Lower', line=dict(color='green')))
                 st.plotly_chart(fig)
-            interactive_dashboard = f"### Interactive Dashboard: {stock_name}\n- **Price**: ${st.session_state.real_time_data['Close'] if st.session_state.real_time_data else df['Close'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f}\n- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})\n- **Stochastic %K**: {stoch_k_value:.2f}\n- **ADX**: {adx_value:.2f}\n- **Support**: ${df['S1'].iloc[-1]:.2f}\n- **Resistance**: ${df['R1'].iloc[-1]:.2f}"
+            interactive_dashboard = f"### Interactive Dashboard: {stock_name}\n- **Price**: ${st.session_state.real_time_data['Close'] if st.session_state.real_time_data else df['Close'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f}\n- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})\n- **Stochastic %K**: {stoch_k_value:.2f}\n- **ADX**: {adx_value:.2f}\n- **Support**: ${df['S1'].iloc[-1]:.2f}\n- **Resistance**: ${df['R1'].iloc[-1]:.2f}\n- **Note**: Technical analysis based on historical data; real-time price used for current context only."
             col1, col2 = st.columns(2)
             with col1:
                 buffer = io.StringIO()
@@ -630,4 +640,6 @@ if st.session_state.analysis_data is not None:
             export_df.to_csv(csv_buffer, index=False)
             st.download_button("📥 Export Data as CSV", csv_buffer.getvalue(), f"{stock_name}_data_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
 else:
-    st.info("⚠️ Please upload a CSV/XLSX or fetch real-time data to begin analysis.")
+    st.info("⚠️ Please upload a CSV/XLSX file containing technical indicators or fetch real-time data to begin analysis.")
+    if st.session_state.csv_data is None and st.session_state.real_time_data is not None:
+        st.warning("⚠️ Real-time data provides limited analysis (price and fundamentals only). Upload a CSV/XLSX file for full technical analysis.")
