@@ -25,9 +25,9 @@ st.markdown("""
 with st.sidebar:
     st.header("Input Parameters")
     ticker = st.text_input("Enter Stock Ticker", "AAPL").upper()
-    start_date = st.date_input("Start Date", value=datetime(2024, 6, 1))
-    end_date = st.date_input("End Date", value=datetime(2024, 6, 30))
-    st.markdown("**Note**: Select a date range with trading days (e.g., avoid weekends). End date is the sell date.")
+    start_date = st.date_input("Start Date", value=datetime(2025, 2, 1))
+    end_date = st.date_input("End Date", value=datetime(2025, 4, 30))
+    st.markdown("**Note**: Select a date range with trading days. End date should not exceed today (June 27, 2025) unless simulating future data.")
 
     st.subheader("Select Comparison Strategies")
     strategies = {
@@ -47,6 +47,8 @@ with st.sidebar:
 if start_date >= end_date:
     st.error("End date must be after start date.")
     st.stop()
+if end_date > datetime.now():
+    st.warning("End date exceeds today (June 27, 2025). Results may be incomplete without future data.")
 
 # Cache data fetching for performance
 @st.cache_data
@@ -104,7 +106,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         low = data.loc[date, 'Low']
         
         if strategies["Min-Low to End-Close"]:
-            profit = close - low  # Daily profit for reference
+            profit = close - low
             daily_profit["Min-Low to End-Close ($)"] = profit
             daily_profit["Min-Low to End-Close (%)"] = (profit / low * 100) if low != 0 else 0
         if strategies["Open-High"]:
@@ -145,6 +147,10 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     if strategies["Min-Low to End-Close"]:
         buy_price = period_low if strategy_variant == "Min-Low to End-Close" else min_close
         buy_date = period_low_date if strategy_variant == "Min-Low to End-Close" else min_close_date
+        if buy_date > last_close_date:
+            st.warning(f"Min-Low to End-Close: Buy date ({buy_date}) is after sell date ({last_close_date}). Adjusting to use earliest buy date.")
+            buy_date = start_date
+            buy_price = data.loc[buy_date, 'Low'] if strategy_variant == "Min-Low to End-Close" else data.loc[buy_date, 'Close']
         profit = last_close - buy_price
         aggregated_profit["Min-Low to End-Close ($)"] = profit
         aggregated_profit["Min-Low to End-Close (%)"] = (profit / buy_price * 100) if buy_price != 0 else 0
@@ -163,11 +169,18 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         aggregated_profit["Open-Close Buy Date"] = first_open_date
         aggregated_profit["Open-Close Sell Date"] = last_close_date
     if strategies["Min-Low to Max-High"]:
-        profit = period_high - period_low
-        aggregated_profit["Min-Low to Max-High ($)"] = profit
-        aggregated_profit["Min-Low to Max-High (%)"] = (profit / period_low * 100) if period_low != 0 else 0
-        aggregated_profit["Min-Low to Max-High Buy Date"] = period_low_date
-        aggregated_profit["Min-Low to Max-High Sell Date"] = period_high_date
+        if period_low_date > period_high_date:
+            st.warning(f"Min-Low to Max-High: Buy date ({period_low_date}) is after sell date ({period_high_date}). Skipping this strategy.")
+            aggregated_profit["Min-Low to Max-High ($)"] = 0
+            aggregated_profit["Min-Low to Max-High (%)"] = 0
+            aggregated_profit["Min-Low to Max-High Buy Date"] = period_low_date
+            aggregated_profit["Min-Low to Max-High Sell Date"] = period_high_date
+        else:
+            profit = period_high - period_low
+            aggregated_profit["Min-Low to Max-High ($)"] = profit
+            aggregated_profit["Min-Low to Max-High (%)"] = (profit / period_low * 100) if period_low != 0 else 0
+            aggregated_profit["Min-Low to Max-High Buy Date"] = period_low_date
+            aggregated_profit["Min-Low to Max-High Sell Date"] = period_high_date
     
     # Price extremes
     price_extremes = {
@@ -356,7 +369,7 @@ if st.button("Run Analysis"):
                         for strategy, selected in strategies.items():
                             if selected and f"{strategy} ($)" in daily_df.columns:
                                 for date, profit in daily_df[f"{strategy} ($)"].items():
-                                    if profit > 0:  # Only include positive profits
+                                    if profit > 0:
                                         sunburst_data.append({
                                             "Strategy": strategy,
                                             "Date": date.strftime('%Y-%m-%d'),
