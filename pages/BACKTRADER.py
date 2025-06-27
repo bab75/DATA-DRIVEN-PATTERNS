@@ -166,6 +166,11 @@ def calculate_profits(data, strategies, start_date, end_date):
     # Volume analysis
     volume_data = data[['Volume']].copy()
     volume_data['Volume Change'] = volume_data['Volume'].diff()
+    # Precompute volume color styles
+    volume_data['Volume Color'] = volume_data.apply(
+        lambda x: color_volume(x['Volume'], volume_data['Volume'].shift(1)[x.name] if x.name in volume_data['Volume'].shift(1).index else None),
+        axis=1
+    )
     avg_volume = data['Volume'].mean()
     total_volume = data['Volume'].sum()
     max_volume = data['Volume'].max()
@@ -254,7 +259,12 @@ if st.button("Run Analysis"):
                 with st.expander("Volume Analysis", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("Daily trading volume and change (shares):")
-                    st.dataframe(volume_data.style.format({"Volume": "{:.0f}", "Volume Change": "{:.0f}"}).apply(lambda x: color_volume(x['Volume'], volume_data['Volume'].shift(1)[x.name]), axis=1, subset=["Volume"]).applymap(color_profit_loss, subset=["Volume Change"]))
+                    # Display volume_data without Volume Color column
+                    display_volume_data = volume_data[['Volume', 'Volume Change']].copy()
+                    styled_df = display_volume_data.style.format({"Volume": "{:.0f}", "Volume Change": "{:.0f}"})
+                    styled_df = styled_df.apply(lambda x: [volume_data.loc[x.name, 'Volume Color']] * len(x) if x.name in volume_data.index else [''] * len(x), axis=1, subset=["Volume"])
+                    styled_df = styled_df.applymap(color_profit_loss, subset=["Volume Change"])
+                    st.dataframe(styled_df)
                     st.write(f"**Average Daily Volume**: {avg_volume:.0f} shares")
                     st.write(f"**Total Volume**: {total_volume:.0f} shares")
                     st.write(f"**Highest Volume**: {max_volume:.0f} shares on {max_volume_date}")
