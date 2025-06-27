@@ -17,6 +17,6 @@ pdfkit
 yfinance>=0.2.44
 ta
 uuid
-backtrader==1.9.76.123
+backtrader
 
 
