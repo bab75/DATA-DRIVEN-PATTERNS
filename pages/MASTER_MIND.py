@@ -148,15 +148,32 @@ def combine_dataframes(csv_df, real_time_data):
     try:
         real_time_df = pd.DataFrame([real_time_data])
         real_time_df['Date'] = pd.to_datetime(real_time_df['Date'])
-        # Define required columns
-        required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
-        # Align columns and fill missing with 0
-        combined_df = pd.concat([csv_df[required_columns], real_time_df[required_columns]], ignore_index=True, sort=False)
-        combined_df = combined_df.fillna(0)  # Fill NaN with 0 for missing columns
+        
+        # Only use columns that exist in both dataframes
+        csv_columns = set(csv_df.columns)
+        real_time_columns = set(real_time_df.columns)
+        common_columns = list(csv_columns.intersection(real_time_columns))
+        
+        # Ensure Date is included
+        if 'Date' not in common_columns:
+            common_columns.append('Date')
+        
+        # For real-time data, add missing technical columns as zeros
+        missing_technical_columns = csv_columns - real_time_columns
+        for col in missing_technical_columns:
+            if col != 'Date':  # Don't add Date as zero
+                real_time_df[col] = 0
+        
+        # Now combine using all CSV columns
+        combined_df = pd.concat([csv_df, real_time_df[csv_df.columns]], ignore_index=True, sort=False)
+        combined_df = combined_df.fillna(0)
         combined_df = combined_df.sort_values('Date').drop_duplicates(subset=['Date'], keep='last')
+        
+        # Update the latest row with real-time OHLCV data
         for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
-            if col in real_time_df.columns:
-                combined_df[col].iloc[-1] = real_time_df[col].iloc[0]
+            if col in real_time_data:
+                combined_df[col].iloc[-1] = real_time_data[col]
+        
         st.write("Debug: Combined DataFrame:", combined_df.head())  # Debug output
         st.write("Debug: Combined Columns:", combined_df.columns.tolist())  # Debug column list
         return combined_df if not combined_df.empty else None
