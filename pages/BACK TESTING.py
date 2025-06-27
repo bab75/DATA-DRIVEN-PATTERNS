@@ -124,7 +124,7 @@ def bollinger_bands_backtest(data, period=20, std_dev=2):
             shares = 0
             position = 0
             trades.append(('SELL', data.index[i], data['Close'].iloc[i], shares))
-        equity.append(cash + (shares * data['Close'].iloc[i] if position = 1 else 0))
+        equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
     
     final_value = cash + (shares * data['Close'].iloc[-1] if position == 1 else 0)
     return trades, final_value, equity
