@@ -31,11 +31,17 @@ with st.sidebar:
 
     st.subheader("Select Comparison Strategies")
     strategies = {
-        "Low-Close": st.checkbox("Low to Close (Buy at Low, Sell at Close)", value=True),
+        "Min-Low to End-Close": st.checkbox("Min-Low to End-Close (Buy at Min Low, Sell at End Close)", value=True, help="Buys at the lowest Low price and sells at the Close on the last day."),
         "Open-High": st.checkbox("Open to High (Buy at Open, Sell at High)", value=True),
         "Open-Close": st.checkbox("Open to Close (Buy at Open, Sell at Close)", value=True),
-        "Low-High": st.checkbox("Low to High (Buy at Low, Sell at High)", value=True)
+        "Min-Low to Max-High": st.checkbox("Min-Low to Max-High (Buy at Min Low, Sell at Max High)", value=True)
     }
+
+    st.subheader("Strategy Variants")
+    strategy_variant = st.radio("Select Strategy Variant", 
+                                ["Min-Low to End-Close", "Min-Close to End-Close"], 
+                                index=0, 
+                                help="Choose how to calculate buy and sell points: Min-Low uses the lowest Low price, Min-Close uses the lowest Close price.")
 
 # Validate date range
 if start_date >= end_date:
@@ -84,7 +90,7 @@ def color_close(val, prev_close):
     return 'background-color: lightgreen' if val > prev_close else 'background-color: lightcoral' if val < prev_close else ''
 
 # Calculate profits, volume metrics, and additional metrics
-def calculate_profits(data, strategies, start_date, end_date):
+def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     daily_results = []
     aggregated_results = {}
     price_extremes = {}
@@ -97,10 +103,10 @@ def calculate_profits(data, strategies, start_date, end_date):
         high = data.loc[date, 'High']
         low = data.loc[date, 'Low']
         
-        if strategies["Low-Close"]:
-            profit = close - low
-            daily_profit["Low-Close ($)"] = profit
-            daily_profit["Low-Close (%)"] = (profit / low * 100) if low != 0 else 0
+        if strategies["Min-Low to End-Close"]:
+            profit = close - low  # Daily profit for reference
+            daily_profit["Min-Low to End-Close ($)"] = profit
+            daily_profit["Min-Low to End-Close (%)"] = (profit / low * 100) if low != 0 else 0
         if strategies["Open-High"]:
             profit = high - open_price
             daily_profit["Open-High ($)"] = profit
@@ -109,10 +115,10 @@ def calculate_profits(data, strategies, start_date, end_date):
             profit = close - open_price
             daily_profit["Open-Close ($)"] = profit
             daily_profit["Open-Close (%)"] = (profit / open_price * 100) if open_price != 0 else 0
-        if strategies["Low-High"]:
+        if strategies["Min-Low to Max-High"]:
             profit = high - low
-            daily_profit["Low-High ($)"] = profit
-            daily_profit["Low-High (%)"] = (profit / low * 100) if low != 0 else 0
+            daily_profit["Min-Low to Max-High ($)"] = profit
+            daily_profit["Min-Low to Max-High (%)"] = (profit / low * 100) if low != 0 else 0
         
         daily_results.append({
             "Date": date,
@@ -128,18 +134,22 @@ def calculate_profits(data, strategies, start_date, end_date):
     last_close = data['Close'].iloc[-1]
     period_low = data['Low'].min()
     period_high = data['High'].max()
+    min_close = data['Close'].min()
     first_open_date = data.index[0]
     last_close_date = data.index[-1]
     period_low_date = data['Low'].idxmin()
     period_high_date = data['High'].idxmax()
+    min_close_date = data['Close'].idxmin()
     
     aggregated_profit = {}
-    if strategies["Low-Close"]:
-        profit = last_close - period_low
-        aggregated_profit["Low-Close ($)"] = profit
-        aggregated_profit["Low-Close (%)"] = (profit / period_low * 100) if period_low != 0 else 0
-        aggregated_profit["Low-Close Buy Date"] = period_low_date
-        aggregated_profit["Low-Close Sell Date"] = last_close_date
+    if strategies["Min-Low to End-Close"]:
+        buy_price = period_low if strategy_variant == "Min-Low to End-Close" else min_close
+        buy_date = period_low_date if strategy_variant == "Min-Low to End-Close" else min_close_date
+        profit = last_close - buy_price
+        aggregated_profit["Min-Low to End-Close ($)"] = profit
+        aggregated_profit["Min-Low to End-Close (%)"] = (profit / buy_price * 100) if buy_price != 0 else 0
+        aggregated_profit["Min-Low to End-Close Buy Date"] = buy_date
+        aggregated_profit["Min-Low to End-Close Sell Date"] = last_close_date
     if strategies["Open-High"]:
         profit = period_high - first_open
         aggregated_profit["Open-High ($)"] = profit
@@ -152,12 +162,12 @@ def calculate_profits(data, strategies, start_date, end_date):
         aggregated_profit["Open-Close (%)"] = (profit / first_open * 100) if first_open != 0 else 0
         aggregated_profit["Open-Close Buy Date"] = first_open_date
         aggregated_profit["Open-Close Sell Date"] = last_close_date
-    if strategies["Low-High"]:
+    if strategies["Min-Low to Max-High"]:
         profit = period_high - period_low
-        aggregated_profit["Low-High ($)"] = profit
-        aggregated_profit["Low-High (%)"] = (profit / period_low * 100) if period_low != 0 else 0
-        aggregated_profit["Low-High Buy Date"] = period_low_date
-        aggregated_profit["Low-High Sell Date"] = period_high_date
+        aggregated_profit["Min-Low to Max-High ($)"] = profit
+        aggregated_profit["Min-Low to Max-High (%)"] = (profit / period_low * 100) if period_low != 0 else 0
+        aggregated_profit["Min-Low to Max-High Buy Date"] = period_low_date
+        aggregated_profit["Min-Low to Max-High Sell Date"] = period_high_date
     
     # Price extremes
     price_extremes = {
@@ -171,7 +181,6 @@ def calculate_profits(data, strategies, start_date, end_date):
     # Volume analysis
     volume_data = data[['Volume']].copy()
     volume_data['Volume Change'] = volume_data['Volume'].diff()
-    # Precompute volume color styles
     volume_data['Volume Color'] = volume_data.apply(
         lambda x: color_volume(x['Volume'], volume_data['Volume'].shift(1)[x.name] if x.name in volume_data['Volume'].shift(1).index else None),
         axis=1
@@ -233,7 +242,7 @@ if st.button("Run Analysis"):
         else:
             data = fetch_data(ticker, start_date, end_date)
             if data is not None:
-                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data = calculate_profits(data, strategies, start_date, end_date)
+                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data = calculate_profits(data, strategies, strategy_variant, start_date, end_date)
                 
                 # Raw stock data
                 with st.expander("Raw Stock Data", expanded=False):
