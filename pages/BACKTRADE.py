@@ -266,26 +266,36 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         data_ml = data_ml.dropna()
         
         train_size = int(len(data_ml) * 0.8)
-        train_data = data_ml[:train_size]
-        test_data = data_ml[train_size:]
-        
-        for strategy in strategies:
-            if strategies[strategy]:
-                # Prepare target based on strategy difference
-                y_train = daily_diffs[strategy].iloc[:train_size].values
-                y_test = daily_diffs[strategy].iloc[train_size:].values
-                X_train = train_data[['Lag_Close', 'Lag_Volume']].values
-                X_test = test_data[['Lag_Close', 'Lag_Volume']].values
-                
-                model = LinearRegression()
-                model.fit(X_train, y_train)
-                
-                ml_pred = model.predict(X_test)
-                ml_rmse = np.sqrt(np.mean((ml_pred - y_test) ** 2))
-                
-                last_data = data_ml.iloc[-1][['Lag_Close', 'Lag_Volume']].values.reshape(1, -1)
-                ml_next_pred = model.predict(last_data)[0]
-                ml_predictions[strategy] = {"Predicted Increase": ml_next_pred, "RMSE": ml_rmse}
+        if train_size < 2 or len(data_ml) - train_size < 1:  # Ensure enough data for split
+            st.warning("Insufficient data for ML predictions. Minimum 3 data points required.")
+        else:
+            train_data = data_ml[:train_size]
+            test_data = data_ml[train_size:]
+            
+            for strategy in strategies:
+                if strategies[strategy]:
+                    # Prepare target based on strategy difference
+                    y_train_full = daily_diffs[strategy].dropna().values
+                    if len(y_train_full) < 3:  # Minimum data points for ML
+                        ml_predictions[strategy] = {"Predicted Increase": 0.0, "RMSE": 0.0}
+                        continue
+                    
+                    y_train = y_train_full[:int(len(y_train_full) * 0.8)]
+                    y_test = y_train_full[int(len(y_train_full) * 0.8):]
+                    X_train = train_data[['Lag_Close', 'Lag_Volume']].values[:len(y_train)]
+                    X_test = test_data[['Lag_Close', 'Lag_Volume']].values[:len(y_test)] if len(test_data) > 0 else np.array([])
+                    
+                    model = LinearRegression()
+                    model.fit(X_train, y_train)
+                    
+                    ml_pred = model.predict(X_test) if len(X_test) > 0 else np.array([])
+                    if len(ml_pred) == 0 or len(y_test) == 0:
+                        ml_predictions[strategy] = {"Predicted Increase": model.predict(X_train[-1].reshape(1, -1))[0], "RMSE": 0.0}
+                    else:
+                        ml_rmse = np.sqrt(np.mean((ml_pred - y_test) ** 2))
+                        last_data = data_ml.iloc[-1][['Lag_Close', 'Lag_Volume']].values.reshape(1, -1)
+                        ml_next_pred = model.predict(last_data)[0]
+                        ml_predictions[strategy] = {"Predicted Increase": ml_next_pred, "RMSE": ml_rmse}
     
     # Raw data color-coding for Close
     raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
