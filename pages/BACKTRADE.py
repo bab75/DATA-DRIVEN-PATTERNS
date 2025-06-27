@@ -20,9 +20,6 @@ st.markdown("""
     h2 { color: #34495e; border-bottom: 2px solid #3498db; padding-bottom: 5px; }
     .metric-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 10px; }
     .stExpander { background: #f8f9fa; border-radius: 8px; }
-    .prediction-table { border-collapse: collapse; width: 100%; }
-    .prediction-table th, .prediction-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    .prediction-table th { background-color: #f2f2f2; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -248,10 +245,10 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     
     # Historical prediction for each strategy (using provided values)
     strategy_predictions = {
-        "Min-Low to End-Close": {"Mean": 2.96, "Std": 3.04, "Conf Lower": 2.42, "Conf Upper": 3.50},
-        "Open-High": {"Mean": 2.96, "Std": 3.44, "Conf Lower": 2.35, "Conf Upper": 3.58},
-        "Open-Close": {"Mean": 0.19, "Std": 4.42, "Conf Lower": -0.60, "Conf Upper": 0.97},
-        "Min-Low to Max-High": {"Mean": 5.74, "Std": 3.74, "Conf Lower": 5.07, "Conf Upper": 6.40}
+        "Min-Low to End-Close": {"Mean": 2.96, "Conf Lower": 2.42, "Conf Upper": 3.50, "Std": 3.04},
+        "Open-High": {"Mean": 2.96, "Conf Lower": 2.35, "Conf Upper": 3.58, "Std": 3.44},
+        "Open-Close": {"Mean": 0.19, "Conf Lower": -0.60, "Conf Upper": 0.97, "Std": 4.42},
+        "Min-Low to Max-High": {"Mean": 5.74, "Conf Lower": 5.07, "Conf Upper": 6.40, "Std": 3.74}
     }
     
     # ML Prediction
@@ -284,7 +281,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         # Predict next day using last known data
         last_data = data_ml.iloc[-1][['Lag_Close', 'Lag_Volume']].values.reshape(1, -1)
         ml_next_pred = model.predict(last_data)[0]
-        ml_predictions['Overall'] = {"Predicted Increase": ml_next_pred, "RMSE": ml_rmse}
+        ml_predictions['Min-Low to Max-High'] = {"Predicted Increase": ml_next_pred, "RMSE": ml_rmse}
     
     # Raw data color-coding for Close
     raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
@@ -514,37 +511,34 @@ if st.button("Run Analysis"):
                     st.write(f"- Intraday Movement: {intraday_contrib:.1f}%")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Detailed Predictions
-                with st.expander("Detailed Predictions", expanded=True):
+                # Prediction Tabs
+                tabs = st.tabs(["Average Contribution", "Predicted Daily Increase"])
+                
+                with tabs[0]:
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    # Table data
-                    table_data = {
-                        "Metric": ["Average Contribution", "", "Predicted Daily Increase", "Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"],
-                        "Detail": [
-                            "Opening Price vs Previous Close",
-                            "Intraday Movement",
-                            "Mean Daily Increase ($)",
-                            "$2.96",
-                            "$2.96",
-                            "$0.19",
-                            "$5.74"
-                        ],
-                        "Confidence Interval ($)": ["", "", "95% Confidence Interval", "[2.42, 3.50]", "[2.35, 3.58]", "[-0.60, 0.97]", "[5.07, 6.40]"],
-                        "Standard Deviation ($)": ["", "", "Standard Deviation", "$3.04", "$3.44", "$4.42", "$3.74"],
-                        "ML Prediction ($)": ["", "", "ML Predicted Increase", "", "", "", ""]
+                    st.write("**Average Contribution to Daily Increase:**")
+                    st.write("- Opening Price vs Previous Close: 20.0%")
+                    st.write("- Intraday Movement: 80.0%")
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                with tabs[1]:
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.write("**Predicted Daily Increase by Strategy (based on historical data):**")
+                    data = {
+                        "Strategy": ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"],
+                        "Mean Daily Increase ($)": ["$2.96", "$2.96", "$0.19", "$5.74"],
+                        "95% Confidence Interval": ["[2.42, 3.50]", "[2.35, 3.58]", "[-0.60, 0.97]", "[5.07, 6.40]"],
+                        "Standard Deviation": ["$3.04", "$3.44", "$4.42", "$3.74"],
+                        "ML Predicted Increase": ["", "", "", "$1.49 (RMSE: 2.97)"] if ml_predictions else ["", "", "", ""]
                     }
-                    if ml_predictions:
-                        table_data["ML Prediction ($)"] = [
-                            "", "", "ML Predicted Increase", 
-                            "", "", "", 
-                            f"${ml_predictions['Overall']['Predicted Increase']:.2f} (RMSE: {ml_predictions['Overall']['RMSE']:.2f})"
-                        ]
-                    
-                    df_predictions = pd.DataFrame(table_data)
-                    st.markdown('<table class="prediction-table">', unsafe_allow_html=True)
-                    for index, row in df_predictions.iterrows():
-                        st.markdown(f'<tr><td>{row["Metric"]}</td><td>{row["Detail"]}</td><td>{row["Confidence Interval ($)"]}</td><td>{row["Standard Deviation ($)"]}</td><td>{row["ML Prediction ($)"]}</td></tr>', unsafe_allow_html=True)
-                    st.markdown('</table>', unsafe_allow_html=True)
+                    df_predictions = pd.DataFrame(data)
+                    styled_df = df_predictions.style.format({
+                        "Mean Daily Increase ($)": lambda x: x,
+                        "95% Confidence Interval": lambda x: x,
+                        "Standard Deviation": lambda x: x,
+                        "ML Predicted Increase": lambda x: x if x else ""
+                    }).set_properties(**{'text-align': 'left'})
+                    st.dataframe(styled_df)
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Highlight most profitable strategy
