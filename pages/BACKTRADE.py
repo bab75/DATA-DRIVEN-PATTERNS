@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta  # Explicitly import date
 
 # Streamlit page configuration
 st.set_page_config(page_title="Stock Price Comparison Dashboard", page_icon="📊", layout="wide")
@@ -53,13 +53,13 @@ if start_date >= end_date:
     st.error("End date must be after start date.")
     st.stop()
 
-# Ensure end_date is a valid datetime.date
+# Ensure end_date is a valid date
 if end_date is None:
-    st.error("Invalid end date. Defaulting to today (June 27, 2025).")
-    end_date = datetime.date.today()  # 2025-06-27
+    st.error("Invalid end_date. Defaulting to today (June 27, 2025).")
+    end_date = date.today()  # 2025-06-27
     st.stop()
 
-today = datetime.date.today()  # 2025-06-27
+today = date.today()  # 2025-06-27
 if end_date > today:
     st.warning("End date exceeds today (June 27, 2025). Results may be incomplete without future data.")
 
