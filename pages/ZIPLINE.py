@@ -8,9 +8,9 @@ from zipline.data.bundles import register, csvdir
 from zipline.utils.calendars import get_calendar
 import os
 from datetime import datetime
-import uuid
 
-# Streamlit app title
+# Streamlit page configuration
+st.set_page_config(page_title="Zipline Backtester", page_icon="📈")
 st.title("Trading Strategy Backtester")
 
 # User inputs
@@ -21,13 +21,17 @@ capital_base = st.number_input("Capital Base ($)", value=10000.0, min_value=1000
 
 # Function to fetch data from yfinance
 def fetch_data(ticker, start_date, end_date):
-    data = yf.download(ticker, start=start_date, end=end_date, progress=False)
-    if data.empty:
-        st.error(f"No data found for {ticker}. Please check the ticker or date range.")
+    try:
+        data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+        if data.empty:
+            st.error(f"No data found for {ticker}. Please check the ticker or date range.")
+            return None
+        data = data[['Open', 'High', 'Low', 'Close', 'Volume']]
+        data.index = pd.to_datetime(data.index)
+        return data
+    except Exception as e:
+        st.error(f"Error fetching data: {str(e)}")
         return None
-    data = data[['Open', 'High', 'Low', 'Close', 'Volume']]
-    data.index = pd.to_datetime(data.index)
-    return data
 
 # Function to prepare and save data for Zipline
 def prepare_zipline_data(ticker, start_date, end_date):
@@ -45,11 +49,16 @@ def prepare_zipline_data(ticker, start_date, end_date):
 # Register custom CSV bundle for Zipline
 def register_bundle(ticker):
     bundle_dir = os.path.join(os.getcwd(), 'data', 'csvdir')
-    register(
-        'csvdir',
-        csvdir.csvdir_equities([bundle_dir]),
-        calendar_name='NYSE'
-    )
+    try:
+        register(
+            'csvdir',
+            csvdir.csvdir_equities([bundle_dir]),
+            calendar_name='NYSE'
+        )
+    except Exception as e:
+        st.error(f"Error registering bundle: {str(e)}")
+        return False
+    return True
 
 # Zipline strategy: Moving Average Crossover
 def initialize(context):
@@ -74,7 +83,8 @@ def run_zipline(ticker, start_date, end_date, capital_base):
     data = prepare_zipline_data(ticker, start_date, end_date)
     if data is None:
         return None
-    register_bundle(ticker)
+    if not register_bundle(ticker):
+        return None
     try:
         result = run_algorithm(
             start=pd.to_datetime(start_date),
@@ -98,7 +108,7 @@ if st.button("Run Backtest"):
             # Calculate key metrics
             total_returns = (result['portfolio_value'][-1] / capital_base) - 1
             st.subheader("Backtest Results")
-            st.write(f"**Total Returns**: {{:.2%}}".format(total_returns))
+            st.write(f"**Total Returns**: {total_returns:.2%}")
             
             # Display results table
             st.dataframe(result[['portfolio_value', 'returns', 'price', 'short_mavg', 'long_mavg']])
