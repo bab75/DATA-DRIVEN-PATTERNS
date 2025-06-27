@@ -353,6 +353,9 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     if not comparison_df.empty:
         comparison_df.sort_values(by="Aggregated Return (%)", ascending=False, inplace=True)
     
+    # Debug: Check if all strategies have predictions
+    # st.write("Debug - strategy_predictions keys:", strategy_predictions.keys())
+    
     return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions, ml_predictions
 
 # Run analysis on button click
@@ -564,14 +567,33 @@ if st.button("Run Analysis"):
                 with tabs[1]:
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("**Predicted Daily Increase by Strategy:** (Reliable gains and smart predictions for tomorrow, June 28, 2025)")
-                    # Define strategy names separately to avoid KeyError
+                    # Define strategy names
                     strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
+                    # Initialize lists with safe defaults
+                    conf_numbers = []
+                    conf_ranges = []
+                    variations = []
+                    ml_predictions_list = []
+                    
+                    for s in strategy_names:
+                        if strategy_predictions and s in strategy_predictions:
+                            v = strategy_predictions[s]
+                            conf_numbers.append(f"${v['Conf Lower']:.2f}")
+                            conf_ranges.append(f"[{v['Conf Lower']:.2f}, {v['Conf Upper']:.2f}]")
+                            variations.append(f"${v['Std']:.2f}")
+                        else:
+                            conf_numbers.append("N/A")
+                            conf_ranges.append("N/A")
+                            variations.append("N/A")
+                        ml_pred = ml_predictions.get(s, {"Predicted Increase": 0.0})
+                        ml_predictions_list.append(f"${ml_pred['Predicted Increase']:.2f}" if ml_predictions else "N/A")
+                    
                     data = {
                         "Strategy": strategy_names,
-                        "Confident Number ($)": [f"${v['Conf Lower']:.2f}" if strategy_predictions and s in strategy_predictions else "N/A" for s in strategy_names],
-                        "Confidence Range ($)": [f"[{v['Conf Lower']:.2f}, {v['Conf Upper']:.2f}]" if strategy_predictions and s in strategy_predictions else "N/A" for s in strategy_names],
-                        "Variation ($)": [f"${v['Std']:.2f}" if strategy_predictions and s in strategy_predictions else "N/A" for s in strategy_names],
-                        "ML Prediction ($)": [f"${ml_predictions.get(s, {'Predicted Increase': 0.0})['Predicted Increase']:.2f}" if ml_predictions else "N/A" for s in strategy_names]
+                        "Confident Number ($)": conf_numbers,
+                        "Confidence Range ($)": conf_ranges,
+                        "Variation ($)": variations,
+                        "ML Prediction ($)": ml_predictions_list
                     }
                     df_predictions = pd.DataFrame(data)
                     styled_df = df_predictions.style.format({
