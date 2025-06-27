@@ -104,7 +104,7 @@ if submit_button:
 
                 # --- Display Results ---
                 st.subheader("📋 Recent Pattern Data")
-                st.dataframe(df.tail(25), use_container_width=True)
+                st.dataframe(df, use_container_width=True)
 
                 # --- Profit Analysis Summary ---
                 if "Profit_Low_to_Close" in df.columns:
