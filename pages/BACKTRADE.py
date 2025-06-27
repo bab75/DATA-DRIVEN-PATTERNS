@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, date, timedelta  # Explicitly import date
+import numpy as np
 
 # Streamlit page configuration
 st.set_page_config(page_title="Stock Price Comparison Dashboard", page_icon="📊", layout="wide")
@@ -224,8 +225,22 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     max_volume_date = data['Volume'].idxmax()
     min_volume_date = data['Volume'].idxmin()
     
+    # Daily stock increase analysis
+    data['Daily Increase ($)'] = data['Close'].diff()
+    data['Open vs Prev Close ($)'] = data['Open'] - data['Close'].shift(1)
+    data['Intraday Increase ($)'] = data['Close'] - data['Open']
+    
+    # Historical prediction
+    daily_increases = data['Daily Increase ($)'].dropna()
+    mean_increase = daily_increases.mean()
+    std_increase = daily_increases.std()
+    conf_interval = 1.96 * std_increase / np.sqrt(len(daily_increases))  # 95% confidence interval for mean
+    predicted_increase = mean_increase
+    conf_lower = mean_increase - conf_interval
+    conf_upper = mean_increase + conf_interval
+    
     # Raw data color-coding for Close
-    raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+    raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
     raw_data['Close Color'] = raw_data.apply(
         lambda x: color_close(x['Close'], raw_data['Close'].shift(1)[x.name] if x.name in raw_data['Close'].shift(1).index else None),
         axis=1
@@ -264,7 +279,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     if not comparison_df.empty:
         comparison_df.sort_values(by="Aggregated Return (%)", ascending=False, inplace=True)
     
-    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data
+    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_increases, mean_increase, std_increase, conf_interval, predicted_increase, conf_lower, conf_upper
 
 # Run analysis on button click
 if st.button("Run Analysis"):
@@ -274,19 +289,22 @@ if st.button("Run Analysis"):
         else:
             data = fetch_data(ticker, start_date, end_date)
             if data is not None:
-                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data = calculate_profits(data, strategies, strategy_variant, start_date, end_date)
+                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_increases, mean_increase, std_increase, conf_interval, predicted_increase, conf_lower, conf_upper = calculate_profits(data, strategies, strategy_variant, start_date, end_date)
                 
                 # Raw stock data
                 with st.expander("Raw Stock Data", expanded=False):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write(f"Raw stock data for {ticker} ({start_date} to {end_date}):")
-                    display_raw_data = raw_data[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+                    display_raw_data = raw_data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
                     styled_raw_df = display_raw_data.style.format({
                         "Open": "{:.2f}",
                         "High": "{:.2f}",
                         "Low": "{:.2f}",
                         "Close": "{:.2f}",
-                        "Volume": "{:.0f}"
+                        "Volume": "{:.0f}",
+                        "Daily Increase ($)": "{:.2f}",
+                        "Open vs Prev Close ($)": "{:.2f}",
+                        "Intraday Increase ($)": "{:.2f}"
                     })
                     styled_raw_df = styled_raw_df.apply(
                         lambda x: [raw_data.loc[x.name, 'Close Color']] * len(x) if x.name in raw_data.index else [''] * len(x),
@@ -324,7 +342,6 @@ if st.button("Run Analysis"):
                 with st.expander("Aggregated Profit/Loss", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write(f"Aggregated Profit/Loss ({start_date} to {end_date}):")
-                    # Create a multi-row DataFrame for aggregated profits
                     agg_data = []
                     for strategy in strategies:
                         if strategies[strategy] and f"{strategy} ($)" in aggregated_profit:
@@ -342,11 +359,10 @@ if st.button("Run Analysis"):
                             "Aggregated Return (%)": "{:.2f}"
                         }).applymap(color_profit_loss, subset=["Aggregated Profit ($)"])
                         st.dataframe(styled_agg_df)
-                        # Generate heatmap for aggregated profits
                         pivot_df = agg_df.pivot_table(index="Strategy", columns="Buy Date", values="Aggregated Profit ($)", fill_value=0)
                         fig_heatmap = px.imshow(pivot_df,
                                                labels=dict(x="Buy Date", y="Strategy", color="Aggregated Profit ($)"),
-                                               color_continuous_scale="RdYlGn",  # Red to Yellow to Green
+                                               color_continuous_scale="RdYlGn",
                                                aspect="auto",
                                                title=f"Heatmap of Aggregated Profit by Strategy and Buy Date ({start_date} to {end_date})")
                         fig_heatmap.update_layout(coloraxis_colorbar_title="Profit ($)")
@@ -430,6 +446,33 @@ if st.button("Run Analysis"):
                         else:
                             st.write("No positive profits to display in sunburst chart.")
                         st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Daily stock increase analysis
+                with st.expander("Daily Stock Increase Analysis", expanded=True):
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.write(f"Daily stock increase analysis for {ticker} ({start_date} to {end_date}):")
+                    increase_df = raw_data[['Date', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
+                    increase_df['Date'] = increase_df.index
+                    styled_increase_df = increase_df.style.format({
+                        "Daily Increase ($)": "{:.2f}",
+                        "Open vs Prev Close ($)": "{:.2f}",
+                        "Intraday Increase ($)": "{:.2f}"
+                    }).applymap(color_profit_loss, subset=["Daily Increase ($)", "Open vs Prev Close ($)", "Intraday Increase ($)"])
+                    st.dataframe(styled_increase_df)
+                    
+                    # Contribution analysis
+                    open_contrib = (raw_data['Open vs Prev Close ($)'] / raw_data['Daily Increase ($)']).dropna().mean() * 100
+                    intraday_contrib = (raw_data['Intraday Increase ($)'] / raw_data['Daily Increase ($)']).dropna().mean() * 100
+                    st.write(f"**Average Contribution to Daily Increase:**")
+                    st.write(f"- Opening Price vs Previous Close: {open_contrib:.1f}%")
+                    st.write(f"- Intraday Movement: {intraday_contrib:.1f}%")
+                    
+                    # Prediction
+                    st.write(f"**Predicted Daily Increase (based on historical data):**")
+                    st.write(f"- Mean Daily Increase: ${mean_increase:.2f}")
+                    st.write(f"- 95% Confidence Interval: [${conf_lower:.2f}, ${conf_upper:.2f}]")
+                    st.write(f"- Standard Deviation: ${std_increase:.2f}")
+                    st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Highlight most profitable strategy
                 if not comparison_df.empty:
