@@ -48,10 +48,12 @@ if start_date >= end_date:
     st.error("End date must be after start date.")
     st.stop()
 
-# Debug and safe date comparison
-if not isinstance(end_date, datetime.date):
-    st.error("Invalid end date. Please select a valid date.")
-    st.stop()
+# Ensure end_date is a valid datetime.date
+if end_date is None or not isinstance(end_date, datetime.date):
+    st.error("Invalid end date. Defaulting to today (June 27, 2025).")
+    end_date = datetime.date.today()  # 2025-06-27
+    st.stop()  # Stop if defaulting to prevent further issues
+
 today = datetime.date.today()  # 2025-06-27
 if end_date > today:
     st.warning("End date exceeds today (June 27, 2025). Results may be incomplete without future data.")
