@@ -11,13 +11,16 @@ st.markdown("""
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 """, unsafe_allow_html=True)
 
-# Function to fetch data
+# Function to fetch and clean data
 def fetch_data(symbol, start_date, end_date):
     try:
         data = yf.download(symbol, start=start_date, end=end_date)
-        if data.empty:
-            st.error("No data found for the given symbol and date range.")
+        if data.empty or len(data) < 50:  # Ensure enough data for strategies
+            st.error(f"Insufficient data for {symbol}. Need at least 50 days.")
             return None
+        # Clean data: remove NaN and ensure numeric values
+        data = data.dropna()
+        data = data[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
         return data
     except Exception as e:
         st.error(f"Error fetching data: {e}")
@@ -26,15 +29,20 @@ def fetch_data(symbol, start_date, end_date):
 # SMA Crossover Strategy
 def sma_crossover_backtest(data, short_period=20, long_period=50):
     data = data.copy()
+    if len(data) < long_period:
+        return [], 10000, []
     data['SMA_short'] = data['Close'].rolling(window=short_period).mean()
     data['SMA_long'] = data['Close'].rolling(window=long_period).mean()
     position = 0
     trades = []
     cash = 10000
     shares = 0
-    equity = []
+    equity = [10000]  # Initialize with starting capital
     
     for i in range(1, len(data)):
+        if pd.isna(data['SMA_short'].iloc[i]) or pd.isna(data['SMA_long'].iloc[i]):
+            equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
+            continue
         if data['SMA_short'].iloc[i] > data['SMA_long'].iloc[i] and data['SMA_short'].iloc[i-1] <= data['SMA_long'].iloc[i-1]:
             if position == 0:
                 shares = cash / data['Close'].iloc[i]
@@ -55,6 +63,8 @@ def sma_crossover_backtest(data, short_period=20, long_period=50):
 # RSI Mean Reversion Strategy
 def rsi_mean_reversion_backtest(data, rsi_period=14, oversold=30, overbought=70):
     data = data.copy()
+    if len(data) < rsi_period:
+        return [], 10000, []
     delta = data['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=rsi_period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=rsi_period).mean()
@@ -64,9 +74,12 @@ def rsi_mean_reversion_backtest(data, rsi_period=14, oversold=30, overbought=70)
     trades = []
     cash = 10000
     shares = 0
-    equity = []
+    equity = [10000]
     
     for i in range(1, len(data)):
+        if pd.isna(data['RSI'].iloc[i]):
+            equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
+            continue
         if data['RSI'].iloc[i] < oversold and position == 0:
             shares = cash / data['Close'].iloc[i]
             cash = 0
@@ -85,6 +98,8 @@ def rsi_mean_reversion_backtest(data, rsi_period=14, oversold=30, overbought=70)
 # Bollinger Bands Strategy
 def bollinger_bands_backtest(data, period=20, std_dev=2):
     data = data.copy()
+    if len(data) < period:
+        return [], 10000, []
     data['SMA'] = data['Close'].rolling(window=period).mean()
     data['STD'] = data['Close'].rolling(window=period).std()
     data['Upper'] = data['SMA'] + (data['STD'] * std_dev)
@@ -93,9 +108,12 @@ def bollinger_bands_backtest(data, period=20, std_dev=2):
     trades = []
     cash = 10000
     shares = 0
-    equity = []
+    equity = [10000]
     
     for i in range(1, len(data)):
+        if pd.isna(data['Upper'].iloc[i]) or pd.isna(data['Lower'].iloc[i]):
+            equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
+            continue
         if data['Close'].iloc[i] < data['Lower'].iloc[i] and position == 0:
             shares = cash / data['Close'].iloc[i]
             cash = 0
@@ -106,13 +124,15 @@ def bollinger_bands_backtest(data, period=20, std_dev=2):
             shares = 0
             position = 0
             trades.append(('SELL', data.index[i], data['Close'].iloc[i], shares))
-        equity.append(cash + (shares * data['Close'].iloc[i] if position == 1 else 0))
+        equity.append(cash + (shares * data['Close'].iloc[i] if position = 1 else 0))
     
     final_value = cash + (shares * data['Close'].iloc[-1] if position == 1 else 0)
     return trades, final_value, equity
 
 # Buy and Hold Strategy
 def buy_and_hold_backtest(data):
+    if len(data) < 1:
+        return [], 10000, []
     cash = 10000
     shares = cash / data['Close'].iloc[0]
     trades = [('BUY', data.index[0], data['Close'].iloc[0], shares)]
@@ -122,23 +142,52 @@ def buy_and_hold_backtest(data):
 
 # Performance Metrics
 def calculate_metrics(equity, data):
-    equity = np.array(equity)
-    returns = np.diff(equity) / equity[:-1]
-    total_return = (equity[-1] - 10000) / 10000 * 100
-    annualized_return = ((equity[-1] / 10000) ** (252 / len(data)) - 1) * 100
-    volatility = np.std(returns) * np.sqrt(252) * 100
-    sharpe_ratio = annualized_return / volatility if volatility != 0 else 0
-    equity_series = pd.Series(equity)
-    rolling_max = equity_series.cummax()
-    drawdown = (rolling_max - equity_series) / rolling_max
-    max_drawdown = drawdown.max() * 100
-    return {
-        'Total Return (%)': total_return,
-        'Annualized Return (%)': annualized_return,
-        'Volatility (%)': volatility,
-        'Sharpe Ratio': sharpe_ratio,
-        'Max Drawdown (%)': max_drawdown
-    }
+    if not equity or len(equity) < 2:
+        return {
+            'Total Return (%)': 0,
+            'Annualized Return (%)': 0,
+            'Volatility (%)': 0,
+            'Sharpe Ratio': 0,
+            'Max Drawdown (%)': 0
+        }
+    
+    try:
+        equity = np.array(equity, dtype=float)
+        if np.any(np.isnan(equity)) or np.any(np.isinf(equity)):
+            return {
+                'Total Return (%)': 0,
+                'Annualized Return (%)': 0,
+                'Volatility (%)': 0,
+                'Sharpe Ratio': 0,
+                'Max Drawdown (%)': 0
+            }
+        
+        returns = np.diff(equity) / equity[:-1]
+        total_return = (equity[-1] - 10000) / 10000 * 100
+        annualized_return = ((equity[-1] / 10000) ** (252 / len(data)) - 1) * 100
+        volatility = np.std(returns) * np.sqrt(252) * 100 if len(returns) > 0 else 0
+        sharpe_ratio = annualized_return / volatility if volatility != 0 else 0
+        equity_series = pd.Series(equity)
+        rolling_max = equity_series.cummax()
+        drawdown = (rolling_max - equity_series) / rolling_max
+        max_drawdown = drawdown.max() * 100 if len(drawdown) > 0 else 0
+        
+        return {
+            'Total Return (%)': total_return,
+            'Annualized Return (%)': annualized_return,
+            'Volatility (%)': volatility,
+            'Sharpe Ratio': sharpe_ratio,
+            'Max Drawdown (%)': max_drawdown
+        }
+    except Exception as e:
+        st.error(f"Error in metrics calculation: {e}")
+        return {
+            'Total Return (%)': 0,
+            'Annualized Return (%)': 0,
+            'Volatility (%)': 0,
+            'Sharpe Ratio': 0,
+            'Max Drawdown (%)': 0
+        }
 
 # Plot Price with Signals
 def plot_price(data, trades, strategy_name):
@@ -155,7 +204,8 @@ def plot_price(data, trades, strategy_name):
 def plot_equity_curves(results, data):
     fig = go.Figure()
     for strategy_name, result in results.items():
-        fig.add_trace(go.Scatter(x=data.index[1:], y=result['equity'], name=strategy_name))
+        if result['equity']:  # Only plot if equity is non-empty
+            fig.add_trace(go.Scatter(x=data.index[:len(result['equity'])], y=result['equity'], name=strategy_name))
     fig.update_layout(title='Equity Curves Comparison', xaxis_title='Date', yaxis_title='Portfolio Value ($)')
     return fig
 
@@ -199,40 +249,51 @@ if submitted:
             results = {}
             for strategy_name, selected in strategies.items():
                 if selected:
-                    if strategy_name == "Simple Moving Average Crossover":
-                        trades, final_value, equity = sma_crossover_backtest(data)
-                    elif strategy_name == "RSI Mean Reversion":
-                        trades, final_value, equity = rsi_mean_reversion_backtest(data)
-                    elif strategy_name == "Bollinger Bands":
-                        trades, final_value, equity = bollinger_bands_backtest(data)
-                    elif strategy_name == "Buy and Hold":
-                        trades, final_value, equity = buy_and_hold_backtest(data)
-                    results[strategy_name] = {
-                        'trades': trades,
-                        'final_value': final_value,
-                        'equity': equity,
-                        'metrics': calculate_metrics(equity, data)
-                    }
+                    try:
+                        if strategy_name == "Simple Moving Average Crossover":
+                            trades, final_value, equity = sma_crossover_backtest(data)
+                        elif strategy_name == "RSI Mean Reversion":
+                            trades, final_value, equity = rsi_mean_reversion_backtest(data)
+                        elif strategy_name == "Bollinger Bands":
+                            trades, final_value, equity = bollinger_bands_backtest(data)
+                        elif strategy_name == "Buy and Hold":
+                            trades, final_value, equity = buy_and_hold_backtest(data)
+                        
+                        if not equity:
+                            st.warning(f"No equity data generated for {strategy_name}. Check data or parameters.")
+                            continue
+                        
+                        results[strategy_name] = {
+                            'trades': trades,
+                            'final_value': final_value,
+                            'equity': equity,
+                            'metrics': calculate_metrics(equity, data)
+                        }
+                    except Exception as e:
+                        st.error(f"Error in {strategy_name}: {e}")
             
-            # Display Results
-            st.markdown("<h2 class='text-2xl font-bold text-gray-800 mt-6'>Backtest Results</h2>", unsafe_allow_html=True)
-            for strategy_name, result in results.items():
-                st.markdown(f"<h3 class='text-xl font-semibold text-gray-700'>{strategy_name}</h3>", unsafe_allow_html=True)
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    st.write("**Performance Metrics**")
-                    metrics_df = pd.DataFrame(result['metrics'].items(), columns=['Metric', 'Value'])
-                    metrics_df['Value'] = metrics_df['Value'].apply(lambda x: f"{x:.2f}")
-                    st.table(metrics_df)
-                    st.write("**Trades**")
-                    trades_df = pd.DataFrame(result['trades'], columns=['Action', 'Date', 'Price', 'Shares'])
-                    trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}")
-                    trades_df['Shares'] = trades_df['Shares'].apply(lambda x: f"{x:.2f}")
-                    st.dataframe(trades_df)
-                with col2:
-                    st.plotly_chart(plot_price(data, result['trades'], strategy_name))
-            
-            # Equity Curve Comparison
-            if len(results) > 1:
-                st.markdown("<h3 class='text-xl font-semibold text-gray-700'>Equity Curves Comparison</h3>", unsafe_allow_html=True)
-                st.plotly_chart(plot_equity_curves(results, data))
+            if not results:
+                st.error("No valid results generated. Please check inputs or data.")
+            else:
+                # Display Results
+                st.markdown("<h2 class='text-2xl font-bold text-gray-800 mt-6'>Backtest Results</h2>", unsafe_allow_html=True)
+                for strategy_name, result in results.items():
+                    st.markdown(f"<h3 class='text-xl font-semibold text-gray-700'>{strategy_name}</h3>", unsafe_allow_html=True)
+                    col1, col2 = st.columns([1, 2])
+                    with col1:
+                        st.write("**Performance Metrics**")
+                        metrics_df = pd.DataFrame(result['metrics'].items(), columns=['Metric', 'Value'])
+                        metrics_df['Value'] = metrics_df['Value'].apply(lambda x: f"{x:.2f}")
+                        st.table(metrics_df)
+                        st.write("**Trades**")
+                        trades_df = pd.DataFrame(result['trades'], columns=['Action', 'Date', 'Price', 'Shares'])
+                        trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}")
+                        trades_df['Shares'] = trades_df['Shares'].apply(lambda x: f"{x:.2f}")
+                        st.dataframe(trades_df)
+                    with col2:
+                        st.plotly_chart(plot_price(data, result['trades'], strategy_name))
+                
+                # Equity Curve Comparison
+                if len(results) > 1:
+                    st.markdown("<h3 class='text-xl font-semibold text-gray-700'>Equity Curves Comparison</h3>", unsafe_allow_html=True)
+                    st.plotly_chart(plot_equity_curves(results, data))
