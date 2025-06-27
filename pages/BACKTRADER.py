@@ -19,17 +19,22 @@ capital_base = st.number_input("Capital Base ($)", value=10000.0, min_value=1000
 # Function to fetch data from yfinance
 def fetch_data(ticker, start_date, end_date):
     try:
+        # Use single ticker string, not a list, to avoid MultiIndex
         data = yf.download(ticker, start=start_date, end=end_date, progress=False)
         if data.empty:
             st.error(f"No data found for {ticker}. Please check the ticker or date range.")
             return None
+        # Handle MultiIndex columns if present
+        if isinstance(data.columns, pd.MultiIndex):
+            # Extract first level of column names (e.g., 'Open', 'High')
+            data.columns = [col[0] if isinstance(col, tuple) else col for col in data.columns]
         # Ensure required columns and capitalize for Backtesting.py
         required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
         actual_columns = data.columns.tolist()
         if not all(col in actual_columns for col in required_columns):
             st.error(f"Data for {ticker} missing required columns. Expected: {required_columns}, Found: {actual_columns}")
             return None
-        # Backtesting.py expects capitalized column names
+        # Capitalize column names for Backtesting.py
         data.columns = [col.capitalize() for col in data.columns]
         # Log DataFrame for debugging
         st.write(f"DataFrame columns: {data.columns.tolist()}")
