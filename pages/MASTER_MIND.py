@@ -221,6 +221,7 @@ def generate_pdf_report(report_content, stock_name, report_type):
     return buffer
 
 # Function to analyze stock data
+# Function to analyze stock data
 def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     stock_name = ticker.upper()
     is_real_time_only = real_time_data is not None and df is None
@@ -236,37 +237,54 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     prev = data_source.iloc[-2] if len(data_source) > 1 else latest
 
     price = latest['Close']
-    # Calculate technical indicators dynamically
+    # Validate and calculate technical indicators dynamically
+    sma_20 = price
+    sma_50 = price
+    sma_200 = price
+    rsi = 50
+    macd = macd_signal = macd_hist = 0
+    bb_middle = bb_upper = bb_lower = price
+    bb_width = bb_position = 0
+    adx_value = 50
+    atr = 0
+
     if len(data_source) > 1 and all(col in data_source.columns for col in ['High', 'Low', 'Close']):
-        # SMA
-        sma_20 = SMAIndicator(close=data_source['Close'], window=20).sma().iloc[-1] if len(data_source) >= 20 else price
-        sma_50 = SMAIndicator(close=data_source['Close'], window=50).sma().iloc[-1] if len(data_source) >= 50 else price
-        sma_200 = SMAIndicator(close=data_source['Close'], window=200).sma().iloc[-1] if len(data_source) >= 200 else price
-        # RSI
-        rsi = RSIIndicator(close=data_source['Close'], window=14).rsi().iloc[-1] if len(data_source) >= 14 else 50
-        # MACD
-        macd = MACD(close=data_source['Close']).macd().iloc[-1] if len(data_source) >= 26 else 0
-        macd_signal = MACD(close=data_source['Close']).macd_signal().iloc[-1] if len(data_source) >= 26 else 0
-        macd_hist = MACD(close=data_source['Close']).macd_diff().iloc[-1] if len(data_source) >= 26 else 0
-        # Bollinger Bands
-        bb = BollingerBands(close=data_source['Close'], window=20, window_dev=2)
-        bb_middle = bb.bollinger_mavg().iloc[-1] if len(data_source) >= 20 else price
-        bb_upper = bb.bollinger_hband().iloc[-1] if len(data_source) >= 20 else price * 1.05
-        bb_lower = bb.bollinger_lband().iloc[-1] if len(data_source) >= 20 else price * 0.95
-        bb_width = ((bb_upper - bb_lower) / bb_middle * 100) if len(data_source) >= 20 else 0
-        bb_position = ((price - bb_lower) / (bb_upper - bb_lower) * 100) if len(data_source) >= 20 else 0
-        # ADX
-        adx_value = ADXIndicator(high=data_source['High'], low=data_source['Low'], close=data_source['Close'], window=14).adx().iloc[-1] if len(data_source) >= 14 else 50
-        # Volatility (using ATR as proxy)
-        atr = data_source['High'].rolling(window=14).max().diff().abs().rolling(window=14).mean().iloc[-1] if len(data_source) >= 14 else 0
-    else:
-        sma_20 = sma_50 = sma_200 = price
-        rsi = 50
-        macd = macd_signal = macd_hist = 0
-        bb_middle = bb_upper = bb_lower = price
-        bb_width = bb_position = 0
-        adx_value = 50
-        atr = 0
+        st.write("Debug: Close column:", data_source['Close'].head())  # Debug check
+        if data_source['Close'].dtype in [int, float] and not data_source['Close'].isna().all():
+            try:
+                # SMA
+                if len(data_source) >= 20:
+                    sma_20 = SMAIndicator(close=data_source['Close'], window=20).sma().iloc[-1]
+                if len(data_source) >= 50:
+                    sma_50 = SMAIndicator(close=data_source['Close'], window=50).sma().iloc[-1]
+                if len(data_source) >= 200:
+                    sma_200 = SMAIndicator(close=data_source['Close'], window=200).sma().iloc[-1]
+                # RSI
+                if len(data_source) >= 14:
+                    rsi = RSIIndicator(close=data_source['Close'], window=14).rsi().iloc[-1]
+                # MACD
+                if len(data_source) >= 26:
+                    macd = MACD(close=data_source['Close']).macd().iloc[-1]
+                    macd_signal = MACD(close=data_source['Close']).macd_signal().iloc[-1]
+                    macd_hist = MACD(close=data_source['Close']).macd_diff().iloc[-1]
+                # Bollinger Bands
+                if len(data_source) >= 20:
+                    bb = BollingerBands(close=data_source['Close'], window=20, window_dev=2)
+                    bb_middle = bb.bollinger_mavg().iloc[-1]
+                    bb_upper = bb.bollinger_hband().iloc[-1]
+                    bb_lower = bb.bollinger_lband().iloc[-1]
+                    bb_width = ((bb_upper - bb_lower) / bb_middle * 100) if bb_middle != 0 else 0
+                    bb_position = ((price - bb_lower) / (bb_upper - bb_lower) * 100) if (bb_upper - bb_lower) != 0 else 0
+                # ADX
+                if len(data_source) >= 14:
+                    adx_value = ADXIndicator(high=data_source['High'], low=data_source['Low'], close=data_source['Close'], window=14).adx().iloc[-1]
+                # ATR (simplified)
+                if len(data_source) >= 14:
+                    atr = data_source['High'].rolling(window=14).max().diff().abs().rolling(window=14).mean().iloc[-1]
+            except AttributeError as e:
+                st.error(f"❌ Error calculating indicators: {str(e)}. Using default values.")
+        else:
+            st.error("❌ 'Close' column is not numeric or contains only NaN values.")
 
     volatility = atr * 100 / price if atr > 0 else 0  # Simplified volatility estimate
     trend = "Bearish" if price < sma_20 and price < sma_50 else "Bullish" if price > sma_20 and price > sma_50 else "Neutral"
