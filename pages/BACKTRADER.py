@@ -25,11 +25,13 @@ def fetch_data(ticker, start_date, end_date):
             return None
         # Ensure required columns and capitalize for Backtesting.py
         required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-        if not all(col in data.columns for col in required_columns):
-            st.error(f"Data for {ticker} missing required columns: {required_columns}")
+        actual_columns = data.columns.tolist()
+        if not all(col in actual_columns for col in required_columns):
+            st.error(f"Data for {ticker} missing required columns. Expected: {required_columns}, Found: {actual_columns}")
             return None
         # Backtesting.py expects capitalized column names
         data.columns = [col.capitalize() for col in data.columns]
+        # Log DataFrame for debugging
         st.write(f"DataFrame columns: {data.columns.tolist()}")
         st.write(f"DataFrame sample:\n{data.head()}")
         data.index = pd.to_datetime(data.index)
