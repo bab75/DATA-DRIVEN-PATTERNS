@@ -318,8 +318,26 @@ if st.button("Run Analysis"):
                 with st.expander("Aggregated Profit/Loss", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write(f"Aggregated Profit/Loss ({start_date} to {end_date}):")
-                    agg_df = pd.DataFrame([aggregated_profit], index=[f"{start_date} to {end_date}"])
-                    st.dataframe(agg_df.style.format({col: "{:.2f}" for col in agg_df.columns if not col.endswith("Date")}).applymap(color_profit_loss, subset=[col for col in agg_df.columns if col.endswith("($)")]))
+                    # Create a multi-row DataFrame for aggregated profits
+                    agg_data = []
+                    for strategy in strategies:
+                        if strategies[strategy] and f"{strategy} ($)" in aggregated_profit:
+                            agg_data.append({
+                                "Strategy": strategy,
+                                "Aggregated Profit ($)": aggregated_profit[f"{strategy} ($)"],
+                                "Aggregated Return (%)": aggregated_profit[f"{strategy} (%)"],
+                                "Buy Date": aggregated_profit.get(f"{strategy} Buy Date", None),
+                                "Sell Date": aggregated_profit.get(f"{strategy} Sell Date", None)
+                            })
+                    agg_df = pd.DataFrame(agg_data)
+                    if not agg_df.empty:
+                        styled_agg_df = agg_df.style.format({
+                            "Aggregated Profit ($)": "{:.2f}",
+                            "Aggregated Return (%)": "{:.2f}"
+                        }).applymap(color_profit_loss, subset=["Aggregated Profit ($)"])
+                        st.dataframe(styled_agg_df)
+                    else:
+                        st.write("No aggregated profit/loss data available for selected strategies.")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Volume analysis
