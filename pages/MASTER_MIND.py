@@ -65,9 +65,9 @@ if process_file_button and uploaded_file:
         else:
             df = pd.read_excel(uploaded_file, engine='openpyxl')
         required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
-        if not all(col in df.columns for col in required_columns):
-            missing = [col for col in required_columns if col not in df.columns]
-            st.error(f"❌ Missing columns: {', '.join(missing)}")
+        if not all(col in df.columns for col in ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']):
+            missing = [col for col in ['Date', 'Open', 'High', 'Low', 'Close', 'Volume'] if col not in df.columns]
+            st.error(f"❌ Missing minimal columns: {', '.join(missing)}")
         else:
             df['Date'] = pd.to_datetime(df['Date'])
             st.session_state.csv_data = df
@@ -148,15 +148,21 @@ def combine_dataframes(csv_df, real_time_data):
     try:
         real_time_df = pd.DataFrame([real_time_data])
         real_time_df['Date'] = pd.to_datetime(real_time_df['Date'])
-        # Define required columns
-        required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
-        # Align columns and fill missing with 0
-        combined_df = pd.concat([csv_df[required_columns], real_time_df[required_columns]], ignore_index=True, sort=False)
-        combined_df = combined_df.fillna(0)  # Fill NaN with 0 for missing columns
+        # Use only available columns
+        common_cols = [col for col in csv_df.columns if col in real_time_df.columns]
+        if not common_cols:
+            st.error("❌ No common columns found between CSV and real-time data.")
+            return None
+        combined_df = pd.concat([csv_df[common_cols], real_time_df[common_cols]], ignore_index=True)
         combined_df = combined_df.sort_values('Date').drop_duplicates(subset=['Date'], keep='last')
         for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
             if col in real_time_df.columns:
                 combined_df[col].iloc[-1] = real_time_df[col].iloc[0]
+        # Add missing technical columns with default values
+        required_columns = ['Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
+        for col in required_columns:
+            if col not in combined_df.columns:
+                combined_df[col] = 0
         st.write("Debug: Combined DataFrame:", combined_df.head())  # Debug output
         st.write("Debug: Combined Columns:", combined_df.columns.tolist())  # Debug column list
         return combined_df if not combined_df.empty else None
@@ -427,7 +433,7 @@ st.write("Debug: data_source:", data_source)  # Debug output
 # Analyze data
 if data_source is not None and isinstance(data_source, pd.DataFrame) and not data_source.empty:
     # Validate required columns
-    required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
+    required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
     missing_cols = [col for col in required_columns if col not in data_source.columns]
     if missing_cols:
         st.error(f"❌ Missing required columns in data_source: {', '.join(missing_cols)}")
