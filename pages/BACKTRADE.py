@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, date, timedelta  # Explicitly import date
 import numpy as np
+# import sklearn.linear_model  # Uncomment for ML (requires confirmation)
 
 # Streamlit page configuration
 st.set_page_config(page_title="Stock Price Comparison Dashboard", page_icon="📊", layout="wide")
@@ -230,14 +231,37 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     data['Open vs Prev Close ($)'] = data['Open'] - data['Close'].shift(1)
     data['Intraday Increase ($)'] = data['Close'] - data['Open']
     
-    # Historical prediction
-    daily_increases = data['Daily Increase ($)'].dropna()
-    mean_increase = daily_increases.mean()
-    std_increase = daily_increases.std()
-    conf_interval = 1.96 * std_increase / np.sqrt(len(daily_increases))  # 95% confidence interval for mean
-    predicted_increase = mean_increase
-    conf_lower = mean_increase - conf_interval
-    conf_upper = mean_increase + conf_interval
+    # Strategy-specific daily differences
+    daily_diffs = {}
+    for strategy in strategies:
+        if strategies[strategy]:
+            if strategy == "Min-Low to End-Close":
+                daily_diffs[strategy] = data['Close'] - data['Low']
+            elif strategy == "Open-High":
+                daily_diffs[strategy] = data['High'] - data['Open']
+            elif strategy == "Open-Close":
+                daily_diffs[strategy] = data['Close'] - data['Open']
+            elif strategy == "Min-Low to Max-High":
+                daily_diffs[strategy] = data['High'] - data['Low']
+    
+    # Historical prediction for each strategy
+    strategy_predictions = {}
+    for strategy, diff_series in daily_diffs.items():
+        diff_values = diff_series.dropna()
+        mean_diff = diff_values.mean()
+        std_diff = diff_values.std()
+        conf_interval = 1.96 * std_diff / np.sqrt(len(diff_values)) if len(diff_values) > 0 else 0  # 95% confidence interval
+        predicted_increase = mean_diff
+        conf_lower = mean_diff - conf_interval
+        conf_upper = mean_diff + conf_interval
+        strategy_predictions[strategy] = {
+            "Mean": mean_diff,
+            "Std": std_diff,
+            "Conf Interval": conf_interval,
+            "Predicted Increase": predicted_increase,
+            "Conf Lower": conf_lower,
+            "Conf Upper": conf_upper
+        }
     
     # Raw data color-coding for Close
     raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
@@ -279,7 +303,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     if not comparison_df.empty:
         comparison_df.sort_values(by="Aggregated Return (%)", ascending=False, inplace=True)
     
-    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_increases, mean_increase, std_increase, conf_interval, predicted_increase, conf_lower, conf_upper
+    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions
 
 # Run analysis on button click
 if st.button("Run Analysis"):
@@ -289,7 +313,7 @@ if st.button("Run Analysis"):
         else:
             data = fetch_data(ticker, start_date, end_date)
             if data is not None:
-                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_increases, mean_increase, std_increase, conf_interval, predicted_increase, conf_lower, conf_upper = calculate_profits(data, strategies, strategy_variant, start_date, end_date)
+                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions = calculate_profits(data, strategies, strategy_variant, start_date, end_date)
                 
                 # Raw stock data
                 with st.expander("Raw Stock Data", expanded=False):
@@ -451,7 +475,6 @@ if st.button("Run Analysis"):
                 with st.expander("Daily Stock Increase Analysis", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write(f"Daily stock increase analysis for {ticker} ({start_date} to {end_date}):")
-                    # Use index as Date and select only the required columns
                     increase_df = raw_data.reset_index()[['Date', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
                     styled_increase_df = increase_df.style.format({
                         "Daily Increase ($)": "{:.2f}",
@@ -467,11 +490,14 @@ if st.button("Run Analysis"):
                     st.write(f"- Opening Price vs Previous Close: {open_contrib:.1f}%")
                     st.write(f"- Intraday Movement: {intraday_contrib:.1f}%")
                     
-                    # Prediction
-                    st.write(f"**Predicted Daily Increase (based on historical data):**")
-                    st.write(f"- Mean Daily Increase: ${mean_increase:.2f}")
-                    st.write(f"- 95% Confidence Interval: [${conf_lower:.2f}, ${conf_upper:.2f}]")
-                    st.write(f"- Standard Deviation: ${std_increase:.2f}")
+                    # Strategy-specific predictions
+                    st.write(f"**Predicted Daily Increase by Strategy (based on historical data):**")
+                    for strategy, pred in strategy_predictions.items():
+                        if strategies[strategy]:
+                            st.write(f"- {strategy}:")
+                            st.write(f"  - Mean Daily Increase: ${pred['Mean']:.2f}")
+                            st.write(f"  - 95% Confidence Interval: [${pred['Conf Lower']:.2f}, ${pred['Conf Upper']:.2f}]")
+                            st.write(f"  - Standard Deviation: ${pred['Std']:.2f}")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Highlight most profitable strategy
