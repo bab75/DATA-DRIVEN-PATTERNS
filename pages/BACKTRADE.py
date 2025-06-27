@@ -69,7 +69,7 @@ def fetch_data(ticker, start_date, end_date):
         st.error(f"Error fetching data for {ticker}: {str(e)}")
         return None
 
-# Color-coding for profit/loss and volume
+# Color-coding for profit/loss, volume, and close price
 def color_profit_loss(val):
     return 'background-color: lightgreen' if val > 0 else 'background-color: lightcoral' if val < 0 else ''
 
@@ -77,6 +77,11 @@ def color_volume(val, prev_volume):
     if pd.isna(prev_volume):
         return ''
     return 'background-color: lightgreen' if val > prev_volume else 'background-color: lightcoral' if val < prev_volume else ''
+
+def color_close(val, prev_close):
+    if pd.isna(prev_close):
+        return ''
+    return 'background-color: lightgreen' if val > prev_close else 'background-color: lightcoral' if val < prev_close else ''
 
 # Calculate profits, volume metrics, and additional metrics
 def calculate_profits(data, strategies, start_date, end_date):
@@ -86,7 +91,7 @@ def calculate_profits(data, strategies, start_date, end_date):
     
     # Daily analysis
     for date in data.index:
-        daily_profit = {}
+        daily ஽profit = {}
         close = data.loc[date, 'Close']
         open_price = data.loc[date, 'Open']
         high = data.loc[date, 'High']
@@ -178,6 +183,13 @@ def calculate_profits(data, strategies, start_date, end_date):
     max_volume_date = data['Volume'].idxmax()
     min_volume_date = data['Volume'].idxmin()
     
+    # Raw data color-coding for Close
+    raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+    raw_data['Close Color'] = raw_data.apply(
+        lambda x: color_close(x['Close'], raw_data['Close'].shift(1)[x.name] if x.name in raw_data['Close'].shift(1).index else None),
+        axis=1
+    )
+    
     # Additional metrics
     volatility = data['Close'].std()
     avg_daily_range = (data['High'] - data['Low']).mean()
@@ -211,7 +223,7 @@ def calculate_profits(data, strategies, start_date, end_date):
     if not comparison_df.empty:
         comparison_df.sort_values(by="Aggregated Return (%)", ascending=False, inplace=True)
     
-    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits
+    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data
 
 # Run analysis on button click
 if st.button("Run Analysis"):
@@ -221,7 +233,27 @@ if st.button("Run Analysis"):
         else:
             data = fetch_data(ticker, start_date, end_date)
             if data is not None:
-                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits = calculate_profits(data, strategies, start_date, end_date)
+                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data = calculate_profits(data, strategies, start_date, end_date)
+                
+                # Raw stock data
+                with st.expander("Raw Stock Data", expanded=False):
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.write(f"Raw stock data for {ticker} ({start_date} to {end_date}):")
+                    display_raw_data = raw_data[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+                    styled_raw_df = display_raw_data.style.format({
+                        "Open": "{:.2f}",
+                        "High": "{:.2f}",
+                        "Low": "{:.2f}",
+                        "Close": "{:.2f}",
+                        "Volume": "{:.0f}"
+                    })
+                    styled_raw_df = styled_raw_df.apply(
+                        lambda x: [raw_data.loc[x.name, 'Close Color']] * len(x) if x.name in raw_data.index else [''] * len(x),
+                        axis=1,
+                        subset=["Close"]
+                    )
+                    st.dataframe(styled_raw_df)
+                    st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Summary metrics card
                 st.subheader("Summary Metrics")
@@ -259,10 +291,13 @@ if st.button("Run Analysis"):
                 with st.expander("Volume Analysis", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("Daily trading volume and change (shares):")
-                    # Display volume_data without Volume Color column
                     display_volume_data = volume_data[['Volume', 'Volume Change']].copy()
                     styled_df = display_volume_data.style.format({"Volume": "{:.0f}", "Volume Change": "{:.0f}"})
-                    styled_df = styled_df.apply(lambda x: [volume_data.loc[x.name, 'Volume Color']] * len(x) if x.name in volume_data.index else [''] * len(x), axis=1, subset=["Volume"])
+                    styled_df = styled_df.apply(
+                        lambda x: [volume_data.loc[x.name, 'Volume Color']] * len(x) if x.name in volume_data.index else [''] * len(x),
+                        axis=1,
+                        subset=["Volume"]
+                    )
                     styled_df = styled_df.applymap(color_profit_loss, subset=["Volume Change"])
                     st.dataframe(styled_df)
                     st.write(f"**Average Daily Volume**: {avg_volume:.0f} shares")
