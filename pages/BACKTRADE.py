@@ -47,7 +47,13 @@ with st.sidebar:
 if start_date >= end_date:
     st.error("End date must be after start date.")
     st.stop()
-if end_date > datetime.date.today():
+
+# Debug and safe date comparison
+if not isinstance(end_date, datetime.date):
+    st.error("Invalid end date. Please select a valid date.")
+    st.stop()
+today = datetime.date.today()  # 2025-06-27
+if end_date > today:
     st.warning("End date exceeds today (June 27, 2025). Results may be incomplete without future data.")
 
 # Cache data fetching for performance
