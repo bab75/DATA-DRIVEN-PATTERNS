@@ -27,7 +27,7 @@ comparison = st.radio(
 # --- Analyze Button ---
 if st.button("🚀 Analyze Pattern"):
     try:
-        df = yf.download(symbol, start=start_1st_page_input_1 = start_date, end=end_date)
+        df = yf.download(symbol, start=start_date, end=end_date)
     except Exception as e:
         st.error(f"Error fetching data: {e}")
         st.stop()
