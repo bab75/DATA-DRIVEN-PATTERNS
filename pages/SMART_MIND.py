@@ -8,20 +8,43 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="Smart Pattern Analyzer", layout="centered")
 st.title("📊 Smart Pattern Analyzer for Day Traders")
 
-# --- Inputs ---
+# Create a form for user input
 with st.form(key='stock_form'):
-    symbol = st.text_input("Enter Stock Symbol", value="AAPL")
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("Start Date", value=datetime(2025, 4, 28))
-    with col2:
-        end_date = st.date_input("End Date", value=datetime(2025, 6, 27))
-    comparison = st.radio(
-        "Select metric to compare:",
-        ["Open", "High", "Low", "Close", "Volume", "All"],
-        index=5
-    )
-    submit_button = st.form_submit_button(label="🚀 Analyze Pattern")
+    # Input fields for stock symbol, start date, and end date
+    symbol = st.text_input("Enter Stock Symbol (e.g., AAPL, TSLA):", value="AAPL")
+    start_date = st.date_input("Start Date:", value=None)
+    end_date = st.date_input("End Date:", value=None)
+
+    # Submit button
+    submit_button = st.form_submit_button(label="Get Data")
+
+# Fetch data on form submission
+if submit_button:
+    # Validate user input
+    if symbol and start_date and end_date:
+        try:
+            # Fetch stock data using yfinance
+            data = yf.download(symbol, start=start_date, end=end_date, auto_adjust=False)
+            
+            # Check if data is returned
+            if not data.empty:
+                st.success("Data retrieved successfully!")
+                
+                # Display the data
+                st.dataframe(data)
+                
+                # Option to download as CSV
+                csv = data.to_csv()
+                st.download_button(
+                    label="Download Data as CSV",
+                    data=csv,
+                    file_name=f"{symbol}_data.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.error("No data found for the given parameters.")
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
 # --- Analyze Button Logic ---
 if submit_button:
