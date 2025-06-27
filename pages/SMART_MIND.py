@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 # --- Streamlit Config ---
@@ -181,7 +182,21 @@ if submit_button:
                 st.subheader("📈 Price Trend Chart")
                 try:
                     if all(col in filtered_df.columns for col in ["Date", "Open", "High", "Low", "Close"]):
-                        st.line_chart(filtered_df.set_index("Date")[["Open", "High", "Low", "Close"]])
+                        fig = go.Figure(data=[go.Candlestick(x=filtered_df['Date'],
+                                                            open=filtered_df['Open'],
+                                                            high=filtered_df['High'],
+                                                            low=filtered_df['Low'],
+                                                            close=filtered_df['Close'],
+                                                            increasing_line_color='green',
+                                                            decreasing_line_color='red')])
+                        fig.update_layout(
+                            title=f"{symbol.upper()} Candlestick Chart",
+                            xaxis_title="Date",
+                            yaxis_title="Price",
+                            xaxis_rangeslider_visible=False,
+                            hovermode='x unified'
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
                     else:
                         st.warning("Required columns for plotting (Date, Open, High, Low, Close) not found.")
                 except Exception as e:
