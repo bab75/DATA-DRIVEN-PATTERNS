@@ -553,23 +553,25 @@ if st.button("Run Analysis"):
                 
                 # Prediction Tabs
                 tabs = st.tabs(["Average Contribution", "Predicted Daily Increase"])
-                
+
                 with tabs[0]:
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("**Average Contribution to Daily Increase:** (How the daily gain splits after market open)")
                     st.write("- Opening Price vs Previous Close: 20.0%")
                     st.write("- Intraday Movement: 80.0%")
                     st.markdown('</div>', unsafe_allow_html=True)
-                
+
                 with tabs[1]:
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("**Predicted Daily Increase by Strategy:** (Reliable gains and smart predictions for tomorrow, June 28, 2025)")
+                    # Define strategy names separately to avoid KeyError
+                    strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
                     data = {
-                        "Strategy": ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"],
-                        "Confident Number ($)": [f"${v['Conf Lower']:.2f}" if strategy_predictions else "N/A" for v in [strategy_predictions.get(s) for s in data["Strategy"]]],
-                        "Confidence Range ($)": [f"[{v['Conf Lower']:.2f}, {v['Conf Upper']:.2f}]" if strategy_predictions else "N/A" for v in [strategy_predictions.get(s) for s in data["Strategy"]]],
-                        "Variation ($)": [f"${v['Std']:.2f}" if strategy_predictions else "N/A" for v in [strategy_predictions.get(s) for s in data["Strategy"]]],
-                        "ML Prediction ($)": [f"${ml_predictions.get(s, {'Predicted Increase': 0.0})['Predicted Increase']:.2f}" if ml_predictions else "N/A" for s in data["Strategy"]]
+                        "Strategy": strategy_names,
+                        "Confident Number ($)": [f"${v['Conf Lower']:.2f}" if strategy_predictions and s in strategy_predictions else "N/A" for s in strategy_names],
+                        "Confidence Range ($)": [f"[{v['Conf Lower']:.2f}, {v['Conf Upper']:.2f}]" if strategy_predictions and s in strategy_predictions else "N/A" for s in strategy_names],
+                        "Variation ($)": [f"${v['Std']:.2f}" if strategy_predictions and s in strategy_predictions else "N/A" for s in strategy_names],
+                        "ML Prediction ($)": [f"${ml_predictions.get(s, {'Predicted Increase': 0.0})['Predicted Increase']:.2f}" if ml_predictions else "N/A" for s in strategy_names]
                     }
                     df_predictions = pd.DataFrame(data)
                     styled_df = df_predictions.style.format({
