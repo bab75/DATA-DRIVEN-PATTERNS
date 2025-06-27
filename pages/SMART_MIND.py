@@ -35,6 +35,12 @@ if submit_button:
             if not df.empty:
                 st.success(f"✅ Analysis complete for {symbol.upper()} from {start_date} to {end_date}")
                 
+                # Debug: Print actual date range
+                df_reset = df.reset_index()
+                min_date = df_reset['Date'].min()
+                max_date = df_reset['Date'].max()
+                st.write(f"Actual data range: {min_date} to {max_date}")
+
                 # --- Clean and Format ---
                 df = df.reset_index()
                 
