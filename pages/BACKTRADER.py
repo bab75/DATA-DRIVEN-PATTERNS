@@ -10,9 +10,14 @@ st.title("Stock Price Comparison Dashboard")
 
 # User inputs
 ticker = st.text_input("Enter Stock Ticker", "AAPL").upper()
-start_date = st.date_input("Start Date", value=datetime(2025, 6, 26))
-end_date = st.date_input("End Date", value=datetime(2025, 6, 29))
-st.write("**Note**: Ensure the date range includes at least one trading day. For multi-day analysis, the end date is the sell date.")
+start_date = st.date_input("Start Date", value=datetime(2025, 6, 1))
+end_date = st.date_input("End Date", value=datetime(2025, 6, 30))
+st.write("**Note**: Select a date range with trading days (e.g., avoid weekends). End date is the sell date for aggregated analysis.")
+
+# Validate date range
+if start_date >= end_date:
+    st.error("End date must be after start date.")
+    st.stop()
 
 # Strategy selection
 st.subheader("Select Comparison Strategies")
@@ -41,7 +46,7 @@ def fetch_data(ticker, start_date, end_date):
         if not all(col in actual_columns for col in required_columns):
             st.error(f"Data for {ticker} missing required columns. Expected: {required_columns}, Found: {actual_columns}")
             return None
-        # Capitalize column names for consistency
+        # Capitalize column names
         data.columns = [col.capitalize() for col in data.columns]
         data.index = pd.to_datetime(data.index)
         # Filter to exact date range
@@ -57,7 +62,7 @@ def fetch_data(ticker, start_date, end_date):
         st.error(f"Error fetching data for {ticker}: {str(e)}")
         return None
 
-# Function to calculate profit/loss for strategies
+# Function to calculate profit/loss and percentage returns
 def calculate_profits(data, strategies, start_date, end_date):
     daily_results = []
     aggregated_results = {}
@@ -71,20 +76,28 @@ def calculate_profits(data, strategies, start_date, end_date):
         low = data.loc[date, 'Low']
         
         if strategies["Low-Close"]:
-            daily_profit["Low-Close"] = close - low
+            profit = close - low
+            daily_profit["Low-Close ($)"] = profit
+            daily_profit["Low-Close (%)"] = (profit / low * 100) if low != 0 else 0
         if strategies["Open-High"]:
-            daily_profit["Open-High"] = high - open_price
+            profit = high - open_price
+            daily_profit["Open-High ($)"] = profit
+            daily_profit["Open-High (%)"] = (profit / open_price * 100) if open_price != 0 else 0
         if strategies["Open-Close"]:
-            daily_profit["Open-Close"] = close - open_price
+            profit = close - open_price
+            daily_profit["Open-Close ($)"] = profit
+            daily_profit["Open-Close (%)"] = (profit / open_price * 100) if open_price != 0 else 0
         if strategies["Low-High"]:
-            daily_profit["Low-High"] = high - low
+            profit = high - low
+            daily_profit["Low-High ($)"] = profit
+            daily_profit["Low-High (%)"] = (profit / low * 100) if low != 0 else 0
         
         daily_results.append({
             "Date": date,
             **daily_profit
         })
     
-    # Aggregated analysis (start date to end date)
+    # Aggregated analysis
     aggregated_profit = {}
     first_open = data['Open'].iloc[0]
     last_close = data['Close'].iloc[-1]
@@ -92,72 +105,97 @@ def calculate_profits(data, strategies, start_date, end_date):
     period_high = data['High'].max()
     
     if strategies["Low-Close"]:
-        aggregated_profit["Low-Close"] = last_close - period_low
+        profit = last_close - period_low
+        aggregated_profit["Low-Close ($)"] = profit
+        aggregated_profit["Low-Close (%)"] = (profit / period_low * 100) if period_low != 0 else 0
     if strategies["Open-High"]:
-        aggregated_profit["Open-High"] = period_high - first_open
+        profit = period_high - first_open
+        aggregated_profit["Open-High ($)"] = profit
+        aggregated_profit["Open-High (%)"] = (profit / first_open * 100) if first_open != 0 else 0
     if strategies["Open-Close"]:
-        aggregated_profit["Open-Close"] = last_close - first_open
+        profit = last_close - first_open
+        aggregated_profit["Open-Close ($)"] = profit
+        aggregated_profit["Open-Close (%)"] = (profit / first_open * 100) if first_open != 0 else 0
     if strategies["Low-High"]:
-        aggregated_profit["Low-High"] = period_high - period_low
+        profit = period_high - period_low
+        aggregated_profit["Low-High ($)"] = profit
+        aggregated_profit["Low-High (%)"] = (profit / period_low * 100) if period_low != 0 else 0
     
     # Convert daily results to DataFrame
     daily_df = pd.DataFrame(daily_results)
     daily_df.set_index("Date", inplace=True)
     
-    # Find most profitable day/strategy
+    # Comparison table
     comparison = []
     for strategy, selected in strategies.items():
-        if selected and strategy in daily_df.columns:
-            max_daily_profit = daily_df[strategy].max()
-            max_day = daily_df[strategy].idxmax() if max_daily_profit else None
-            agg_profit = aggregated_profit.get(strategy, None)
-            comparison.append({
-                "Strategy": strategy,
-                "Max Daily Profit": max_daily_profit,
-                "Best Day": max_day,
-                "Aggregated Profit": agg_profit
-            })
+        if selected:
+            dollar_col = f"{strategy} ($)"
+            percent_col = f"{strategy} (%)"
+            if dollar_col in daily_df.columns:
+                max_daily_profit = daily_df[dollar_col].max()
+                max_daily_percent = daily_df[percent_col].max()
+                max_day = daily_df[dollar_col].idxmax() if max_daily_profit else None
+                agg_profit = aggregated_profit.get(dollar_col, None)
+                agg_percent = aggregated_profit.get(percent_col, None)
+                comparison.append({
+                    "Strategy": strategy,
+                    "Max Daily Profit ($)": max_daily_profit,
+                    "Max Daily Return (%)": max_daily_percent,
+                    "Best Day": max_day,
+                    "Aggregated Profit ($)": agg_profit,
+                    "Aggregated Return (%)": agg_percent
+                })
     
     comparison_df = pd.DataFrame(comparison)
+    # Sort by aggregated return for clarity
+    if not comparison_df.empty:
+        comparison_df.sort_values(by="Aggregated Return (%)", ascending=False, inplace=True)
     
     return daily_df, aggregated_profit, comparison_df
 
 # Run analysis on button click
 if st.button("Run Analysis"):
     with st.spinner("Running analysis..."):
-        data = fetch_data(ticker, start_date, end_date)
-        if data is not None:
-            if not any(strategies.values()):
-                st.error("Please select at least one comparison strategy.")
-            else:
+        if not any(strategies.values()):
+            st.error("Please select at least one comparison strategy.")
+        else:
+            data = fetch_data(ticker, start_date, end_date)
+            if data is not None:
                 daily_df, aggregated_profit, comparison_df = calculate_profits(data, strategies, start_date, end_date)
                 
                 # Display daily results
                 st.subheader("Daily Profit/Loss")
                 st.write("Profit/loss per day for selected strategies (assuming 1 share):")
-                st.dataframe(daily_df)
+                st.dataframe(daily_df.style.format({"{:.2f}" for col in daily_df.columns}))
                 
                 # Display aggregated results
-                st.subheader("Aggregated Profit/Loss (Start to End Date)")
+                st.subheader(f"Aggregated Profit/Loss ({start_date} to {end_date})")
                 agg_df = pd.DataFrame([aggregated_profit], index=[f"{start_date} to {end_date}"])
-                st.dataframe(agg_df)
+                st.dataframe(agg_df.style.format({"{:.2f}" for col in agg_df.columns}))
                 
                 # Display comparison
                 st.subheader("Comparison of Strategies")
-                st.write("Comparing max daily profit vs. aggregated profit:")
-                st.dataframe(comparison_df)
+                st.write("Comparing max daily profit vs. aggregated profit (sorted by aggregated return):")
+                st.dataframe(comparison_df.style.format({
+                    "Max Daily Profit ($)": "{:.2f}",
+                    "Max Daily Return (%)": "{:.2f}",
+                    "Aggregated Profit ($)": "{:.2f}",
+                    "Aggregated Return (%)": "{:.2f}"
+                }))
                 
                 # Plot daily profits
                 if not daily_df.empty:
-                    fig = px.line(daily_df, x=daily_df.index, y=daily_df.columns,
+                    dollar_cols = [col for col in daily_df.columns if col.endswith("($)")]
+                    fig = px.line(daily_df, x=daily_df.index, y=dollar_cols,
                                  title=f"Daily Profit/Loss for {ticker}",
                                  labels={"value": "Profit/Loss ($)", "Date": "Date", "variable": "Strategy"})
                     st.plotly_chart(fig)
                 
                 # Highlight most profitable strategy
                 if not comparison_df.empty:
-                    best_strategy = comparison_df.loc[comparison_df["Max Daily Profit"].idxmax()]["Strategy"]
-                    best_day = comparison_df.loc[comparison_df["Max Daily Profit"].idxmax()]["Best Day"]
-                    best_agg = comparison_df.loc[comparison_df["Aggregated Profit"].idxmax()]["Strategy"]
-                    st.write(f"**Most Profitable Daily Strategy**: {best_strategy} on {best_day}")
-                    st.write(f"**Most Profitable Aggregated Strategy**: {best_agg} for {start_date} to {end_date}")
+                    best_daily = comparison_df.loc[comparison_df["Max Daily Profit ($)"].idxmax()]
+                    best_agg = comparison_df.loc[comparison_df["Aggregated Profit ($)"].idxmax()]
+                    st.write(f"**Most Profitable Daily Strategy**: {best_daily['Strategy']} on {best_daily['Best Day']} "
+                             f"(${best_daily['Max Daily Profit ($)']:.2f}, {best_daily['Max Daily Return (%)']:.2f}%)")
+                    st.write(f"**Most Profitable Aggregated Strategy**: {best_agg['Strategy']} "
+                             f"(${best_agg['Aggregated Profit ($)']:.2f}, {best_agg['Aggregated Return (%)']:.2f}%)")
