@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, date, timedelta  # Explicitly import date
 import numpy as np
-# import sklearn.linear_model  # Uncomment for ML (requires confirmation)
+import sklearn.linear_model  # Uncomment for ML (requires confirmation)
 
 # Streamlit page configuration
 st.set_page_config(page_title="Stock Price Comparison Dashboard", page_icon="📊", layout="wide")
