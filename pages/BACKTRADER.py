@@ -22,10 +22,15 @@ def fetch_data(ticker, start_date, end_date):
         if data.empty:
             st.error(f"No data found for {ticker}. Please check the ticker or date range.")
             return None
+        # Ensure required columns exist
+        required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+        if not all(col in data.columns for col in required_columns):
+            st.error(f"Data for {ticker} missing required columns: {required_columns}")
+            return None
         data.index = pd.to_datetime(data.index)
         return data
     except Exception as e:
-        st.error(f"Error fetching data: {str(e)}")
+        st.error(f"Error fetching data for {ticker}: {str(e)}")
         return None
 
 # Backtrader strategy: Moving Average Crossover
@@ -40,8 +45,10 @@ class MACrossover(bt.Strategy):
         self.long_ma = bt.indicators.SimpleMovingAverage(self.data.close, period=self.params.long_window)
         self.price = self.data.close
         self.order = None
+        self.portfolio_value = []  # Track portfolio value
 
     def next(self):
+        self.portfolio_value.append(self.broker.getvalue())
         if self.order:
             return
         if not self.position:
@@ -62,7 +69,11 @@ def run_backtrader(ticker, start_date, end_date, capital_base):
         return None, None
     
     # Create Backtrader data feed
-    data_feed = bt.feeds.PandasData(dataname=data)
+    try:
+        data_feed = bt.feeds.PandasData(dataname=data)
+    except Exception as e:
+        st.error(f"Error creating Backtrader data feed: {str(e)}")
+        return None, None
     
     # Initialize Backtrader cerebro engine
     cerebro = bt.Cerebro()
@@ -72,28 +83,29 @@ def run_backtrader(ticker, start_date, end_date, capital_base):
     cerebro.broker.setcommission(commission=0.001)  # 0.1% commission
     
     # Run backtest
-    cerebro.run()
-    
-    # Extract results
-    final_value = cerebro.broker.getvalue()
-    trades = cerebro.runstrats[0][0].trades if cerebro.runstrats else []
-    
-    # Create results DataFrame
-    results = pd.DataFrame({
-        'Date': data.index,
-        'Portfolio Value': [capital_base] * len(data),  # Simplified; adjust for actual portfolio value
-        'Price': data['Close'],
-        'Short MA': data['Close'].rolling(window=50).mean(),
-        'Long MA': data['Close'].rolling(window=200).mean()
-    })
-    
-    return results, final_value
+    try:
+        strats = cerebro.run()
+        final_value = cerebro.broker.getvalue()
+        strategy = strats[0]
+        
+        # Create results DataFrame
+        results = pd.DataFrame({
+            'Date': data.index[:len(strategy.portfolio_value)],
+            'Portfolio Value': strategy.portfolio_value,
+            'Price': data['Close'],
+            'Short MA': data['Close'].rolling(window=50).mean(),
+            'Long MA': data['Close'].rolling(window=200).mean()
+        })
+        return results, final_value
+    except Exception as e:
+        st.error(f"Backtest failed: {str(e)}")
+        return None, None
 
 # Run backtest on button click
 if st.button("Run Backtest"):
     with st.spinner("Running backtest..."):
         results, final_value = run_backtrader(ticker, start_date, end_date, capital_base)
-        if results is not None:
+        if results is not None and final_value is not None:
             # Calculate key metrics
             total_returns = (final_value / capital_base) - 1
             st.subheader("Backtest Results")
