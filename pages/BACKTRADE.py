@@ -91,7 +91,7 @@ def calculate_profits(data, strategies, start_date, end_date):
     
     # Daily analysis
     for date in data.index:
-        daily ஽profit = {}
+        daily_profit = {}
         close = data.loc[date, 'Close']
         open_price = data.loc[date, 'Open']
         high = data.loc[date, 'High']
