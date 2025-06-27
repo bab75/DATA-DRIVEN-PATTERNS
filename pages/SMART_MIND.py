@@ -3,19 +3,21 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
+import yfinance as yf
+import io
 
 # --- Streamlit Config ---
 st.set_page_config(page_title="Smart Pattern Analyzer", layout="centered")
 st.title("📊 Smart Pattern Analyzer for Day Traders")
-st.markdown("Analyze stock patterns using historical data. Downloads may cause a page refresh, but inputs are preserved.")
+st.markdown("Analyze stock patterns using uploaded CSV or Yahoo Finance data. Downloads may cause a page refresh, but inputs are preserved.")
 
 # Initialize session state
 if 'symbol' not in st.session_state:
     st.session_state.symbol = "AAPL"
 if 'start_date' not in st.session_state:
-    st.session_state.start_date = datetime(2025, 4, 28).date()
+    st.session_state.start_date = datetime.now().date() - timedelta(days=30)
 if 'end_date' not in st.session_state:
-    st.session_state.end_date = datetime(2025, 6, 26).date()
+    st.session_state.end_date = datetime.now().date()
 if 'comparison' not in st.session_state:
     st.session_state.comparison = "All"
 if 'analyzed_data' not in st.session_state:
@@ -34,13 +36,14 @@ with st.form(key='stock_form'):
         index=["All", "Open", "High", "Low", "Close", "Volume"].index(st.session_state.comparison)
     )
     st.session_state.profit_threshold = st.slider("Minimum Profit % for Filter:", 0.0, 5.0, st.session_state.profit_threshold, 0.1)
+    uploaded_file = st.file_uploader("Upload CSV File (optional, expects Date, Open, High, Low, Close, Volume columns):", type=["csv"])
     submit_button = st.form_submit_button(label="Get Data")
 
 # Clear previous analysis data on new submission
 if submit_button:
     st.session_state.analyzed_data = None
 
-# Load and analyze data
+# Fetch and analyze data
 if submit_button:
     if st.session_state.symbol and st.session_state.start_date and st.session_state.end_date:
         if st.session_state.start_date > st.session_state.end_date:
@@ -49,11 +52,20 @@ if submit_button:
             st.error("End date cannot be in the future.")
         else:
             try:
-                # Load data from provided CSV (simulating yf.download)
-                df = pd.read_csv("AAPL_data.csv")  # Replace with actual file path in production
-                df["Date"] = pd.to_datetime(df["Date"])
-                df = df[(df["Date"] >= pd.to_datetime(st.session_state.start_date)) & 
-                        (df["Date"] <= pd.to_datetime(st.session_state.end_date))]
+                # Load data from uploaded file or Yahoo Finance
+                if uploaded_file is not None:
+                    df = pd.read_csv(uploaded_file)
+                    if not all(col in df.columns for col in ["Date", "Open", "High", "Low", "Close", "Volume"]):
+                        st.error("Uploaded CSV must contain Date, Open, High, Low, Close, Volume columns.")
+                        st.stop()
+                    df["Date"] = pd.to_datetime(df["Date"])
+                    df = df[(df["Date"] >= pd.to_datetime(st.session_state.start_date)) & 
+                            (df["Date"] <= pd.to_datetime(st.session_state.end_date))]
+                else:
+                    df = yf.download(st.session_state.symbol, start=st.session_state.start_date, end=st.session_state.end_date, auto_adjust=False)
+                    if df.empty:
+                        st.error("No data found from Yahoo Finance for the given parameters.")
+                        st.stop()
                 
                 if not df.empty:
                     st.success(f"Data retrieved successfully for {st.session_state.symbol.upper()}!")
@@ -64,12 +76,11 @@ if submit_button:
                     st.write(f"Actual data range: {min_date} to {max_date}")
 
                     # Display raw data
-                    st.dataframe(df.drop(columns=["Adj_Close", "Prev_Open", "Prev_High", "Prev_Low", "Prev_Close", "Prev_Volume", 
-                                                 "Low_Diff", "Recovered", "Profit_Low_to_Close", "Profit_Percent", 
-                                                 "Volatility", "True_Range", "Open_Change_vs_Yest"]), use_container_width=True)
-                    csv = df.drop(columns=["Adj_Close", "Prev_Open", "Prev_High", "Prev_Low", "Prev_Close", "Prev_Volume", 
-                                          "Low_Diff", "Recovered", "Profit_Low_to_Close", "Profit_Percent", 
-                                          "Volatility", "True_Range", "Open_Change_vs_Yest"]).to_csv(index=False)
+                    display_cols = ["Date", "Open", "High", "Low", "Close", "Volume"]
+                    if "Adj Close" in df.columns:
+                        display_cols.append("Adj Close")
+                    st.dataframe(df[display_cols], use_container_width=True)
+                    csv = df[display_cols].to_csv(index=False)
                     st.download_button(
                         label="Download Raw Data as CSV",
                         data=csv,
@@ -79,11 +90,22 @@ if submit_button:
 
                     # --- Clean and Format ---
                     df = df.reset_index(drop=True)
+                    if isinstance(df.columns, pd.MultiIndex):
+                        column_mapping = {
+                            ('Date', ''): 'Date',
+                            ('Open', st.session_state.symbol): 'Open',
+                            ('High', st.session_state.symbol): 'High',
+                            ('Low', st.session_state.symbol): 'Low',
+                            ('Close', st.session_state.symbol): 'Close',
+                            ('Volume', st.session_state.symbol): 'Volume',
+                            ('Adj Close', st.session_state.symbol): 'Adj_Close'
+                        }
+                        df.columns = [column_mapping.get(col, col[0]) for col in df.columns]
+                    else:
+                        df.columns = [str(col).strip().replace(" ", "_") for col in df.columns]
 
-                    # Verify required columns
-                    required_cols = ["Date", "Open", "High", "Low", "Close", "Volume"]
-                    if not all(col in df.columns for col in required_cols):
-                        st.error(f"Missing required columns: {', '.join(set(required_cols) - set(df.columns))}")
+                    if 'Date' not in df.columns:
+                        st.error("Date column not found in the data. Available columns: " + ", ".join(df.columns))
                         st.stop()
 
                     df["Date"] = pd.to_datetime(df["Date"])
