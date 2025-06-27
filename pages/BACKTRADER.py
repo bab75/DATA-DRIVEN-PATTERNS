@@ -27,7 +27,7 @@ def fetch_data(ticker, start_date, end_date):
         if not all(col in data.columns for col in required_columns):
             st.error(f"Data for {ticker} missing required columns: {required_columns}")
             return None
-        # Convert column names to lowercase strings to avoid tuple issue
+        # Convert column names to lowercase strings
         data.columns = [str(col).lower() for col in data.columns]
         data.index = pd.to_datetime(data.index)
         return data
@@ -43,6 +43,7 @@ class MACrossover(bt.Strategy):
     )
 
     def __init__(self):
+        # Use data.close to access the 'close' column (lowercase)
         self.short_ma = bt.indicators.SimpleMovingAverage(self.data.close, period=self.params.short_window)
         self.long_ma = bt.indicators.SimpleMovingAverage(self.data.close, period=self.params.long_window)
         self.price = self.data.close
@@ -70,7 +71,7 @@ def run_backtrader(ticker, start_date, end_date, capital_base):
     if data is None:
         return None, None
     
-    # Create Backtrader data feed
+    # Create Backtrader data feed with explicit lowercase column mapping
     try:
         data_feed = bt.feeds.PandasData(
             dataname=data,
@@ -78,7 +79,7 @@ def run_backtrader(ticker, start_date, end_date, capital_base):
             open='open',
             high='high',
             low='low',
-            close='close',
+            close='close',  # Explicitly map to lowercase 'close'
             volume='volume'
         )
     except Exception as e:
