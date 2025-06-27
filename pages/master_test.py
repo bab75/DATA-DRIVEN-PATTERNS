@@ -13,6 +13,7 @@ from reportlab.lib import colors
 
 # Streamlit app configuration
 st.set_page_config(page_title="Stock Technical Analysis", layout="wide", page_icon="📈")
+# Enhanced CSS with modern design
 try:
     st.markdown("""
         <style>
@@ -20,12 +21,11 @@ try:
         .stButton>button {background: linear-gradient(45deg, #4a90e2, #63b3ed); color: white; border: none; border-radius: 10px; padding: 10px 20px; transition: all 0.3s;}
         .stButton>button:hover {background: linear-gradient(45deg, #357abd, #4a90e2); transform: scale(1.05);}
         .stSelectbox, .stTextInput, .stNumberInput {background: #ffffff; border: 1px solid #d1d9e6; border-radius: 10px; padding: 5px;}
-        .report-container {background: #ffffff; padding: 20px; border-radius: 15px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); margin: 10px 0; text-align: center;}
-        .data-card {background: #e8f4f8; padding: 15px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin: 10px 0; text-align: left;}
-        h1 {color: #2c3e50; font-size: 2.5em; text-align: center; text-transform: uppercase; letter-spacing: 2px; background: #3498db; padding: 10px; border-radius: 10px; color: white;}
-        h2, h3 {color: #34495e; font-weight: 500; text-align: center;}
+        .report-container {background: #ffffff; padding: 20px; border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.1); margin-bottom: 20px;}
+        h1 {color: #2c3e50; font-size: 2.5em; text-align: center; text-transform: uppercase; letter-spacing: 2px;}
+        h2, h3 {color: #34495e; font-weight: 500;}
         .mode-banner {background: #e6f3fa; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid #3498db;}
-        .tab-content {padding: 20px; background: #f9f9f9; border-radius: 10px;}
+        .stSpinner > div {border-top-color: #3498db !important;}
         </style>
     """, unsafe_allow_html=True)
 except TypeError:
@@ -38,85 +38,27 @@ if 'fundamental_data' not in st.session_state:
     st.session_state.fundamental_data = {'EPS': None, 'P/E': None, 'PEG': None, 'P/B': None, 'ROE': None, 'Revenue': None, 'Debt/Equity': None}
 if 'csv_data' not in st.session_state:
     st.session_state.csv_data = None
-if 'combine_report' not in st.session_state:
-    st.session_state.combine_report = False
-if 'analysis_data' not in st.session_state:
-    st.session_state.analysis_data = None
 
 # Clear Analysis Button
 def clear_analysis():
     st.session_state.real_time_data = None
     st.session_state.fundamental_data = {'EPS': None, 'P/E': None, 'PEG': None, 'P/B': None, 'ROE': None, 'Revenue': None, 'Debt/Equity': None}
     st.session_state.csv_data = None
-    st.session_state.combine_report = False
-    st.session_state.analysis_data = None
     st.success("Analysis cleared. Start a new analysis.")
 
 # Sidebar for inputs
 st.sidebar.header("📊 Stock Analysis Controls")
-st.sidebar.subheader("📤 Upload Technical Data")
-uploaded_file = st.sidebar.file_uploader("Choose a CSV or XLSX file", type=["csv", "xlsx"])
-process_file_button = st.sidebar.button("📥 Process File")
-
-if process_file_button and uploaded_file:
-    try:
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file, engine='openpyxl')
-        required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
-        if not all(col in df.columns for col in required_columns):
-            missing = [col for col in required_columns if col not in df.columns]
-            st.error(f"❌ Missing columns: {', '.join(missing)}")
-        else:
-            df['Date'] = pd.to_datetime(df['Date'])
-            st.session_state.csv_data = df
-            st.success("✅ File processed successfully!")
-    except Exception as e:
-        st.error(f"❌ Error processing file: {str(e)}")
-
-st.sidebar.subheader("📡 Real-Time Data")
-ticker = st.sidebar.text_input("Enter Stock Ticker (e.g., KRRO)", value="KRRO")
+ticker = st.sidebar.text_input("Enter Stock Ticker (e.g., KRRO)", value="KRRO", help="Enter a valid stock ticker symbol.")
 submit_button = st.sidebar.button("🔄 Fetch Real-Time Data")
+combine_data = st.sidebar.checkbox("🔗 Combine with Real-Time Data", value=False, disabled=st.session_state.csv_data is None, help="Enable to merge uploaded data with real-time data.")
+clear_button = st.sidebar.button("🗑️ Clear Analysis")
+if clear_button:
+    clear_analysis()
 
-if submit_button:
-    try:
-        stock = yf.Ticker(ticker)
-        data = stock.history(period="1d", interval="1d")
-        if data.empty:
-            st.error("❌ No data found for the ticker.")
-        else:
-            latest = data.iloc[-1]
-            st.session_state.real_time_data = {
-                'Date': data.index[-1].strftime('%Y-%m-%d %H:%M:%S'),
-                'Open': latest['Open'],
-                'High': latest['High'],
-                'Low': latest['Low'],
-                'Close': latest['Close'],
-                'Volume': latest['Volume']
-            }
-            info = stock.info
-            st.session_state.fundamental_data.update({
-                'EPS': info.get('trailingEps'),
-                'P/E': info.get('trailingPE'),
-                'PEG': info.get('pegRatio'),
-                'P/B': info.get('priceToBook'),
-                'ROE': info.get('returnOnEquity'),
-                'Revenue': info.get('totalRevenue'),
-                'Debt/Equity': info.get('debtToEquity')
-            })
-    except Exception as e:
-        st.error(f"❌ Error fetching data: {str(e)}")
-
-st.sidebar.subheader("📈 Report Options")
-combine_checkbox = st.sidebar.checkbox("Combine Report", value=st.session_state.combine_report)
-if combine_checkbox != st.session_state.combine_report:
-    st.session_state.combine_report = combine_checkbox
-combine_button = st.sidebar.button("📊 Combine Process", disabled=not combine_checkbox)
-
-with st.sidebar.expander("📋 Manual Fundamental Data (Optional)"):
+# Manual fundamental inputs
+with st.sidebar.expander("📋 Manual Fundamental Data (Optional)", expanded=False):
     with st.form(key="fundamental_form"):
-        eps = st.number_input("EPS", value=float(st.session_state.fundamental_data['EPS'] or 0.0), step=0.01, format="%.2f")
+        eps = st.number_input("EPS", value=float(st.session_state.fundamental_data['EPS'] or 0.0), step=0.01, format="%.2f", placeholder="e.g., -9.42")
         pe = st.number_input("P/E Ratio", value=float(st.session_state.fundamental_data['P/E'] or 0.0), step=0.01, format="%.2f")
         peg = st.number_input("PEG Ratio", value=float(st.session_state.fundamental_data['PEG'] or 0.0), step=0.01, format="%.2f")
         pb = st.number_input("P/B Ratio", value=float(st.session_state.fundamental_data['P/B'] or 0.0), step=0.01, format="%.2f")
@@ -136,33 +78,59 @@ if submit_fundamentals:
         'Debt/Equity': debt_equity if debt_equity != 0.0 else None
     }
 
-st.sidebar.subheader("🗑️ Reset")
-clear_button = st.sidebar.button("Clear Analysis")
-if clear_button:
-    clear_analysis()
+# Fetch real-time data with yfinance
+if submit_button:
+    with st.spinner("📡 Fetching real-time data..."):
+        try:
+            stock = yf.Ticker(ticker)
+            data = stock.history(period="1d", interval="1d")
+            if data.empty:
+                st.error("❌ No data found for the ticker. Please check the ticker (e.g., AAPL) or upload a CSV/XLSX.")
+            else:
+                latest = data.iloc[-1]
+                st.session_state.real_time_data = {
+                    'Date': data.index[-1].strftime('%Y-%m-%d %H:%M:%S'),
+                    'Open': latest['Open'],
+                    'High': latest['High'],
+                    'Low': latest['Low'],
+                    'Close': latest['Close'],
+                    'Volume': latest['Volume']
+                }
+                info = stock.info
+                st.session_state.fundamental_data.update({
+                    'EPS': info.get('trailingEps', st.session_state.fundamental_data['EPS']),
+                    'P/E': info.get('trailingPE', st.session_state.fundamental_data['P/E']),
+                    'PEG': info.get('pegRatio', st.session_state.fundamental_data['PEG']),
+                    'P/B': info.get('priceToBook', st.session_state.fundamental_data['P/B']),
+                    'ROE': info.get('returnOnEquity', st.session_state.fundamental_data['ROE']),
+                    'Revenue': info.get('totalRevenue', st.session_state.fundamental_data['Revenue']),
+                    'Debt/Equity': info.get('debtToEquity', st.session_state.fundamental_data['Debt/Equity'])
+                })
+        except Exception as e:
+            st.error(f"❌ Error fetching data: {str(e)}. Try a different ticker (e.g., AAPL) or upload a CSV/XLSX.")
 
-# Function to combine data
-def combine_dataframes(csv_df, real_time_data):
-    if csv_df is None or real_time_data is None:
-        return csv_df if csv_df is not None else pd.DataFrame([real_time_data]) if real_time_data is not None else None
-    try:
-        real_time_df = pd.DataFrame([real_time_data])
-        real_time_df['Date'] = pd.to_datetime(real_time_df['Date'])
-        # Define required columns
-        required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
-        # Align columns and fill missing with 0
-        combined_df = pd.concat([csv_df[required_columns], real_time_df[required_columns]], ignore_index=True, sort=False)
-        combined_df = combined_df.fillna(0)  # Fill NaN with 0 for missing columns
-        combined_df = combined_df.sort_values('Date').drop_duplicates(subset=['Date'], keep='last')
-        for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
-            if col in real_time_df.columns:
-                combined_df[col].iloc[-1] = real_time_df[col].iloc[0]
-        st.write("Debug: Combined DataFrame:", combined_df.head())  # Debug output
-        st.write("Debug: Combined Columns:", combined_df.columns.tolist())  # Debug column list
-        return combined_df if not combined_df.empty else None
-    except Exception as e:
-        st.error(f"❌ Combine error: {str(e)}")
-        return None
+# CSV/XLSX upload
+st.sidebar.subheader("📤 Upload Technical Data")
+uploaded_file = st.sidebar.file_uploader("Choose a CSV or XLSX file", type=["csv", "xlsx"], help="Upload a file with technical indicators.")
+process_file_button = st.sidebar.button("📥 Process File")
+
+if process_file_button and uploaded_file:
+    with st.spinner("📂 Processing file..."):
+        try:
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file, engine='openpyxl')
+            required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
+            if not all(col in df.columns for col in required_columns):
+                missing = [col for col in required_columns if col not in df.columns]
+                st.error(f"❌ Missing columns: {', '.join(missing)}. Ensure all required columns are present.")
+            else:
+                df['Date'] = pd.to_datetime(df['Date'])
+                st.session_state.csv_data = df
+                st.success("✅ File processed successfully! The 'Combine with Real-Time Data' checkbox is now enabled.")
+        except Exception as e:
+            st.error(f"❌ Error processing file: {str(e)}. Ensure the file is a valid CSV/XLSX with required columns.")
 
 # Function to generate PDF report
 def generate_pdf_report(report_content, stock_name, report_type):
@@ -209,64 +177,73 @@ def generate_pdf_report(report_content, stock_name, report_type):
     buffer.seek(0)
     return buffer
 
+# Function to combine CSV/XLSX and real-time data
+def combine_dataframes(csv_df, real_time_data):
+    if real_time_data is None:
+        return csv_df
+    real_time_df = pd.DataFrame([real_time_data])
+    real_time_df['Date'] = pd.to_datetime(real_time_df['Date'])
+    combined_df = pd.concat([csv_df, real_time_df], ignore_index=True)
+    combined_df = combined_df.sort_values('Date').drop_duplicates(subset=['Date'], keep='last')
+    for col in ['Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']:
+        if col not in real_time_df.columns:
+            combined_df[col] = combined_df[col].fillna(combined_df[col].mean() if col in ['Volatility', 'BB_Width', 'BB_Position', 'ATR', 'MFI'] else 50 if col in ['RSI', 'Stoch_K'] else -50 if col == 'Williams_R' else 0 if col in ['MACD', 'MACD_Signal', 'MACD_Histogram', 'CCI', 'Momentum', 'ROC'] else combined_df['Close'] * 1.05 if col == 'BB_Upper' else combined_df['Close'] * 0.95 if col == 'BB_Lower' else combined_df['Close'] if col in ['SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'Pivot'] else combined_df['Close'] * 1.02 if col == 'R1' else combined_df['Close'] * 0.98 if col == 'S1' else combined_df['Close'] * 1.04 if col == 'R2' else combined_df['Close'] * 0.96 if col == 'S2' else combined_df['Close'] * 1.01 if col == 'Fib_618' else combined_df[col].iloc[-1])
+    return combined_df
+
 # Function to analyze stock data
 def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     stock_name = ticker.upper()
-    is_real_time_only = real_time_data is not None and df is None
-    data_source = df if df is not None else pd.DataFrame([real_time_data]) if real_time_data is not None else None
+    is_real_time_only = df is None and real_time_data is not None
+    data_source = combine_dataframes(df, real_time_data) if df is not None and combine_data else df if df is not None else pd.DataFrame([real_time_data]) if real_time_data else None
+    if data_source is None:
+        return None, None, None, stock_name, None, is_real_time_only, 50
 
-    if data_source is None or not isinstance(data_source, pd.DataFrame) or data_source.empty:
-        return "", "", "", stock_name, None, is_real_time_only, 50
-
-    latest = data_source.iloc[-1] if not data_source.empty else None
-    if latest is None:
-        return "", "", "", stock_name, data_source, is_real_time_only, 50
-
+    latest = data_source.iloc[-1]
     prev = data_source.iloc[-2] if len(data_source) > 1 else latest
 
     price = latest['Close']
-    volatility = latest.get('Volatility', 0) if is_real_time_only or len(data_source) <= 1 else data_source['Volatility'].mean()
-    rsi = latest.get('RSI', 50) if not is_real_time_only and len(data_source) > 1 else 50
-    macd = latest.get('MACD', 0) if not is_real_time_only and len(data_source) > 1 else 0
-    macd_signal = latest.get('MACD_Signal', 0) if not is_real_time_only and len(data_source) > 1 else 0
-    macd_hist = latest.get('MACD_Histogram', 0) if not is_real_time_only and len(data_source) > 1 else 0
-    bb_upper = latest.get('BB_Upper', price * 1.05) if not is_real_time_only and len(data_source) > 1 else price * 1.05
-    bb_middle = latest.get('BB_Middle', price) if not is_real_time_only and len(data_source) > 1 else price
-    bb_lower = latest.get('BB_Lower', price * 0.95) if not is_real_time_only and len(data_source) > 1 else price * 0.95
-    bb_width = latest.get('BB_Width', 0) if is_real_time_only or len(data_source) <= 1 else data_source['BB_Width'].mean()
-    bb_position = latest.get('BB_Position', 0) if is_real_time_only or len(data_source) <= 1 else data_source['BB_Position'].mean()
-    sma_20 = latest.get('SMA_20', price) if not is_real_time_only and len(data_source) > 1 else price
-    ema_20 = latest.get('EMA_20', price) if not is_real_time_only and len(data_source) > 1 else price
-    sma_50 = latest.get('SMA_50', price) if not is_real_time_only and len(data_source) > 1 else price
-    ema_50 = latest.get('EMA_50', price) if not is_real_time_only and len(data_source) > 1 else price
-    sma_200 = latest.get('SMA_200', price) if not is_real_time_only and len(data_source) > 1 else price
-    ema_200 = latest.get('EMA_200', price) if not is_real_time_only and len(data_source) > 1 else price
-    ichimoku_tenkan = latest.get('Ichimoku_Tenkan', price) if not is_real_time_only and len(data_source) > 1 else price
-    ichimoku_kijun = latest.get('Ichimoku_Kijun', price) if not is_real_time_only and len(data_source) > 1 else price
-    ichimoku_senkou_a = latest.get('Ichimoku_Senkou_A', price) if not is_real_time_only and len(data_source) > 1 else price
-    ichimoku_senkou_b = latest.get('Ichimoku_Senkou_B', price) if not is_real_time_only and len(data_source) > 1 else price
-    ichimoku_chikou = latest.get('Ichimoku_Chikou', price) if not is_real_time_only and len(data_source) > 1 else price
-    psar = latest.get('PSAR', price) if not is_real_time_only and len(data_source) > 1 else price
-    psar_bull = latest.get('PSAR_Bull', price) if not is_real_time_only and len(data_source) > 1 else price
-    psar_bear = latest.get('PSAR_Bear', price) if not is_real_time_only and len(data_source) > 1 else price
-    stoch_k = latest.get('Stoch_K', 50) if not is_real_time_only and len(data_source) > 1 else 50
-    williams_r = latest.get('Williams_R', -50) if not is_real_time_only and len(data_source) > 1 else -50
-    cci = latest.get('CCI', 0) if not is_real_time_only and len(data_source) > 1 else 0
-    momentum = latest.get('Momentum', 0) if not is_real_time_only and len(data_source) > 1 else 0
-    roc = latest.get('ROC', 0) if not is_real_time_only and len(data_source) > 1 else 0
-    atr = latest.get('ATR', 0) if is_real_time_only or len(data_source) <= 1 else data_source['ATR'].mean()
-    keltner_upper = latest.get('Keltner_Upper', price * 1.05) if not is_real_time_only and len(data_source) > 1 else price * 1.05
-    keltner_lower = latest.get('Keltner_Lower', price * 0.95) if not is_real_time_only and len(data_source) > 1 else price * 0.95
-    obv = latest.get('OBV', latest['Volume']) if not is_real_time_only and len(data_source) > 1 else latest['Volume']
-    vwap = latest.get('VWAP', price) if not is_real_time_only and len(data_source) > 1 else price
-    volume_sma = latest.get('Volume_SMA', latest['Volume']) if not is_real_time_only and len(data_source) > 1 else latest['Volume']
-    mfi = latest.get('MFI', 50) if not is_real_time_only and len(data_source) > 1 else 50
-    pivot = latest.get('Pivot', price) if not is_real_time_only and len(data_source) > 1 else price
-    r1 = latest.get('R1', price * 1.02) if not is_real_time_only and len(data_source) > 1 else price * 1.02
-    s1 = latest.get('S1', price * 0.98) if not is_real_time_only and len(data_source) > 1 else price * 0.98
-    r2 = latest.get('R2', price * 1.04) if not is_real_time_only and len(data_source) > 1 else price * 1.04
-    s2 = latest.get('S2', price * 0.96) if not is_real_time_only and len(data_source) > 1 else price * 0.96
-    fib_618 = latest.get('Fib_618', price * 1.01) if not is_real_time_only and len(data_source) > 1 else price * 1.01
+    volatility = latest.get('Volatility', data_source['Volatility'].mean() if not is_real_time_only else 0)
+    rsi = latest.get('RSI', 50) if not is_real_time_only else 50
+    macd = latest.get('MACD', 0) if not is_real_time_only else 0
+    macd_signal = latest.get('MACD_Signal', 0) if not is_real_time_only else 0
+    macd_hist = latest.get('MACD_Histogram', 0) if not is_real_time_only else 0
+    bb_upper = latest.get('BB_Upper', price * 1.05) if not is_real_time_only else price * 1.05
+    bb_middle = latest.get('BB_Middle', price) if not is_real_time_only else price
+    bb_lower = latest.get('BB_Lower', price * 0.95) if not is_real_time_only else price * 0.95
+    bb_width = latest.get('BB_Width', data_source['BB_Width'].mean() if not is_real_time_only else 0)
+    bb_position = latest.get('BB_Position', data_source['BB_Position'].mean() if not is_real_time_only else 0)
+    sma_20 = latest.get('SMA_20', price) if not is_real_time_only else price
+    ema_20 = latest.get('EMA_20', price) if not is_real_time_only else price
+    sma_50 = latest.get('SMA_50', price) if not is_real_time_only else price
+    ema_50 = latest.get('EMA_50', price) if not is_real_time_only else price
+    sma_200 = latest.get('SMA_200', price) if not is_real_time_only else price
+    ema_200 = latest.get('EMA_200', price) if not is_real_time_only else price
+    ichimoku_tenkan = latest.get('Ichimoku_Tenkan', price) if not is_real_time_only else price
+    ichimoku_kijun = latest.get('Ichimoku_Kijun', price) if not is_real_time_only else price
+    ichimoku_senkou_a = latest.get('Ichimoku_Senkou_A', price) if not is_real_time_only else price
+    ichimoku_senkou_b = latest.get('Ichimoku_Senkou_B', price) if not is_real_time_only else price
+    ichimoku_chikou = latest.get('Ichimoku_Chikou', price) if not is_real_time_only else price
+    psar = latest.get('PSAR', price) if not is_real_time_only else price
+    psar_bull = latest.get('PSAR_Bull', price) if not is_real_time_only else price
+    psar_bear = latest.get('PSAR_Bear', price) if not is_real_time_only else price
+    stoch_k = latest.get('Stoch_K', 50) if not is_real_time_only else 50
+    williams_r = latest.get('Williams_R', -50) if not is_real_time_only else -50
+    cci = latest.get('CCI', 0) if not is_real_time_only else 0
+    momentum = latest.get('Momentum', 0) if not is_real_time_only else 0
+    roc = latest.get('ROC', 0) if not is_real_time_only else 0
+    atr = latest.get('ATR', data_source['ATR'].mean() if not is_real_time_only else 0)
+    keltner_upper = latest.get('Keltner_Upper', price * 1.05) if not is_real_time_only else price * 1.05
+    keltner_lower = latest.get('Keltner_Lower', price * 0.95) if not is_real_time_only else price * 0.95
+    obv = latest.get('OBV', latest['Volume']) if not is_real_time_only else latest['Volume']
+    vwap = latest.get('VWAP', price) if not is_real_time_only else price
+    volume_sma = latest.get('Volume_SMA', latest['Volume']) if not is_real_time_only else latest['Volume']
+    mfi = latest.get('MFI', 50) if not is_real_time_only else 50
+    pivot = latest.get('Pivot', price) if not is_real_time_only else price
+    r1 = latest.get('R1', price * 1.02) if not is_real_time_only else price * 1.02
+    s1 = latest.get('S1', price * 0.98) if not is_real_time_only else price * 0.98
+    r2 = latest.get('R2', price * 1.04) if not is_real_time_only else price * 1.04
+    s2 = latest.get('S2', price * 0.96) if not is_real_time_only else price * 0.96
+    fib_618 = latest.get('Fib_618', price * 1.01) if not is_real_time_only else price * 1.01
 
     adx_value = 50
     if not is_real_time_only and all(col in data_source.columns for col in ['High', 'Low', 'Close']) and len(data_source) >= 14:
@@ -285,7 +262,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
     trend = "Bearish" if price < sma_20 and price < sma_50 else "Bullish" if price > sma_20 and price > sma_50 else "Neutral"
 
     quick_scan = f"""
-### Quick Scan: {stock_name} ({latest['Date'] if isinstance(latest['Date'], str) else latest['Date'].strftime('%Y-%m-%d')})
+### Quick Scan: {stock_name} ({latest['Date']})
 - **Price**: ${price:.2f} ({trend} trend)
 - **Support/Resistance**: Support at ${s1:.2f}, Resistance at ${r1:.2f}
 - **RSI**: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
@@ -294,7 +271,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 """
 
     moderate_detail = f"""
-### Moderate Detail: {stock_name} ({latest['Date'] if isinstance(latest['Date'], str) else latest['Date'].strftime('%Y-%m-%d')})
+### Moderate Detail: {stock_name} ({latest['Date']})
 - **Price Trend**: ${price:.2f}, {trend} (SMA20: ${sma_20:.2f}, SMA50: ${sma_50:.2f})
 - **Momentum**:
   - RSI: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
@@ -311,7 +288,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 """
 
     in_depth = f"""
-### In-Depth Analysis: {stock_name} ({latest['Date'] if isinstance(latest['Date'], str) else latest['Date'].strftime('%Y-%m-%d')})
+### In-Depth Analysis: {stock_name} ({latest['Date']})
 #### Key Takeaways
 - **Price**: ${price:.2f}, {trend} trend
 - **Historical Pattern**: {trend_pattern}
@@ -362,237 +339,236 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 
     return quick_scan, moderate_detail, in_depth, stock_name, data_source, is_real_time_only, adx_value
 
-# Function to generate consolidated recommendation
-def generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, stock_name, date_str):
-    rsi_value = '50'
-    if 'RSI:' in in_depth:
-        rsi_part = in_depth.split('RSI: ')[1]
-        if '(' in rsi_part:
-            rsi_value = rsi_part.split(' (')[0].strip()
-        else:
-            rsi_value = rsi_part.split('\n')[0].strip()
-
-    price = quick_scan.split('Price: $')[1].split(' (')[0] if 'Price:' in quick_scan else 'N/A'
-    trend = moderate_detail.split('Price Trend: ')[1].split(',')[0] if 'Price Trend:' in moderate_detail else 'Neutral'
-    support = quick_scan.split('Support at $')[1].split(',')[0] if 'Support at $' in quick_scan else 'N/A'
-    resistance = quick_scan.split('Resistance at $')[1].split(')')[0] if 'Resistance at $' in quick_scan else 'N/A'
-    volume_trend = in_depth.split('OBV: ')[1].split(' (')[1].split(')')[0] if 'OBV:' in in_depth else 'N/A'
-    adx = in_depth.split('ADX: ')[1].split(' (')[0] if 'ADX:' in in_depth else '50'
-
-    recommendation = f"""
-### Consolidated Recommendation: {stock_name} ({date_str})
-#### Summary of Analysis
-- **Price**: ${price}
-- **Trend**: {trend}
-- **RSI**: {rsi_value} ({'Oversold' if float(rsi_value) < 30 else 'Overbought' if float(rsi_value) > 70 else 'Neutral'})
-- **Support**: ${support}
-- **Resistance**: ${resistance}
-- **Volume Trend**: {volume_trend}
-
-#### Recommendation
-- **Buy**: Recommended if RSI is oversold (<30) and price is near support (${support}), with a target near resistance (${resistance}). Current RSI is {rsi_value}, suggesting {'a buy opportunity' if float(rsi_value) < 30 else 'to wait for better conditions'}.
-- **Hold**: Advised if price is between support and resistance with a neutral trend ({trend}) and RSI is neutral (30-70). Current trend is {trend}, supporting a {'hold' if 30 <= float(rsi_value) <= 70 else 'reconsideration'}.
-- **Sell**: Suggested if RSI is overbought (>70) or price breaks below support (${support}) with declining volume. Current RSI is {rsi_value}, indicating {'a potential sell' if float(rsi_value) > 70 else 'no immediate sell signal'}.
-- **Additional Notes**: Volume trend ({volume_trend}) and ADX ({adx} {'Strong Trend' if float(adx) > 25 else 'Weak Trend'}) should be monitored for confirmation.
-"""
-
-    return recommendation
-
 # Main app
 st.title("📈 Stock Technical Analysis Dashboard")
 st.markdown("Analyze stocks with real-time data or uploaded CSV/XLSX files containing technical indicators.")
 
-mode = "XLSX/CSV Only" if st.session_state.csv_data is not None and st.session_state.real_time_data is None else "Real-Time Only" if st.session_state.real_time_data is not None and st.session_state.csv_data is None else "Combined" if st.session_state.combine_report and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else "No Data"
-st.markdown(f"<div class='mode-banner'><b>Active Mode: {mode}</b><br>{'Historical data from CSV/XLSX.' if mode == 'XLSX/CSV Only' else 'Real-time data from yfinance.' if mode == 'Real-Time Only' else 'Combined data.' if mode == 'Combined' else 'Please provide data.'}</div>", unsafe_allow_html=True)
+# Mode indicator
+mode = "Real-Time Only" if st.session_state.csv_data is None and st.session_state.real_time_data is not None else "XLSX/CSV Only" if st.session_state.csv_data is not None and not combine_data else "Combined" if st.session_state.csv_data is not None and combine_data else "No Data"
+st.markdown(f"<div class='mode-banner'><b>Active Mode: {mode}</b><br>{'Real-time price and fundamentals from yfinance.' if mode == 'Real-Time Only' else 'Historical data and indicators from uploaded CSV/XLSX.' if mode == 'XLSX/CSV Only' else 'Combines CSV/XLSX historical data with real-time price/fundamentals.' if mode == 'Combined' else 'Please fetch data or upload a file to begin.'}</div>", unsafe_allow_html=True)
 
-st.subheader("📊 Stock Data Overview")
-if st.session_state.real_time_data:
-    date_str = st.session_state.real_time_data['Date']
-    st.markdown(f"### Stock Price as on {date_str}")
-    st.markdown(f"<div class='data-card'><b>Price:</b> ${st.session_state.real_time_data['Close']:.2f}<br><b>Volume:</b> {st.session_state.real_time_data['Volume']:,.0f}</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='data-card'><b>Open:</b> ${st.session_state.real_time_data['Open']:.2f}<br><b>High:</b> ${st.session_state.real_time_data['High']:.2f}<br><b>Low:</b> ${st.session_state.real_time_data['Low']:.2f}</div>", unsafe_allow_html=True)
+# Display real-time and fundamental data in expandable section
+with st.expander("📊 Stock Data Overview", expanded=True):
+    if st.session_state.real_time_data:
+        current_data = {
+            "Metric": ["Date", "Open", "High", "Low", "Close", "Volume"],
+            "Value": [
+                st.session_state.real_time_data['Date'],
+                f"${st.session_state.real_time_data['Open']:.2f}",
+                f"${st.session_state.real_time_data['High']:.2f}",
+                f"${st.session_state.real_time_data['Low']:.2f}",
+                f"${st.session_state.real_time_data['Close']:.2f}",
+                f"{st.session_state.real_time_data['Volume']:,.0f}"
+            ]
+        }
+        st.table(pd.DataFrame(current_data))
 
-if any(v is not None for v in st.session_state.fundamental_data.values()):
-    with st.expander("### Fundamental Analysis"):
-        st.markdown("<div class='data-card'>", unsafe_allow_html=True)
-        for k, v in st.session_state.fundamental_data.items():
-            if v is not None:
-                st.markdown(f"<b>{k}:</b> {v:.2f}<br>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-# Data source determination
-data_source = st.session_state.csv_data if process_file_button and st.session_state.csv_data is not None else st.session_state.real_time_data if submit_button and st.session_state.real_time_data is not None else combine_dataframes(st.session_state.csv_data, st.session_state.real_time_data) if combine_button and st.session_state.combine_report and st.session_state.csv_data is not None and st.session_state.real_time_data is not None else None
-st.write("Debug: data_source:", data_source)  # Debug output
+    if any(v is not None for v in st.session_state.fundamental_data.values()):
+        fundamental_data = {
+            "Metric": ["EPS", "P/B", "ROE", "Revenue", "Debt/Equity"],
+            "Value": [
+                f"{st.session_state.fundamental_data['EPS']:.2f}" if st.session_state.fundamental_data['EPS'] is not None else "N/A",
+                f"{st.session_state.fundamental_data['P/B']:.2f}" if st.session_state.fundamental_data['P/B'] is not None else "N/A",
+                f"{st.session_state.fundamental_data['ROE']:.2f}" if st.session_state.fundamental_data['ROE'] is not None else "N/A",
+                f"${st.session_state.fundamental_data['Revenue']:.2f}M" if st.session_state.fundamental_data['Revenue'] is not None else "N/A",
+                f"{st.session_state.fundamental_data['Debt/Equity']:.2f}" if st.session_state.fundamental_data['Debt/Equity'] is not None else "N/A"
+            ]
+        }
+        st.table(pd.DataFrame(fundamental_data))
 
 # Analyze data
-if data_source is not None and isinstance(data_source, pd.DataFrame) and not data_source.empty:
-    # Validate required columns
-    required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Volatility', 'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram', 'BB_Upper', 'BB_Middle', 'BB_Lower', 'SMA_20', 'EMA_20', 'SMA_50', 'EMA_50', 'SMA_200', 'EMA_200', 'BB_Width', 'BB_Position', 'Ichimoku_Tenkan', 'Ichimoku_Kijun', 'Ichimoku_Senkou_A', 'Ichimoku_Senkou_B', 'Ichimoku_Chikou', 'PSAR', 'PSAR_Bull', 'PSAR_Bear', 'Stoch_K', 'Williams_R', 'CCI', 'Momentum', 'ROC', 'ATR', 'Keltner_Upper', 'Keltner_Lower', 'OBV', 'VWAP', 'Volume_SMA', 'MFI', 'Pivot', 'R1', 'S1', 'R2', 'S2', 'Fib_236', 'Fib_382', 'Fib_618']
-    missing_cols = [col for col in required_columns if col not in data_source.columns]
-    if missing_cols:
-        st.error(f"❌ Missing required columns in data_source: {', '.join(missing_cols)}")
-        st.session_state.analysis_data = None
-    else:
-        quick_scan, moderate_detail, in_depth, stock_name, df, is_real_time_only, adx_value = analyze_stock_data(data_source, None if process_file_button or submit_button else st.session_state.real_time_data, st.session_state.fundamental_data)
-        st.session_state.analysis_data = {
-            'quick_scan': quick_scan,
-            'moderate_detail': moderate_detail,
-            'in_depth': in_depth,
-            'stock_name': stock_name,
-            'df': df,
-            'is_real_time_only': is_real_time_only,
-            'adx_value': adx_value
-        }
+data_source = combine_dataframes(st.session_state.csv_data, st.session_state.real_time_data) if st.session_state.csv_data is not None and combine_data else st.session_state.csv_data if st.session_state.csv_data is not None else st.session_state.real_time_data
+if data_source is not None:
+    quick_scan, moderate_detail, in_depth, stock_name, df, is_real_time_only, adx_value = analyze_stock_data(
+        st.session_state.csv_data,
+        st.session_state.real_time_data if combine_data or st.session_state.csv_data is None else None,
+        st.session_state.fundamental_data
+    )
+
+    if is_real_time_only:
+        st.warning("⚠️ Real-time data lacks historical indicators. Upload a CSV/XLSX for full analysis.")
+
+    # Report tabs
+    tabs = st.tabs(["Quick Scan", "Moderate Detail", "In-Depth Analysis", "Visual Summary", "Interactive Dashboard"])
+
+    with tabs[0]:
+        st.markdown("<div class='report-container'>", unsafe_allow_html=True)
+        st.markdown(quick_scan)
+        st.markdown("</div>", unsafe_allow_html=True)
+        # Download buttons for Quick Scan
+        buffer = io.StringIO()
+        buffer.write(quick_scan)
+        st.download_button(
+            label="📥 Download Markdown Report",
+            data=buffer.getvalue(),
+            file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.md",
+            mime="text/markdown"
+        )
+        pdf_buffer = generate_pdf_report(quick_scan, stock_name, "Quick Scan")
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
+
+    with tabs[1]:
+        st.markdown("<div class='report-container'>", unsafe_allow_html=True)
+        st.markdown(moderate_detail)
+        st.markdown("</div>", unsafe_allow_html=True)
+        # Download buttons for Moderate Detail
+        buffer = io.StringIO()
+        buffer.write(moderate_detail)
+        st.download_button(
+            label="📥 Download Markdown Report",
+            data=buffer.getvalue(),
+            file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.md",
+            mime="text/markdown"
+        )
+        pdf_buffer = generate_pdf_report(moderate_detail, stock_name, "Moderate Detail")
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
+
+    with tabs[2]:
+        st.markdown("<div class='report-container'>", unsafe_allow_html=True)
+        st.markdown(in_depth)
+        st.markdown("</div>", unsafe_allow_html=True)
+        # Download buttons for In-Depth Analysis
+        buffer = io.StringIO()
+        buffer.write(in_depth)
+        st.download_button(
+            label="📥 Download Markdown Report",
+            data=buffer.getvalue(),
+            file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.md",
+            mime="text/markdown"
+        )
+        pdf_buffer = generate_pdf_report(in_depth, stock_name, "In-Depth Analysis")
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
+
+    with tabs[3]:
+        st.markdown("<div class='report-container'>", unsafe_allow_html=True)
+        # Handle date_str safely
+        date_str = (df['Date'].iloc[-1].strftime('%Y-%m-%d') if isinstance(df['Date'], pd.Series) and not df['Date'].empty and pd.notna(df['Date'].iloc[-1]) else df.get('Date', 'N/A'))
+        st.markdown(f"### 📊 Visual Summary: {stock_name} ({date_str})")
+        st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}")
+        st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}")
+        
+        if not is_real_time_only and len(df) > 1:
+            fig = px.line(df, x='Date', y=['Close', 'SMA_20', 'SMA_50', 'SMA_200'], title='Price Trend', hover_data=['Open', 'High', 'Low'])
+            fig.update_layout(hovermode='x unified')
+            st.plotly_chart(fig, use_container_width=True)
+            fig_rsi = px.line(df, x='Date', y='RSI', title='RSI Trend')
+            fig_rsi.add_hline(y=70, line_dash="dash", line_color="red")
+            fig_rsi.add_hline(y=30, line_dash="dash", line_color="green")
+            fig_rsi.update_layout(hovermode='x unified')
+            st.plotly_chart(fig_rsi, use_container_width=True)
+        else:
+            st.info("⚠️ Historical charts unavailable with real-time data only. Upload a CSV/XLSX.")
+
+        rsi_value = df.get('RSI', 50) if not is_real_time_only else 50
+        if isinstance(rsi_value, pd.Series):
+            rsi_value = rsi_value.iloc[-1]
+        st.markdown(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}")
+        st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})")
+        st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}")
+        # Download buttons for Visual Summary
+        visual_summary = f"### Visual Summary: {stock_name} ({date_str})\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **Trend**: {'Bearish' if df['Close'].iloc[-1] < df.get('SMA_20', df['Close']).iloc[-1] else 'Bullish'}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}, **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})\n- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}"
+        buffer = io.StringIO()
+        buffer.write(visual_summary)
+        st.download_button(
+            label="📥 Download Markdown Report",
+            data=buffer.getvalue(),
+            file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.md",
+            mime="text/markdown"
+        )
+        pdf_buffer = generate_pdf_report(visual_summary, stock_name, "Visual Summary")
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
+
+    with tabs[4]:
+        st.markdown("<div class='report-container'>", unsafe_allow_html=True)
+        st.markdown(f"### 📉 Interactive Dashboard: {stock_name}")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("#### 📏 Technical Indicators")
+            st.write(f"- **Price**: ${df['Close'].iloc[-1]:.2f}")
+            rsi_value = df.get('RSI', 50) if not is_real_time_only else 50
+            if isinstance(rsi_value, pd.Series):
+                rsi_value = rsi_value.iloc[-1]
+            st.write(f"- **RSI**: {rsi_value:.2f}")
+            macd_value = df.get('MACD', 0) if not is_real_time_only else 0
+            macd_signal_value = df.get('MACD_Signal', 0) if not is_real_time_only else 0
+            if isinstance(macd_value, pd.Series):
+                macd_value = macd_value.iloc[-1]
+            if isinstance(macd_signal_value, pd.Series):
+                macd_signal_value = macd_signal_value.iloc[-1]
+            st.write(f"- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})")
+            stoch_k_value = df.get('Stoch_K', 50) if not is_real_time_only else 50
+            if isinstance(stoch_k_value, pd.Series):
+                stoch_k_value = stoch_k_value.iloc[-1]
+            st.write(f"- **Stochastic %K**: {stoch_k_value:.2f}")
+            st.write(f"- **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})")
+            st.write(f"- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}")
+            st.write(f"- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}")
+        with col2:
+            st.markdown("#### 📋 Fundamental Metrics")
+            for k, v in st.session_state.fundamental_data.items():
+                if v is not None:
+                    st.write(f"- **{k}**: {v:.2f}")
+        
+        if not is_real_time_only and len(df) > 1:
+            fig = go.Figure()
+            fig.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Candlestick'))
+            if 'BB_Upper' in df.columns:
+                fig.add_trace(go.Scatter(x=df['Date'], y=df['BB_Upper'], name='BB Upper', line=dict(color='red')))
+                fig.add_trace(go.Scatter(x=df['Date'], y=df['BB_Lower'], name='BB Lower', line=dict(color='green')))
+            fig.update_layout(title='Candlestick with Bollinger Bands', xaxis_title='Date', yaxis_title='Price', hovermode='x unified')
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("⚠️ Candlestick chart unavailable with real-time data only. Upload a CSV/XLSX.")
+        # Download buttons for Interactive Dashboard
+        interactive_dashboard = f"### Interactive Dashboard: {stock_name}\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f}\n- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})\n- **Stochastic %K**: {stoch_k_value:.2f}\n- **ADX**: {adx_value:.2f}\n- **Support**: ${df.get('S1', df['Close'] * 0.98).iloc[-1]:.2f}\n- **Resistance**: ${df.get('R1', df['Close'] * 1.02).iloc[-1]:.2f}"
+        buffer = io.StringIO()
+        buffer.write(interactive_dashboard)
+        st.download_button(
+            label="📥 Download Markdown Report",
+            data=buffer.getvalue(),
+            file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.md",
+            mime="text/markdown"
+        )
+        pdf_buffer = generate_pdf_report(interactive_dashboard, stock_name, "Interactive Dashboard")
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_buffer,
+            file_name=f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
+
+    if data_source is not None:
+        export_df = data_source.copy()
+        if st.session_state.fundamental_data and any(v is not None for v in st.session_state.fundamental_data.values()):
+            for k, v in st.session_state.fundamental_data.items():
+                export_df[k] = v
+        csv_buffer = io.StringIO()
+        export_df.to_csv(csv_buffer, index=False)
+        st.download_button(
+            label="📥 Export Data as CSV",
+            data=csv_buffer.getvalue(),
+            file_name=f"{stock_name}_data_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
 else:
-    st.session_state.analysis_data = None
-
-# Render tabs only if analysis data exists
-if st.session_state.analysis_data is not None:
-    quick_scan = st.session_state.analysis_data['quick_scan']
-    moderate_detail = st.session_state.analysis_data['moderate_detail']
-    in_depth = st.session_state.analysis_data['in_depth']
-    stock_name = st.session_state.analysis_data['stock_name']
-    df = st.session_state.analysis_data['df']
-    is_real_time_only = st.session_state.analysis_data['is_real_time_only']
-    adx_value = st.session_state.analysis_data['adx_value']
-
-    st.write("Debug: df:", df)  # Debug output
-    if isinstance(df, pd.DataFrame) and not df.empty and 'Date' in df.columns:
-        tabs = st.tabs(["Quick Scan", "Moderate Detail", "In-Depth Analysis", "Visual Summary", "Interactive Dashboard", "Consolidated Recommendation"])
-
-        with tabs[0]:
-            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-            st.markdown(f"### Quick Scan: {stock_name}")  # Use Markdown header
-            st.markdown(quick_scan.replace('### Quick Scan:', '').strip())  # Strip header
-            col1, col2 = st.columns(2)
-            with col1:
-                buffer = io.StringIO()
-                buffer.write(quick_scan.replace('### Quick Scan:', '').strip())  # Strip header for export
-                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
-            with col2:
-                pdf_buffer = generate_pdf_report(quick_scan.replace('### Quick Scan:', '').strip(), stock_name, "Quick Scan")
-                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Quick_Scan_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
-            st.markdown("</div></div>", unsafe_allow_html=True)
-
-        with tabs[1]:
-            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-            st.markdown(f"### Moderate Detail: {stock_name}")  # Use Markdown header
-            st.markdown(moderate_detail.replace('### Moderate Detail:', '').strip())  # Strip header
-            col1, col2 = st.columns(2)
-            with col1:
-                buffer = io.StringIO()
-                buffer.write(moderate_detail.replace('### Moderate Detail:', '').strip())  # Strip header for export
-                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
-            with col2:
-                pdf_buffer = generate_pdf_report(moderate_detail.replace('### Moderate Detail:', '').strip(), stock_name, "Moderate Detail")
-                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Moderate_Detail_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
-            st.markdown("</div></div>", unsafe_allow_html=True)
-
-        with tabs[2]:
-            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-            st.markdown(f"### In-Depth Analysis: {stock_name}")  # Use Markdown header
-            st.markdown(in_depth.replace('### In-Depth Analysis:', '').strip())  # Strip header
-            col1, col2 = st.columns(2)
-            with col1:
-                buffer = io.StringIO()
-                buffer.write(in_depth.replace('### In-Depth Analysis:', '').strip())  # Strip header for export
-                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
-            with col2:
-                pdf_buffer = generate_pdf_report(in_depth.replace('### In-Depth Analysis:', '').strip(), stock_name, "In-Depth Analysis")
-                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_In_Depth_Analysis_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
-            st.markdown("</div></div>", unsafe_allow_html=True)
-
-        with tabs[3]:
-            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-            date_str = df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else datetime.now().strftime('%Y-%m-%d')
-            st.markdown(f"### Visual Summary: {stock_name} ({date_str})")  # Use Markdown header
-            st.write(f"**Price**: ${df['Close'].iloc[-1]:.2f}")
-            st.write(f"**Trend**: {'Bearish' if df['Close'].iloc[-1] < df['SMA_20'].iloc[-1] else 'Bullish'}")
-            if not is_real_time_only and len(df) > 1:
-                fig = px.line(df, x='Date', y=['Close', 'SMA_20', 'SMA_50', 'SMA_200'], title='Price Trend')
-                st.plotly_chart(fig)
-                fig_rsi = px.line(df, x='Date', y='RSI', title='RSI Trend')
-                fig_rsi.add_hline(y=70, line_dash="dash", line_color="red")
-                fig_rsi.add_hline(y=30, line_dash="dash", line_color="green")
-                st.plotly_chart(fig_rsi)
-            rsi_value = df['RSI'].iloc[-1] if 'RSI' in df.columns else 50
-            st.markdown(f"- **Support**: ${df['S1'].iloc[-1]:.2f}, **Resistance**: ${df['R1'].iloc[-1]:.2f}")
-            st.markdown(f"- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})")
-            st.markdown(f"- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}")
-            visual_summary = f"### Visual Summary: {stock_name} ({date_str})\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **Trend**: {'Bearish' if df['Close'].iloc[-1] < df['SMA_20'].iloc[-1] else 'Bullish'}\n- **Support**: ${df['S1'].iloc[-1]:.2f}, **Resistance**: ${df['R1'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f} ({'Oversold' if rsi_value < 30 else 'Overbought' if rsi_value > 70 else 'Neutral'})\n- **Recommendation**: {'Buy near support' if rsi_value < 30 else 'Wait for breakout'}"
-            col1, col2 = st.columns(2)
-            with col1:
-                buffer = io.StringIO()
-                buffer.write(visual_summary.replace('### Visual Summary:', '').strip())  # Strip header for export
-                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
-            with col2:
-                pdf_buffer = generate_pdf_report(visual_summary.replace('### Visual Summary:', '').strip(), stock_name, "Visual Summary")
-                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Visual_Summary_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
-            st.markdown("</div></div>", unsafe_allow_html=True)
-
-        with tabs[4]:
-            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-            st.markdown(f"### Interactive Dashboard: {stock_name}")  # Use Markdown header
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("#### 📏 Technical Indicators")
-                st.write(f"- **Price**: ${df['Close'].iloc[-1]:.2f}")
-                rsi_value = df['RSI'].iloc[-1] if 'RSI' in df.columns else 50
-                st.write(f"- **RSI**: {rsi_value:.2f}")
-                macd_value = df['MACD'].iloc[-1] if 'MACD' in df.columns else 0
-                macd_signal_value = df['MACD_Signal'].iloc[-1] if 'MACD_Signal' in df.columns else 0
-                st.write(f"- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})")
-                stoch_k_value = df['Stoch_K'].iloc[-1] if 'Stoch_K' in df.columns else 50
-                st.write(f"- **Stochastic %K**: {stoch_k_value:.2f}")
-                st.write(f"- **ADX**: {adx_value:.2f} ({'Strong Trend' if adx_value > 25 else 'Weak Trend'})")
-                st.write(f"- **Support**: ${df['S1'].iloc[-1]:.2f}")
-                st.write(f"- **Resistance**: ${df['R1'].iloc[-1]:.2f}")
-            with col2:
-                st.markdown("#### 📋 Fundamental Metrics")
-                for k, v in st.session_state.fundamental_data.items():
-                    if v is not None:
-                        st.write(f"- **{k}**: {v:.2f}")
-            if not is_real_time_only and len(df) > 1:
-                fig = go.Figure()
-                fig.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']))
-                if 'BB_Upper' in df.columns:
-                    fig.add_trace(go.Scatter(x=df['Date'], y=df['BB_Upper'], name='BB Upper', line=dict(color='red')))
-                    fig.add_trace(go.Scatter(x=df['Date'], y=df['BB_Lower'], name='BB Lower', line=dict(color='green')))
-                st.plotly_chart(fig)
-            interactive_dashboard = f"### Interactive Dashboard: {stock_name}\n- **Price**: ${df['Close'].iloc[-1]:.2f}\n- **RSI**: {rsi_value:.2f}\n- **MACD**: {macd_value:.2f} (Signal: {macd_signal_value:.2f})\n- **Stochastic %K**: {stoch_k_value:.2f}\n- **ADX**: {adx_value:.2f}\n- **Support**: ${df['S1'].iloc[-1]:.2f}\n- **Resistance**: ${df['R1'].iloc[-1]:.2f}"
-            col1, col2 = st.columns(2)
-            with col1:
-                buffer = io.StringIO()
-                buffer.write(interactive_dashboard.replace('### Interactive Dashboard:', '').strip())  # Strip header for export
-                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
-            with col2:
-                pdf_buffer = generate_pdf_report(interactive_dashboard.replace('### Interactive Dashboard:', '').strip(), stock_name, "Interactive Dashboard")
-                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Interactive_Dashboard_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
-            st.markdown("</div></div>", unsafe_allow_html=True)
-
-        with tabs[5]:
-            st.markdown("<div class='report-container'><div class='tab-content'>", unsafe_allow_html=True)
-            st.markdown(f"### Consolidated Recommendation: {stock_name}")  # Use Markdown header
-            date_str = df['Date'].iloc[-1].strftime('%Y-%m-%d') if pd.notna(df['Date'].iloc[-1]) else datetime.now().strftime('%Y-%m-%d')
-            recommendation = generate_consolidated_recommendation(quick_scan, moderate_detail, in_depth, stock_name, date_str)
-            st.markdown(recommendation.replace('### Consolidated Recommendation:', '').strip())  # Strip header
-            col1, col2 = st.columns(2)
-            with col1:
-                buffer = io.StringIO()
-                buffer.write(recommendation.replace('### Consolidated Recommendation:', '').strip())  # Strip header for export
-                st.download_button("📥 Download Markdown", buffer.getvalue(), f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.md", "text/markdown")
-            with col2:
-                pdf_buffer = generate_pdf_report(recommendation.replace('### Consolidated Recommendation:', '').strip(), stock_name, "Consolidated Recommendation")
-                st.download_button("📥 Download PDF", pdf_buffer, f"{stock_name}_Consolidated_Recommendation_{datetime.now().strftime('%Y%m%d')}.pdf", "application/pdf")
-            st.markdown("</div></div>", unsafe_allow_html=True)
-
-        if isinstance(data_source, pd.DataFrame) and not data_source.empty:
-            export_df = data_source.copy()
-            if st.session_state.fundamental_data and any(v is not None for v in st.session_state.fundamental_data.values()):
-                for k, v in st.session_state.fundamental_data.items():
-                    export_df[k] = v
-            csv_buffer = io.StringIO()
-            export_df.to_csv(csv_buffer, index=False)
-            st.download_button("📥 Export Data as CSV", csv_buffer.getvalue(), f"{stock_name}_data_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
-else:
-    st.info("⚠️ Please upload a CSV/XLSX or fetch real-time data to begin analysis.")
+    st.info("⚠️ Please fetch real-time data or upload a CSV/XLSX to begin analysis.")
