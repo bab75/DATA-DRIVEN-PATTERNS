@@ -182,18 +182,38 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         aggregated_profit["Open-Close Buy Date"] = first_open_date
         aggregated_profit["Open-Close Sell Date"] = last_close_date
     if strategies["Min-Low to Max-High"]:
-        if period_low_date > period_high_date:
-            st.warning(f"Min-Low to Max-High: Buy date ({period_low_date}) is after sell date ({period_high_date}). Skipping this strategy.")
-            aggregated_profit["Min-Low to Max-High ($)"] = 0
-            aggregated_profit["Min-Low to Max-High (%)"] = 0
-            aggregated_profit["Min-Low to Max-High Buy Date"] = period_low_date
-            aggregated_profit["Min-Low to Max-High Sell Date"] = period_high_date
-        else:
-            profit = period_high - period_low
-            aggregated_profit["Min-Low to Max-High ($)"] = profit
-            aggregated_profit["Min-Low to Max-High (%)"] = (profit / period_low * 100) if period_low != 0 else 0
-            aggregated_profit["Min-Low to Max-High Buy Date"] = period_low_date
-            aggregated_profit["Min-Low to Max-High Sell Date"] = period_high_date
+    # Find the best buy (at Low) and sell (at High) pair with buy before sell
+    best_profit = float('-inf')
+    buy_date = sell_date = None
+    buy_price = sell_price = None
+
+    min_low = float('inf')
+    min_low_date = None
+
+    for idx, row in data.iterrows():
+        # Update minimum low found so far
+        if row['Low'] < min_low:
+            min_low = row['Low']
+            min_low_date = idx
+        # Calculate profit for selling at today's high, buying at earliest min_low
+        profit = row['High'] - min_low
+        if profit > best_profit and idx > min_low_date:
+            best_profit = profit
+            buy_date = min_low_date
+            sell_date = idx
+            buy_price = min_low
+            sell_price = row['High']
+
+    if buy_date and sell_date:
+        aggregated_profit["Min-Low to Max-High ($)"] = best_profit
+        aggregated_profit["Min-Low to Max-High (%)"] = (best_profit / buy_price * 100) if buy_price != 0 else 0
+        aggregated_profit["Min-Low to Max-High Buy Date"] = buy_date
+        aggregated_profit["Min-Low to Max-High Sell Date"] = sell_date
+    else:
+        aggregated_profit["Min-Low to Max-High ($)"] = 0
+        aggregated_profit["Min-Low to Max-High (%)"] = 0
+        aggregated_profit["Min-Low to Max-High Buy Date"] = None
+        aggregated_profit["Min-Low to Max-High Sell Date"] = None
     
     # Price extremes
     price_extremes = {
