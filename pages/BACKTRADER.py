@@ -19,14 +19,13 @@ capital_base = st.number_input("Capital Base ($)", value=10000.0, min_value=1000
 # Function to fetch data from yfinance
 def fetch_data(ticker, start_date, end_date):
     try:
-        # Use single ticker string, not a list, to avoid MultiIndex
+        # Use single ticker string to avoid MultiIndex
         data = yf.download(ticker, start=start_date, end=end_date, progress=False)
         if data.empty:
             st.error(f"No data found for {ticker}. Please check the ticker or date range.")
             return None
         # Handle MultiIndex columns if present
         if isinstance(data.columns, pd.MultiIndex):
-            # Extract first level of column names (e.g., 'Open', 'High')
             data.columns = [col[0] if isinstance(col, tuple) else col for col in data.columns]
         # Ensure required columns and capitalize for Backtesting.py
         required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
@@ -52,8 +51,11 @@ class MACrossover(Strategy):
 
     def init(self):
         close = self.data.Close
-        self.short_ma = self.I(pd.Series.rolling, close, self.short_window, min_periods=1).mean()
-        self.long_ma = self.I(pd.Series.rolling, close, self.long_window, min_periods=1).mean()
+        # Define moving average functions for self.I
+        def sma(series, period):
+            return pd.Series(series).rolling(window=period, min_periods=1).mean()
+        self.short_ma = self.I(sma, close, self.short_window)
+        self.long_ma = self.I(sma, close, self.long_window)
 
     def next(self):
         if crossover(self.short_ma, self.long_ma):
