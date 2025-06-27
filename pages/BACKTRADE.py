@@ -25,38 +25,22 @@ st.markdown("""
 with st.sidebar:
     st.header("Input Parameters")
     ticker = st.text_input("Enter Stock Ticker", "AAPL").upper()
-    start_date = st.date_input("Start Date", value=datetime(2025, 2, 1))
-    end_date = st.date_input("End Date", value=datetime(2025, 4, 30))
-    st.markdown("**Note**: Select a date range with trading days. End date should not exceed today (June 27, 2025) unless simulating future data.")
+    start_date = st.date_input("Start Date", value=datetime(2024, 6, 1))
+    end_date = st.date_input("End Date", value=datetime(2024, 6, 30))
+    st.markdown("**Note**: Select a date range with trading days (e.g., avoid weekends). End date is the sell date.")
 
     st.subheader("Select Comparison Strategies")
     strategies = {
-        "Min-Low to End-Close": st.checkbox("Min-Low to End-Close (Buy at Min Low, Sell at End Close)", value=True, help="Buys at the lowest Low price and sells at the Close on the last day."),
+        "Low-Close": st.checkbox("Low to Close (Buy at Low, Sell at Close)", value=True),
         "Open-High": st.checkbox("Open to High (Buy at Open, Sell at High)", value=True),
         "Open-Close": st.checkbox("Open to Close (Buy at Open, Sell at Close)", value=True),
-        "Min-Low to Max-High": st.checkbox("Min-Low to Max-High (Buy at Min Low, Sell at Max High)", value=True)
+        "Low-High": st.checkbox("Low to High (Buy at Low, Sell at High)", value=True)
     }
-
-    st.subheader("Strategy Variants")
-    strategy_variant = st.radio("Select Strategy Variant", 
-                                ["Min-Low to End-Close", "Min-Close to End-Close"], 
-                                index=0, 
-                                help="Choose how to calculate buy and sell points: Min-Low uses the lowest Low price, Min-Close uses the lowest Close price.")
 
 # Validate date range
 if start_date >= end_date:
     st.error("End date must be after start date.")
     st.stop()
-
-# Ensure end_date is a valid datetime.date
-if end_date is None or not isinstance(end_date, datetime.date):
-    st.error("Invalid end date. Defaulting to today (June 27, 2025).")
-    end_date = datetime.date.today()  # 2025-06-27
-    st.stop()  # Stop if defaulting to prevent further issues
-
-today = datetime.date.today()  # 2025-06-27
-if end_date > today:
-    st.warning("End date exceeds today (June 27, 2025). Results may be incomplete without future data.")
 
 # Cache data fetching for performance
 @st.cache_data
@@ -85,7 +69,7 @@ def fetch_data(ticker, start_date, end_date):
         st.error(f"Error fetching data for {ticker}: {str(e)}")
         return None
 
-# Color-coding for profit/loss, volume, and close price
+# Color-coding for profit/loss and volume
 def color_profit_loss(val):
     return 'background-color: lightgreen' if val > 0 else 'background-color: lightcoral' if val < 0 else ''
 
@@ -94,13 +78,8 @@ def color_volume(val, prev_volume):
         return ''
     return 'background-color: lightgreen' if val > prev_volume else 'background-color: lightcoral' if val < prev_volume else ''
 
-def color_close(val, prev_close):
-    if pd.isna(prev_close):
-        return ''
-    return 'background-color: lightgreen' if val > prev_close else 'background-color: lightcoral' if val < prev_close else ''
-
 # Calculate profits, volume metrics, and additional metrics
-def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
+def calculate_profits(data, strategies, start_date, end_date):
     daily_results = []
     aggregated_results = {}
     price_extremes = {}
@@ -113,10 +92,10 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         high = data.loc[date, 'High']
         low = data.loc[date, 'Low']
         
-        if strategies["Min-Low to End-Close"]:
+        if strategies["Low-Close"]:
             profit = close - low
-            daily_profit["Min-Low to End-Close ($)"] = profit
-            daily_profit["Min-Low to End-Close (%)"] = (profit / low * 100) if low != 0 else 0
+            daily_profit["Low-Close ($)"] = profit
+            daily_profit["Low-Close (%)"] = (profit / low * 100) if low != 0 else 0
         if strategies["Open-High"]:
             profit = high - open_price
             daily_profit["Open-High ($)"] = profit
@@ -125,10 +104,10 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
             profit = close - open_price
             daily_profit["Open-Close ($)"] = profit
             daily_profit["Open-Close (%)"] = (profit / open_price * 100) if open_price != 0 else 0
-        if strategies["Min-Low to Max-High"]:
+        if strategies["Low-High"]:
             profit = high - low
-            daily_profit["Min-Low to Max-High ($)"] = profit
-            daily_profit["Min-Low to Max-High (%)"] = (profit / low * 100) if low != 0 else 0
+            daily_profit["Low-High ($)"] = profit
+            daily_profit["Low-High (%)"] = (profit / low * 100) if low != 0 else 0
         
         daily_results.append({
             "Date": date,
@@ -144,26 +123,18 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     last_close = data['Close'].iloc[-1]
     period_low = data['Low'].min()
     period_high = data['High'].max()
-    min_close = data['Close'].min()
     first_open_date = data.index[0]
     last_close_date = data.index[-1]
     period_low_date = data['Low'].idxmin()
     period_high_date = data['High'].idxmax()
-    min_close_date = data['Close'].idxmin()
     
     aggregated_profit = {}
-    if strategies["Min-Low to End-Close"]:
-        buy_price = period_low if strategy_variant == "Min-Low to End-Close" else min_close
-        buy_date = period_low_date if strategy_variant == "Min-Low to End-Close" else min_close_date
-        if buy_date > last_close_date:
-            st.warning(f"Min-Low to End-Close: Buy date ({buy_date}) is after sell date ({last_close_date}). Adjusting to use earliest buy date.")
-            buy_date = start_date
-            buy_price = data.loc[buy_date, 'Low'] if strategy_variant == "Min-Low to End-Close" else data.loc[buy_date, 'Close']
-        profit = last_close - buy_price
-        aggregated_profit["Min-Low to End-Close ($)"] = profit
-        aggregated_profit["Min-Low to End-Close (%)"] = (profit / buy_price * 100) if buy_price != 0 else 0
-        aggregated_profit["Min-Low to End-Close Buy Date"] = buy_date
-        aggregated_profit["Min-Low to End-Close Sell Date"] = last_close_date
+    if strategies["Low-Close"]:
+        profit = last_close - period_low
+        aggregated_profit["Low-Close ($)"] = profit
+        aggregated_profit["Low-Close (%)"] = (profit / period_low * 100) if period_low != 0 else 0
+        aggregated_profit["Low-Close Buy Date"] = period_low_date
+        aggregated_profit["Low-Close Sell Date"] = last_close_date
     if strategies["Open-High"]:
         profit = period_high - first_open
         aggregated_profit["Open-High ($)"] = profit
@@ -176,19 +147,12 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         aggregated_profit["Open-Close (%)"] = (profit / first_open * 100) if first_open != 0 else 0
         aggregated_profit["Open-Close Buy Date"] = first_open_date
         aggregated_profit["Open-Close Sell Date"] = last_close_date
-    if strategies["Min-Low to Max-High"]:
-        if period_low_date > period_high_date:
-            st.warning(f"Min-Low to Max-High: Buy date ({period_low_date}) is after sell date ({period_high_date}). Skipping this strategy.")
-            aggregated_profit["Min-Low to Max-High ($)"] = 0
-            aggregated_profit["Min-Low to Max-High (%)"] = 0
-            aggregated_profit["Min-Low to Max-High Buy Date"] = period_low_date
-            aggregated_profit["Min-Low to Max-High Sell Date"] = period_high_date
-        else:
-            profit = period_high - period_low
-            aggregated_profit["Min-Low to Max-High ($)"] = profit
-            aggregated_profit["Min-Low to Max-High (%)"] = (profit / period_low * 100) if period_low != 0 else 0
-            aggregated_profit["Min-Low to Max-High Buy Date"] = period_low_date
-            aggregated_profit["Min-Low to Max-High Sell Date"] = period_high_date
+    if strategies["Low-High"]:
+        profit = period_high - period_low
+        aggregated_profit["Low-High ($)"] = profit
+        aggregated_profit["Low-High (%)"] = (profit / period_low * 100) if period_low != 0 else 0
+        aggregated_profit["Low-High Buy Date"] = period_low_date
+        aggregated_profit["Low-High Sell Date"] = period_high_date
     
     # Price extremes
     price_extremes = {
@@ -202,6 +166,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     # Volume analysis
     volume_data = data[['Volume']].copy()
     volume_data['Volume Change'] = volume_data['Volume'].diff()
+    # Precompute volume color styles
     volume_data['Volume Color'] = volume_data.apply(
         lambda x: color_volume(x['Volume'], volume_data['Volume'].shift(1)[x.name] if x.name in volume_data['Volume'].shift(1).index else None),
         axis=1
@@ -212,13 +177,6 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     min_volume = data['Volume'].min()
     max_volume_date = data['Volume'].idxmax()
     min_volume_date = data['Volume'].idxmin()
-    
-    # Raw data color-coding for Close
-    raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
-    raw_data['Close Color'] = raw_data.apply(
-        lambda x: color_close(x['Close'], raw_data['Close'].shift(1)[x.name] if x.name in raw_data['Close'].shift(1).index else None),
-        axis=1
-    )
     
     # Additional metrics
     volatility = data['Close'].std()
@@ -253,7 +211,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     if not comparison_df.empty:
         comparison_df.sort_values(by="Aggregated Return (%)", ascending=False, inplace=True)
     
-    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data
+    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits
 
 # Run analysis on button click
 if st.button("Run Analysis"):
@@ -263,27 +221,7 @@ if st.button("Run Analysis"):
         else:
             data = fetch_data(ticker, start_date, end_date)
             if data is not None:
-                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data = calculate_profits(data, strategies, strategy_variant, start_date, end_date)
-                
-                # Raw stock data
-                with st.expander("Raw Stock Data", expanded=False):
-                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.write(f"Raw stock data for {ticker} ({start_date} to {end_date}):")
-                    display_raw_data = raw_data[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
-                    styled_raw_df = display_raw_data.style.format({
-                        "Open": "{:.2f}",
-                        "High": "{:.2f}",
-                        "Low": "{:.2f}",
-                        "Close": "{:.2f}",
-                        "Volume": "{:.0f}"
-                    })
-                    styled_raw_df = styled_raw_df.apply(
-                        lambda x: [raw_data.loc[x.name, 'Close Color']] * len(x) if x.name in raw_data.index else [''] * len(x),
-                        axis=1,
-                        subset=["Close"]
-                    )
-                    st.dataframe(styled_raw_df)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits = calculate_profits(data, strategies, start_date, end_date)
                 
                 # Summary metrics card
                 st.subheader("Summary Metrics")
@@ -321,13 +259,10 @@ if st.button("Run Analysis"):
                 with st.expander("Volume Analysis", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("Daily trading volume and change (shares):")
+                    # Display volume_data without Volume Color column
                     display_volume_data = volume_data[['Volume', 'Volume Change']].copy()
                     styled_df = display_volume_data.style.format({"Volume": "{:.0f}", "Volume Change": "{:.0f}"})
-                    styled_df = styled_df.apply(
-                        lambda x: [volume_data.loc[x.name, 'Volume Color']] * len(x) if x.name in volume_data.index else [''] * len(x),
-                        axis=1,
-                        subset=["Volume"]
-                    )
+                    styled_df = styled_df.apply(lambda x: [volume_data.loc[x.name, 'Volume Color']] * len(x) if x.name in volume_data.index else [''] * len(x), axis=1, subset=["Volume"])
                     styled_df = styled_df.applymap(color_profit_loss, subset=["Volume Change"])
                     st.dataframe(styled_df)
                     st.write(f"**Average Daily Volume**: {avg_volume:.0f} shares")
@@ -377,7 +312,7 @@ if st.button("Run Analysis"):
                         for strategy, selected in strategies.items():
                             if selected and f"{strategy} ($)" in daily_df.columns:
                                 for date, profit in daily_df[f"{strategy} ($)"].items():
-                                    if profit > 0:
+                                    if profit > 0:  # Only include positive profits
                                         sunburst_data.append({
                                             "Strategy": strategy,
                                             "Date": date.strftime('%Y-%m-%d'),
