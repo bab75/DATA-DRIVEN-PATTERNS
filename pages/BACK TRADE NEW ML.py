@@ -25,7 +25,7 @@ st.markdown("""
 
 # Initialize session state for date inputs
 if 'end_date' not in st.session_state:
-    st.session_state.end_date = datetime(2025, 6, 28).date()  # Updated to current date
+    st.session_state.end_date = datetime(2025, 6, 28).date()  # Current date
 
 # Sidebar for inputs
 with st.sidebar:
@@ -84,7 +84,9 @@ def fetch_data(ticker, start_date, end_date):
             return None, None
         data.columns = [col.capitalize() for col in data.columns]
         print(f"Columns after fetch: {data.columns.tolist()}")  # Debug print
-        data.index = pd.to_datetime(data.index)
+        # Ensure timezone-naive index
+        data.index = pd.to_datetime(data.index).tz_localize(None)
+        print(f"Index timezone after normalization: {data.index.tz}")  # Debug timezone
         data = data.loc[start_date:end_date]
         if data.empty:
             st.error(f"No trading data available between {start_date} and {end_date}.")
