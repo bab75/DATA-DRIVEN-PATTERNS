@@ -5,7 +5,7 @@ import plotly.express as px
 from datetime import datetime, date, timedelta
 import numpy as np
 from sklearn.linear_model import LinearRegression
-import holidays
+import pandas_market_calendars as mcal
 
 # Streamlit page configuration
 st.set_page_config(page_title="Stock Price Comparison Dashboard", page_icon="📊", layout="wide")
