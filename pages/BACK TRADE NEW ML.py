@@ -697,16 +697,12 @@ if st.button("Run Analysis"):
             with tabs[3]:
                 with st.expander("Predicted Daily Gap", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    import holidays  # Insert at line 573
+                    import pandas_market_calendars as mcal
             
-                    # Define U.S. stock market holidays for 2025
-                    us_holidays = holidays.US(market=True, years=2025)
-                    today = datetime.now().date()  # 2025-06-28
-                    next_day = today + timedelta(days=1)  # Initial next day (2025-06-29)
-            
-                    # Shift to next trading day
-                    while next_day.weekday() >= 5 or next_day in us_holidays:
-                        next_day += timedelta(days=1)
+                    # Get NYSE calendar and next trading day
+                    nyse = mcal.get_calendar('NYSE')
+                    today = pd.Timestamp(datetime.now().date())  # 2025-06-28
+                    next_trading_day = nyse.schedule(start_date=today, end_date=today + pd.offsets.Day(10)).index[0]  # Find next trading day
             
                     # Update the prediction note with the correct date
                     st.markdown("""
@@ -715,9 +711,7 @@ if st.button("Run Analysis"):
                     At least 10 data points are recommended for reliable predictions. 
                     Validate with other indicators before acting on these forecasts.
                     """)
-                    st.write(f"**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for the next trading day, {next_day.strftime('%B %d, %Y')})")
-                    strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
-                    conf_numbers = []
+                    st.write(f"**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for the next trading day, {next_trading_day.date().strftime('%B %d, %Y')})")
                     
                     for s in strategy_names:
                         if strategy_predictions and s in strategy_predictions:
