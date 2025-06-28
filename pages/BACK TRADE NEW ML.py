@@ -152,7 +152,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         if strategies["Min-Low to Max-High"]:
             profit = high - low
             daily_profit["Min-Low to Max-High ($)"] = profit
-            daily_profit["Min-Low to Max-High (%)"] = (profit / low * 100) if low != 0 else 0
+            daily_profit["Min-Low to Max-High (%)"] = (profitUX: / low * 100) if low != 0 else 0
         
         daily_results.append({
             "Date": date,
@@ -457,7 +457,7 @@ if st.button("Run Analysis"):
                     st.dataframe(extremes_df.style.format({"Highest Value": "{:.2f}", "Lowest Value": "{:.2f}"}))
                     st.markdown('</div>', unsafe_allow_html=True)
 
-            with tabs[2]:
+            with tabs[2]:               
                 with st.expander("Daily Gap and Sentiment", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("Daily gap from Low to Close for selected strategies (assuming 1 share) to gauge market sentiment:")
@@ -692,62 +692,62 @@ if st.button("Run Analysis"):
                     st.write(f"- Opening Price vs Previous Close: {open_contrib:.1f}%")
                     st.write(f"- Intraday Movement: {intraday_contrib:.1f}%")
                     st.markdown('</div>', unsafe_allow_html=True)
-            
-                        with tabs[3]:
-                            with st.expander("Predicted Daily Gap", expanded=True):
-                                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                                st.markdown("""
-                                **Note**: Predictions use a simple Linear Regression model based on lagged Close and Volume. 
-                                Results are indicative and may not capture complex market dynamics. 
-                                At least 10 data points are recommended for reliable predictions. 
-                                Validate with other indicators before acting on these forecasts.
-                                """)
-                                st.write("**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for tomorrow, June 29, 2025)")
-                                strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
-                                conf_numbers = []
-                                conf_ranges = []
-                                variations = []
-                                means = []
-                                ml_predictions_list = []
-                                rmse_list = []
-                                
-                                for s in strategy_names:
-                                    if strategy_predictions and s in strategy_predictions:
-                                        v = strategy_predictions[s]
-                                        conf_numbers.append(f"${v['Conf Lower']:.2f}")
-                                        conf_ranges.append(f"[{v['Conf Lower']:.2f}, {v['Conf Upper']:.2f}]")
-                                        variations.append(f"${v['Std']:.2f}")
-                                        means.append(f"${v['Mean']:.2f}")
-                                    else:
-                                        conf_numbers.append("N/A")
-                                        conf_ranges.append("N/A")
-                                        variations.append("N/A")
-                                        means.append("N/A")
-                                    ml_pred = ml_predictions.get(s, {"Predicted Increase": 0.0})
-                                    ml_predictions_list.append(f"${ml_pred['Predicted Increase']:.2f}" if ml_predictions else "N/A")
-                                    rmse = ml_predictions.get(s, {"RMSE": 0.0})["RMSE"]
-                                    rmse_list.append(f"${rmse:.2f}" if rmse > 0 else "N/A")
-                                
-                                data = {
-                                    "Strategy": strategy_names,
-                                    "Mean ($)": means,
-                                    "Confident Gap ($)": conf_numbers,
-                                    "Confidence Range ($)": conf_ranges,
-                                    "Variation ($)": variations,
-                                    "RMSE ($)": rmse_list,
-                                    "ML Predicted Gap ($)": ml_predictions_list
-                                }
-                                df_predictions = pd.DataFrame(data)
-                                styled_df = df_predictions.style.format({
-                                    "Mean ($)": lambda x: x,
-                                    "Confident Gap ($)": lambda x: x,
-                                    "Confidence Range ($)": lambda x: x,
-                                    "Variation ($)": lambda x: x,
-                                    "RMSE ($)": lambda x: x,
-                                    "ML Predicted Gap ($)": lambda x: x
-                                }).set_properties(**{'text-align': 'left'})
-                                st.dataframe(styled_df)
-                                st.markdown('</div>', unsafe_allow_html=True)
+
+            with tabs[3]:
+                with st.expander("Predicted Daily Gap", expanded=True):
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.markdown("""
+                    **Note**: Predictions use a simple Linear Regression model based on lagged Close and Volume. 
+                    Results are indicative and may not capture complex market dynamics. 
+                    At least 10 data points are recommended for reliable predictions. 
+                    Validate with other indicators before acting on these forecasts.
+                    """)
+                    st.write("**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for tomorrow, June 29, 2025)")
+                    strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
+                    conf_numbers = []
+                    conf_ranges = []
+                    variations = []
+                    means = []
+                    ml_predictions_list = []
+                    rmse_list = []
+                    
+                    for s in strategy_names:
+                        if strategy_predictions and s in strategy_predictions:
+                            v = strategy_predictions[s]
+                            conf_numbers.append(f"${v['Conf Lower']:.2f}")
+                            conf_ranges.append(f"[{v['Conf Lower']:.2f}, {v['Conf Upper']:.2f}]")
+                            variations.append(f"${v['Std']:.2f}")
+                            means.append(f"${v['Mean']:.2f}")
+                        else:
+                            conf_numbers.append("N/A")
+                            conf_ranges.append("N/A")
+                            variations.append("N/A")
+                            means.append("N/A")
+                        ml_pred = ml_predictions.get(s, {"Predicted Increase": 0.0})
+                        ml_predictions_list.append(f"${ml_pred['Predicted Increase']:.2f}" if ml_predictions else "N/A")
+                        rmse = ml_predictions.get(s, {"RMSE": 0.0})["RMSE"]
+                        rmse_list.append(f"${rmse:.2f}" if rmse > 0 else "N/A")
+                    
+                    data = {
+                        "Strategy": strategy_names,
+                        "Mean ($)": means,
+                        "Confident Gap ($)": conf_numbers,
+                        "Confidence Range ($)": conf_ranges,
+                        "Variation ($)": variations,
+                        "RMSE ($)": rmse_list,
+                        "ML Predicted Gap ($)": ml_predictions_list
+                    }
+                    df_predictions = pd.DataFrame(data)
+                    styled_df = df_predictions.style.format({
+                        "Mean ($)": lambda x: x,
+                        "Confident Gap ($)": lambda x: x,
+                        "Confidence Range ($)": lambda x: x,
+                        "Variation ($)": lambda x: x,
+                        "RMSE ($)": lambda x: x,
+                        "ML Predicted Gap ($)": lambda x: x
+                    }).set_properties(**{'text-align': 'left'})
+                    st.dataframe(styled_df)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
             with tabs[4]:
                 with st.expander("Consolidated Market Insights", expanded=True):
