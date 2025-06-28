@@ -457,7 +457,7 @@ if st.button("Run Analysis"):
                     st.dataframe(extremes_df.style.format({"Highest Value": "{:.2f}", "Lowest Value": "{:.2f}"}))
                     st.markdown('</div>', unsafe_allow_html=True)
 
-            with tabs[2]:
+            with tabs[2]:               
                 with st.expander("Daily Gap and Sentiment", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("Daily gap from Low to Close for selected strategies (assuming 1 share) to gauge market sentiment:")
@@ -505,7 +505,7 @@ if st.button("Run Analysis"):
                     data_with_volume['Is High Price'] = data_with_volume['High'] >= high_price_threshold
                     data_with_volume['Volume vs Avg'] = (data_with_volume['Volume'] - avg_volume) / avg_volume * 100
                     high_price_days = data_with_volume[data_with_volume['Is High Price']].copy()
-
+            
                     if not high_price_days.empty:
                         high_price_days['Volume vs Avg'] = high_price_days['Volume vs Avg'].fillna(0).clip(lower=0)
                         if high_price_days['Volume vs Avg'].isna().any() or (high_price_days['Volume vs Avg'] < 0).any():
@@ -603,21 +603,54 @@ if st.button("Run Analysis"):
                 
                 with st.expander("Gap and Volume Trends"):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.write(f"Daily gap and volume trends for {ticker} ({start_date} to {end_date}):")
+                    # Debugging: Display data shapes and sample
+                    st.write(f"Debug Info: daily_df shape: {daily_df.shape}, volume_data shape: {volume_data.shape}")
+                    st.write(f"Selected strategies: {list(strategies.keys())}")
                     dollar_cols = [col for col in daily_df.columns if col.endswith("($)")]
-                    fig = px.line(daily_df, x=daily_df.index, y=dollar_cols,
-                                 title=f"Daily Gap for {ticker}",
-                                 labels={"value": "Gap ($)", "Date": "Date", "variable": "Strategy"})
-                    fig.add_scatter(x=volume_data.index, y=volume_data['Volume'], yaxis="y2", name="Volume", line=dict(color="purple", dash="dash"))
-                    fig.update_layout(
-                        hovermode='x unified',
-                        yaxis2=dict(title="Volume (shares)", overlaying="y", side="right"),
-                        showlegend=True
-                    )
-                    fig.update_traces(hovertemplate='%{y:.0f} shares', selector=dict(name="Volume"))
-                    for trace in fig.data:
-                        if trace.name != "Volume":
-                            trace.hovertemplate = f"{trace.name}: %{{y:.2f}} $"
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.write(f"Columns for plotting: {dollar_cols}")
+                    
+                    # Data validation and cleaning
+                    if daily_df.empty or not dollar_cols:
+                        st.warning("No data available for strategy gaps. Ensure at least one strategy is selected and data is available.")
+                    elif volume_data['Volume'].isna().all() or volume_data.empty:
+                        st.warning("No volume data available. Check the date range or ticker.")
+                    else:
+                        # Clean data: Drop NaN/infinite values and ensure numeric types
+                        plot_df = daily_df[dollar_cols].dropna()
+                        plot_volume = volume_data[['Volume']].dropna()
+                        plot_df = plot_df.replace([np.inf, -np.inf], np.nan).dropna()
+                        plot_volume = plot_volume.replace([np.inf, -np.inf], np.nan).dropna()
+                        
+                        # Align indices with reindexing
+                        common_indices = plot_df.index.intersection(plot_volume.index)
+                        if common_indices.empty:
+                            st.warning("No overlapping dates between gap and volume data. Attempting to plot available data...")
+                            plot_df = plot_df.reindex(daily_df.index)
+                            plot_volume = plot_volume.reindex(volume_data.index)
+                        else:
+                            plot_df = plot_df.loc[common_indices]
+                            plot_volume = plot_volume.loc[common_indices]
+                        
+                        # Plot the chart with fallback
+                        if not plot_df.empty and not plot_volume.empty:
+                            fig = px.line(plot_df, x=plot_df.index, y=dollar_cols,
+                                         title=f"Daily Gap for {ticker}",
+                                         labels={"value": "Gap ($)", "Date": "Date", "variable": "Strategy"})
+                            fig.add_scatter(x=plot_volume.index, y=plot_volume['Volume'], yaxis="y2", 
+                                           name="Volume", line=dict(color="purple", dash="dash"))
+                            fig.update_layout(
+                                hovermode='x unified',
+                                yaxis2=dict(title="Volume (shares)", overlaying="y", side="right"),
+                                showlegend=True
+                            )
+                            fig.update_traces(hovertemplate='%{y:.0f} shares', selector=dict(name="Volume"))
+                            for trace in fig.data:
+                                if trace.name != "Volume":
+                                    trace.hovertemplate = f"{trace.name}: %{{y:.2f}} $"
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.warning("Insufficient data to plot gap and volume trends. Check data availability.")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with st.expander("Gap Contribution (Sunburst)"):
