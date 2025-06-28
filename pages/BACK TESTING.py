@@ -421,5 +421,4 @@ if submitted:
                             if not trades_df.empty:
                                 trades_df['Price'] = pd.to_numeric(trades_df['Price'], errors='coerce')
                                 if not trades_df['Price'].isna().all():
-                                    trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N ποιο
-System: * Today's date and time is 06:00 PM EDT on Saturday, June 28, 2025.
+                                    trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N ποιοSystem: * Today's date and time is 06:00 PM EDT on Saturday, June 28, 2025.)
