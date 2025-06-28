@@ -52,7 +52,7 @@ with st.sidebar:
 
 # Validate date range
 if start_date >= end_date:
-    st.error("End date must be after start date.")
+    st.error("End date must be after start_date.")
     st.stop()
 
 # Ensure end_date is a valid date
@@ -420,6 +420,19 @@ if st.button("Run Analysis"):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("Profit/loss per day for selected strategies (assuming 1 share):")
                     st.dataframe(daily_df.style.format({col: "{:.2f}" for col in daily_df.columns}).applymap(color_profit_loss, subset=[col for col in daily_df.columns if col.endswith("($)")]))
+                    
+                    # Add heatmap for daily profit/loss
+                    if not daily_df.empty and any(col.endswith("($)") for col in daily_df.columns):
+                        profit_cols = [col for col in daily_df.columns if col.endswith("($)")]
+                        pivot_df = daily_df[profit_cols].T
+                        fig_heatmap = px.imshow(pivot_df,
+                                               labels=dict(x="Date", y="Strategy", color="Profit/Loss ($)"),
+                                               color_continuous_scale="RdYlGn",
+                                               aspect="auto",
+                                               title=f"Heatmap of Daily Profit/Loss by Strategy for {ticker} ({start_date} to {end_date})")
+                        fig_heatmap.update_layout(coloraxis_colorbar_title="Profit/Loss ($)")
+                        st.plotly_chart(fig_heatmap, use_container_width=True)
+                    
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Aggregated profit/loss
@@ -570,6 +583,7 @@ if st.button("Run Analysis"):
                     variations = []
                     means = []
                     ml_predictions_list = []
+                    rmse_list = []
                     
                     for s in strategy_names:
                         if strategy_predictions and s in strategy_predictions:
@@ -585,6 +599,8 @@ if st.button("Run Analysis"):
                             means.append("N/A")
                         ml_pred = ml_predictions.get(s, {"Predicted Increase": 0.0})
                         ml_predictions_list.append(f"${ml_pred['Predicted Increase']:.2f}" if ml_predictions else "N/A")
+                        rmse = ml_predictions.get(s, {"RMSE": 0.0})["RMSE"]
+                        rmse_list.append(f"${rmse:.2f}" if rmse > 0 else "N/A")
                     
                     data = {
                         "Strategy": strategy_names,
@@ -592,6 +608,7 @@ if st.button("Run Analysis"):
                         "Confident Number ($)": conf_numbers,
                         "Confidence Range ($)": conf_ranges,
                         "Variation ($)": variations,
+                        "RMSE ($)": rmse_list,
                         "ML Prediction ($)": ml_predictions_list
                     }
                     df_predictions = pd.DataFrame(data)
@@ -600,6 +617,7 @@ if st.button("Run Analysis"):
                         "Confident Number ($)": lambda x: x,
                         "Confidence Range ($)": lambda x: x,
                         "Variation ($)": lambda x: x,
+                        "RMSE ($)": lambda x: x,
                         "ML Prediction ($)": lambda x: x
                     }).set_properties(**{'text-align': 'left'})
                     st.dataframe(styled_df)
