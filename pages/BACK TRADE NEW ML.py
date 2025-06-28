@@ -763,7 +763,7 @@ if st.button("Run Analysis"):
                     }).set_properties(**{'text-align': 'left'})
                     st.dataframe(styled_df)
             
-                    # Add Best ML Prediction summary
+                    # Add Best ML Prediction summary with corrected date
                     if conf_numbers:
                         best_strategy = strategy_names[conf_numbers.index(max(conf_numbers, key=lambda x: float(x.replace('$', ''))))]
                         best_prediction = max(conf_numbers, key=lambda x: float(x.replace('$', '')))
