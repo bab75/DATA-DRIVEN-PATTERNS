@@ -418,7 +418,6 @@ if st.button("Run Analysis"):
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Daily gap and sentiment
-               # Daily gap and sentiment
                 with st.expander("Daily Gap and Sentiment", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("Daily gap from Low to Close for selected strategies (assuming 1 share) to gauge market sentiment:")
@@ -453,11 +452,17 @@ if st.button("Run Analysis"):
                         
                         # Highlight days with all strategies profitable
                         all_profitable = daily_df[[col for col in daily_df.columns if col.endswith("($)")]].apply(lambda x: x >= 0, axis=1).all(axis=1)
-                        profitable_days = daily_df[all_profitable]
-                        if not profitable_days.empty:
+                        profitable_days = daily_df[all_profitable].index
+                        if len(profitable_days) > 0:
+                            # Safely calculate mean volume for profitable days
+                            common_indices = profitable_days.intersection(volume_data.index)
+                            if not common_indices.empty:
+                                mean_volume_profitable = volume_data.loc[common_indices, 'Volume'].mean()
+                                st.write(f"Volume on these days (mean): {mean_volume_profitable:.0f} shares")
+                            else:
+                                st.write("No volume data available for profitable days.")
                             st.write("Days with All Strategies Profitable:")
-                            st.dataframe(profitable_days.style.format({col: "{:.2f}" for col in profitable_days.columns if col.endswith("($)")}))
-                            st.write(f"Volume on these days (mean): {profitable_days.index.map(lambda x: volume_data.loc[x, 'Volume']).mean():.0f} shares")
+                            st.dataframe(daily_df.loc[profitable_days].style.format({col: "{:.2f}" for col in daily_df.columns if col.endswith("($)")}))
                     
                     # High Price and Volume Analysis
                     st.subheader("High Price and Volume Analysis")
@@ -481,9 +486,9 @@ if st.button("Run Analysis"):
                         
                         # Plot High Price vs Volume
                         fig = px.scatter(high_price_days, x="High", y="Volume",
-                                         size="Volume vs Avg", color="Volume vs Avg",
-                                         title="High Price Days vs Volume (Size reflects % above Avg Volume)",
-                                         labels={"High": "High Price ($)", "Volume": "Volume (shares)", "Volume vs Avg": "% Above Avg Volume"})
+                                        size="Volume vs Avg", color="Volume vs Avg",
+                                        title="High Price Days vs Volume (Size reflects % above Avg Volume)",
+                                        labels={"High": "High Price ($)", "Volume": "Volume (shares)", "Volume vs Avg": "% Above Avg Volume"})
                         fig.update_traces(marker=dict(sizemode='area', sizeref=2. * max(high_price_days['Volume vs Avg']) / (40**2)))
                         st.plotly_chart(fig, use_container_width=True)
                         
@@ -499,7 +504,7 @@ if st.button("Run Analysis"):
                     else:
                         st.write("No days identified with high prices based on the 90th percentile threshold.")
                     st.markdown('</div>', unsafe_allow_html=True)
-
+                
                 # Aggregated profit/loss
                 with st.expander("Aggregated Profit/Loss", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -564,7 +569,7 @@ if st.button("Run Analysis"):
                     }).applymap(color_profit_loss, subset=["Max Daily Gap ($)", "Aggregated Profit ($)"]))
                     st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Profit/loss and volume trends
+                # Gap and volume trends
                 if not daily_df.empty:
                     with st.expander("Gap and Volume Trends", expanded=True):
                         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
