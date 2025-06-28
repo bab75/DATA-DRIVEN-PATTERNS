@@ -698,11 +698,13 @@ if st.button("Run Analysis"):
                 with st.expander("Predicted Daily Gap", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     import pandas_market_calendars as mcal
+                    import pandas as pd
+                    from datetime import datetime
             
                     # Get NYSE calendar and next trading day
                     nyse = mcal.get_calendar('NYSE')
                     today = pd.Timestamp(datetime.now().date())  # 2025-06-28
-                    next_trading_day = nyse.schedule(start_date=today, end_date=today + pd.offsets.Day(10)).index[0]  # Find next trading day
+                    next_trading_day = nyse.schedule(start_date=today, end_date=today + pd.offsets.Day(10)).index[0]
             
                     # Update the prediction note with the correct date
                     st.markdown("""
@@ -712,6 +714,10 @@ if st.button("Run Analysis"):
                     Validate with other indicators before acting on these forecasts.
                     """)
                     st.write(f"**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for the next trading day, {next_trading_day.date().strftime('%B %d, %Y')})")
+            
+                    # Retain original strategy_names definition (move this up if not already defined earlier)
+                    strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]  # Adjust based on earlier definition
+                    conf_numbers = []
                     
                     for s in strategy_names:
                         if strategy_predictions and s in strategy_predictions:
