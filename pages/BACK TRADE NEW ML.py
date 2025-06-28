@@ -5,7 +5,7 @@ import plotly.express as px
 from datetime import datetime, date, timedelta
 import numpy as np
 from sklearn.linear_model import LinearRegression
-import pandas_market_calendars as mcal
+import pandas_market_calendars as mcal  # Added for trading day calculation
 
 # Streamlit page configuration
 st.set_page_config(page_title="Stock Price Comparison Dashboard", page_icon="📊", layout="wide")
@@ -120,7 +120,7 @@ def color_close(val, prev_close):
         return ''
     return 'background-color: lightgreen' if val > prev_close else 'background-color: lightcoral' if val < prev_close else ''
 
-# Calculate profits, volume metrics, and additional metrics
+# Calculate profits, volume metrics, and additional metrics with trading day adjustment
 def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     daily_results = []
     aggregated_results = {}
@@ -255,6 +255,11 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
             elif strategy == "Min-Low to Max-High":
                 daily_diffs[strategy] = data['High'] - data['Low']
     
+    # Get next trading day
+    nyse = mcal.get_calendar('NYSE')
+    today = pd.Timestamp(datetime.now().date())  # 2025-06-28
+    next_trading_day = nyse.schedule(start_date=today, end_date=today + pd.offsets.Day(10)).index[0].date()
+
     strategy_predictions = {}
     for strategy, diffs in daily_diffs.items():
         if len(diffs) > 1:
@@ -387,7 +392,7 @@ if st.button("Run Analysis"):
                     best_ml = max(ml_predictions.items(), key=lambda x: x[1]["Predicted Increase"])
                     st.write(f"**Analysis Highlights**:")
                     st.write(f"- **Best Historical Strategy**: {best_confident[0]} with a confident gap of ${best_confident[1]['Conf Lower']:.2f}, indicating consistent performance.")
-                    st.write(f"- **Best ML Prediction**: {best_ml[0]} with a predicted gap of ${best_ml[1]['Predicted Increase']:.2f} for tomorrow (June 29, 2025), suggesting potential short-term opportunities.")
+                    st.write(f"- **Best ML Prediction**: {best_ml[0]} with a predicted gap of ${best_ml[1]['Predicted Increase']:.2f} for the next trading day ({next_trading_day.strftime('%B %d, %Y')}), suggesting potential short-term opportunities.")
                 else:
                     st.write("**Analysis Highlights**: No sufficient data for strategy or ML predictions. Try a longer date range or different ticker.")
                 
@@ -697,25 +702,13 @@ if st.button("Run Analysis"):
             with tabs[3]:
                 with st.expander("Predicted Daily Gap", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    import pandas_market_calendars as mcal
-                    import pandas as pd
-                    from datetime import datetime
-            
-                    # Get NYSE calendar and next trading day
-                    nyse = mcal.get_calendar('NYSE')
-                    today = pd.Timestamp(datetime.now().date())  # 2025-06-28
-                    next_trading_day = nyse.schedule(start_date=today, end_date=today + pd.offsets.Day(10)).index[0]
-            
-                    # Update the prediction note with the correct date
                     st.markdown("""
                     **Note**: Predictions use a simple Linear Regression model based on lagged Close and Volume. 
                     Results are indicative and may not capture complex market dynamics. 
                     At least 10 data points are recommended for reliable predictions. 
                     Validate with other indicators before acting on these forecasts.
                     """)
-                    st.write(f"**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for the next trading day, {next_trading_day.date().strftime('%B %d, %Y')})")
-            
-                    # Initialize lists
+                    st.write(f"**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for the next trading day, {next_trading_day.strftime('%B %d, %Y')})")
                     strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
                     conf_numbers = []
                     conf_ranges = []
@@ -723,8 +716,7 @@ if st.button("Run Analysis"):
                     means = []
                     ml_predictions_list = []
                     rmse_list = []
-            
-                    # Prediction loop
+                    
                     for s in strategy_names:
                         if strategy_predictions and s in strategy_predictions:
                             v = strategy_predictions[s]
@@ -741,8 +733,7 @@ if st.button("Run Analysis"):
                         ml_predictions_list.append(f"${ml_pred['Predicted Increase']:.2f}" if ml_predictions else "N/A")
                         rmse = ml_predictions.get(s, {"RMSE": 0.0})["RMSE"]
                         rmse_list.append(f"${rmse:.2f}" if rmse > 0 else "N/A")
-            
-                    # Create DataFrame
+                    
                     data = {
                         "Strategy": strategy_names,
                         "Mean ($)": means,
@@ -762,13 +753,6 @@ if st.button("Run Analysis"):
                         "ML Predicted Gap ($)": lambda x: x
                     }).set_properties(**{'text-align': 'left'})
                     st.dataframe(styled_df)
-            
-                    # Add Best ML Prediction summary with corrected date
-                    if conf_numbers:
-                        best_strategy = strategy_names[conf_numbers.index(max(conf_numbers, key=lambda x: float(x.replace('$', ''))))]
-                        best_prediction = max(conf_numbers, key=lambda x: float(x.replace('$', '')))
-                        st.write(f"Best ML Prediction: {best_strategy} with a predicted gap of {best_prediction} for the next trading day ({next_trading_day.date().strftime('%B %d, %Y')}), suggesting potential short-term opportunities.")
-            
                     st.markdown('</div>', unsafe_allow_html=True)
 
             with tabs[4]:
@@ -794,7 +778,7 @@ if st.button("Run Analysis"):
                         
                         best_ml_strategy = max(ml_predictions.items(), key=lambda x: x[1]["Predicted Increase"])[0] if ml_predictions else "N/A"
                         best_ml_pred = max(ml_predictions.values(), key=lambda x: x["Predicted Increase"])["Predicted Increase"] if ml_predictions else 0
-                        st.write(f"- **Short-Term Trading**: Target {best_ml_strategy} with ML predicted gap ${best_ml_pred:.2f}. Enter at recent lows (e.g., {price_extremes['Lowest Date'][2]} at ${price_extremes['Lowest Value'][2]:.2f}), exit at predicted highs over weeks.")
+                        st.write(f"- **Short-Term Trading**: Target {best_ml_strategy} with ML predicted gap ${best_ml_pred:.2f} for the next trading day ({next_trading_day.strftime('%B %d, %Y')}). Enter at recent lows (e.g., {price_extremes['Lowest Date'][2]} at ${price_extremes['Lowest Value'][2]:.2f}), exit at predicted highs over weeks.")
                         
                         st.write(f"- **Long-Term Investment**: Buy at period low ${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]} with volatility {volatility:.2f}. Hold for stable growth if trends remain positive.")
                         
