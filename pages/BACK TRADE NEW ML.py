@@ -715,7 +715,7 @@ if st.button("Run Analysis"):
                     """)
                     st.write(f"**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for the next trading day, {next_trading_day.date().strftime('%B %d, %Y')})")
             
-                    # Retain original strategy_names definition (move this up if not already defined earlier)
+                    # Initialize lists
                     strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
                     conf_numbers = []
                     conf_ranges = []
@@ -723,7 +723,8 @@ if st.button("Run Analysis"):
                     means = []
                     ml_predictions_list = []
                     rmse_list = []
-                    
+            
+                    # Prediction loop
                     for s in strategy_names:
                         if strategy_predictions and s in strategy_predictions:
                             v = strategy_predictions[s]
@@ -740,7 +741,8 @@ if st.button("Run Analysis"):
                         ml_predictions_list.append(f"${ml_pred['Predicted Increase']:.2f}" if ml_predictions else "N/A")
                         rmse = ml_predictions.get(s, {"RMSE": 0.0})["RMSE"]
                         rmse_list.append(f"${rmse:.2f}" if rmse > 0 else "N/A")
-                    
+            
+                    # Create DataFrame
                     data = {
                         "Strategy": strategy_names,
                         "Mean ($)": means,
