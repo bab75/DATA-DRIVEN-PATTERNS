@@ -502,7 +502,7 @@ if st.button("Run Analysis"):
                                 else:
                                     st.write("No volume data available for profitable days.")
                                 st.write("Days with All Strategies Profitable:")
-                                st.dataframe(daily_df.loc[profitable_days].style.format({col: "{:.2f}" for col in daily_df.columns if col.endswith("($)")]))
+                                st.dataframe(daily_df.loc[profitable_days].style.format({col: "{:.2f}" for col in daily_df.columns if col.endswith("($)")]}))
                     
                     data_with_volume = pd.concat([data[['High', 'Close']], volume_data['Volume']], axis=1) if not data.empty and not volume_data.empty else pd.DataFrame()
                     if not data_with_volume.empty:
