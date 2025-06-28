@@ -36,7 +36,7 @@ with st.sidebar:
     start_date = st.date_input("Start Date", value=datetime(2025, 2, 1))
     end_date = st.date_input("End Date", value=st.session_state.end_date)
     st.session_state.end_date = end_date
-    st.markdown("**Note**: Select a date range with trading days. End date should not exceed today (June 27, 2025) unless simulating future data.")
+    st.markdown("**Note**: Select a date range with trading days. End date should not exceed today (June 28, 2025) unless simulating future data.")
 
     st.subheader("Select Comparison Strategies")
     strategies = {
@@ -47,10 +47,10 @@ with st.sidebar:
     }
 
     st.subheader("Strategy Variants")
-    strategy_variant = st.radio("Select Strategy Variant", 
-                                ["Min-Low to End-Close", "Min-Close to End-Close"], 
-                                index=0, 
-                                help="Choose how to calculate buy and sell points: Min-Low uses the lowest Low price, Min-Close uses the lowest Close price.")
+    strategy_variant = st.radio("Select Strategy Variant",
+                               ["Min-Low to End-Close", "Min-Close to End-Close"],
+                               index=0,
+                               help="Choose how to calculate buy and sell points: Min-Low uses the lowest Low price, Min-Close uses the lowest Close price.")
 
 # Validate date range
 if start_date >= end_date:
@@ -58,13 +58,13 @@ if start_date >= end_date:
     st.stop()
 
 if end_date is None:
-    st.error("Invalid end_date. Defaulting to today (June 27, 2025).")
+    st.error("Invalid end_date. Defaulting to today (June 28, 2025).")
     end_date = date.today()
     st.stop()
 
 today = date.today()
 if end_date > today:
-    st.warning("End date exceeds today (June 27, 2025). Results may be incomplete without future data.")
+    st.warning("End date exceeds today (June 28, 2025). Results may be incomplete without future data.")
 
 # Cache data fetching for performance
 @st.cache_data
@@ -291,19 +291,19 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
                     model = LinearRegression()
                     model.fit(X_train, y_train)
                     
+                    # Use last available data for prediction
+                    last_data = (data_ml.iloc[-1][['Lag_Close', 'Lag_Volume']].values.reshape(1, -1)
+                                 if len(data_ml) > 0 else
+                                 X_train[-1].reshape(1, -1))
+                    
                     if len(X_test) > 0 and len(y_test) > 0:
                         ml_pred = model.predict(X_test)
-                        if len(ml_pred) == len(y_test):
-                            ml_rmse = np.sqrt(np.mean((ml_pred - y_test) ** 2))
-                        else:
-                            ml_rmse = 0.0
-                        last_data = data_ml.iloc[-1][['Lag_Close', 'Lag_Volume']].values.reshape(1, -1)
-                        ml_next_pred = model.predict(last_data)[0]
-                        ml_predictions[strategy] = {"Predicted Increase": ml_next_pred, "RMSE": ml_rmse}
+                        ml_rmse = (np.sqrt(np.mean((ml_pred - y_test) ** 2))
+                                   if len(ml_pred) == len(y_test) else 0.0)
                     else:
-                        last_train_data = X_train[-1].reshape(1, -1)
-                        ml_next_pred = model.predict(last_train_data)[0]
-                        ml_predictions[strategy] = {"Predicted Increase": ml_next_pred, "RMSE": 0.0}
+                        ml_rmse = 0.0
+                    ml_next_pred = model.predict(last_data)[0]
+                    ml_predictions[strategy] = {"Predicted Increase": ml_next_pred, "RMSE": ml_rmse}
     
     raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
     raw_data['Close Color'] = raw_data.apply(
@@ -349,10 +349,10 @@ def generate_latex_report(ticker, start_date, end_date, comparison_df, aggregate
     latex_content = r"""
 \documentclass[a4paper,12pt]{article}
 \begin{document}
-\section*{Test Report for {0}}
-Analyzing from {1} to {2}.
+\section*{Stock Analysis Report for %s}
+Analyzing data from %s to %s.
 \end{document}
-""".format(ticker, start_date, end_date)
+""" % (ticker, start_date, end_date)
     return latex_content
 
 # Function to generate HTML for download
@@ -387,27 +387,15 @@ def generate_html_report(ticker, start_date, end_date, comparison_df, aggregated
         html_content += f"<tr><td>{row['Strategy']}</td><td>{row['Max Daily Gap ($)']:.2f}</td><td>{row['Max Daily Return (%)']:.2f}</td><td class='{profit_class}'>{row['Aggregated Profit ($)']:.2f}</td><td>{row['Aggregated Return (%)']:.2f}</td></tr>\n"
     html_content += "</table>"
 
-    html_content += """
+    html_content += f"""
     <h2>Market Insights and Advisory</h2>
     <ul>
-        <li><strong>Intraday Trading</strong>: Focus on days with 'Strong Bullish' sentiment (gap > $5) and high volume (e.g., """
-    html_content += f"{high_price_days.index[0].strftime('%Y-%m-%d') if not high_price_days.empty else 'N/A'}, avg volume {avg_volume:.0f}). Buy at daily low, sell at close or high.</li>"
-    
-        # Fix for Short-Term Trading
-        if ml_predictions:
-            best_strategy = max(ml_predictions.items(), key=lambda x: x[1]['Predicted Increase'])[0]
-            best_pred = max(ml_predictions.values(), key=lambda x: x['Predicted Increase'])['Predicted Increase']
-            pred_value = f"${best_pred:.2f}"
-        else:
-            best_strategy = "N/A"
-            pred_value = "$0.00"
-        html_content += f"<li><strong>Short-Term Trading</strong>: Target strategies with positive ML predictions (e.g., {best_strategy}: {pred_value}). Enter at recent lows, exit at predicted highs over weeks.</li>"
-        
-        html_content += f"<li><strong>Long-Term Investment</strong>: Consider buying at period low (${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]}) with low volatility ({volatility:.2f}), hold for stable growth.</li>"
-        html_content += f"<li><strong>Other Insights</strong>: High price-volume correlation ({data['High'].corr(data['Volume']):.3f if len(data) > 1 else 0}) suggests strong demand on peak days.</li>"
-    html_content += "</ul>"
+        <li><strong>Intraday Trading</strong>: Focus on days with 'Strong Bullish' sentiment (gap > $5) and high volume (e.g., {high_price_days.index[0].strftime('%Y-%m-%d') if not high_price_days.empty else 'N/A'}, avg volume {avg_volume:.0f}). Buy at daily low, sell at close or high.</li>
+        <li><strong>Short-Term Trading</strong>: Target strategies with positive ML predictions (e.g., {max(ml_predictions.items(), key=lambda x: x[1]['Predicted Increase'])[0] if ml_predictions else 'N/A'}: ${max(ml_predictions.values(), key=lambda x: x['Predicted Increase'])['Predicted Increase']:.2f if ml_predictions else 0.0}). Enter at recent lows, exit at predicted highs over weeks.</li>
+        <li><strong>Long-Term Investment</strong>: Consider buying at period low (${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]}) with low volatility ({volatility:.2f}), hold for stable growth.</li>
+        <li><strong>Other Insights</strong>: High price-volume correlation ({data['High'].corr(data['Volume']):.3f if len(data) > 1 else 0}) suggests strong demand on peak days.</li>
+    </ul>
 
-    html_content += """
     <h2>High Price and Volume Days</h2>
     <table>
         <tr><th>Date</th><th>High ($)</th><th>Volume</th><th>Volume vs Avg (%)</th></tr>
@@ -697,7 +685,7 @@ if st.button("Run Analysis"):
             with tabs[3]:
                 with st.expander("Predicted Daily Gap"):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.write("**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for tomorrow, June 28, 2025)")
+                    st.write("**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for tomorrow, June 29, 2025)")
                     strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
                     conf_numbers = []
                     conf_ranges = []
