@@ -16,7 +16,7 @@ st.markdown("""
         .custom-table th, .custom-table td { padding: 0.75rem; border: 1px solid #e5e7eb; }
         .custom-table th { background-color: #e5e7eb; font-weight: 600; }
         .suggestion-box { background-color: #e0f2fe; padding: 1rem; border-radius: 0.5rem; margin-top: 1rem; }
-        h2, h3 { color: #1f2937; }
+        h2, h3, h4 { color: #1f2937; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -338,25 +338,26 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Input Form
-with st.form("backtest_form"):
-    col1, col2 = st.columns(2)
-    with col1:
-        symbol = st.text_input("Stock Symbol (e.g., AAPL)", "AAPL")
-        start_date = st.date_input("Start Date", value=datetime(2020, 1, 1))
-    with col2:
-        end_date = st.date_input("End Date", value=datetime(2023, 12, 31))
-        st.write("")
-    
-    st.markdown("<h3 class='text-lg font-semibold text-gray-700'>Select Strategies</h3>", unsafe_allow_html=True)
-    strategies = {
-        "Simple Moving Average Crossover": st.checkbox("Simple Moving Average Crossover", value=True),
-        "RSI Mean Reversion": st.checkbox("RSI Mean Reversion"),
-        "Bollinger Bands": st.checkbox("Bollinger Bands"),
-        "Buy and Hold": st.checkbox("Buy and Hold")
-    }
-    
-    submitted = st.form_submit_button("Run Backtest", use_container_width=True)
+# Input Form in Sidebar
+with st.sidebar:
+    with st.form("backtest_form"):
+        st.markdown("<h3 class='text-lg font-semibold text-gray-700'>Backtest Parameters</h3>", unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            symbol = st.text_input("Stock Symbol (e.g., AAPL)", "AAPL")
+            start_date = st.date_input("Start Date", value=datetime(2025, 1, 2))
+        with col2:
+            end_date = st.date_input("End Date", value=datetime(2025, 6, 28))
+        
+        st.markdown("<h4 class='text-md font-semibold text-gray-700 mt-4'>Select Strategies</h4>", unsafe_allow_html=True)
+        strategies = {
+            "Simple Moving Average Crossover": st.checkbox("Simple Moving Average Crossover", value=True),
+            "RSI Mean Reversion": st.checkbox("RSI Mean Reversion"),
+            "Bollinger Bands": st.checkbox("Bollinger Bands"),
+            "Buy and Hold": st.checkbox("Buy and Hold")
+        }
+        
+        submitted = st.form_submit_button("Run Backtest", use_container_width=True)
 
 # Run Backtest
 if submitted:
@@ -408,31 +409,29 @@ if submitted:
                 for strategy_name, result in results.items():
                     with st.expander(f"{strategy_name}", expanded=True):
                         st.markdown("<div class='custom-container'>", unsafe_allow_html=True)
-                        col1, col2 = st.columns([1, 2], gap="medium")
-                        with col1:
-                            st.markdown("<h4 class='text-lg font-semibold text-gray-700'>Performance Metrics</h4>", unsafe_allow_html=True)
-                            metrics_df = pd.DataFrame(result['metrics'].items(), columns=['Metric', 'Value'])
-                            st.markdown(
-                                f'<div class="custom-table">{metrics_df.to_html(index=False, classes=["table-auto"])}</div>',
-                                unsafe_allow_html=True
-                            )
-                            st.markdown("<h4 class='text-lg font-semibold text-gray-700 mt-4'>Trades</h4>", unsafe_allow_html=True)
-                            trades_df = pd.DataFrame(result['trades'], columns=['Action', 'Date', 'Price', 'Shares'])
-                            if not trades_df.empty:
-                                trades_df['Price'] = pd.to_numeric(trades_df['Price'], errors='coerce')
-                                if not trades_df['Price'].isna().all():
-                                    trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
-                                    trades_df['Shares'] = trades_df['Shares'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
-                                    st.markdown(
-                                        f'<div class="custom-table">{trades_df.to_html(index=False, classes=["table-auto"])}</div>',
-                                        unsafe_allow_html=True
-                                    )
-                                else:
-                                    st.write("No valid trades executed.")
+                        st.markdown("<h4 class='text-lg font-semibold text-gray-700'>Performance Metrics</h4>", unsafe_allow_html=True)
+                        metrics_df = pd.DataFrame(result['metrics'].items(), columns=['Metric', 'Value'])
+                        st.markdown(
+                            f'<div class="custom-table">{metrics_df.to_html(index=False, classes=["table-auto"])}</div>',
+                            unsafe_allow_html=True
+                        )
+                        st.markdown("<h4 class='text-lg font-semibold text-gray-700 mt-4'>Trades</h4>", unsafe_allow_html=True)
+                        trades_df = pd.DataFrame(result['trades'], columns=['Action', 'Date', 'Price', 'Shares'])
+                        if not trades_df.empty:
+                            trades_df['Price'] = pd.to_numeric(trades_df['Price'], errors='coerce')
+                            if not trades_df['Price'].isna().all():
+                                trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+                                trades_df['Shares'] = trades_df['Shares'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
+                                st.markdown(
+                                    f'<div class="custom-table">{trades_df.to_html(index=False, classes=["table-auto"])}</div>',
+                                    unsafe_allow_html=True
+                                )
                             else:
-                                st.write("No trades executed.")
-                        with col2:
-                            st.plotly_chart(plot_price(data, result['trades'], strategy_name), use_container_width=True)
+                                st.write("No valid trades executed.")
+                        else:
+                            st.write("No trades executed.")
+                        st.markdown("<h4 class='text-lg font-semibold text-gray-700 mt-4'>Price Chart</h4>", unsafe_allow_html=True)
+                        st.plotly_chart(plot_price(data, result['trades'], strategy_name), use_container_width=True)
                         st.markdown("</div>", unsafe_allow_html=True)
                 
                 # Suggestions Section
