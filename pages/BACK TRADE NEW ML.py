@@ -418,46 +418,87 @@ if st.button("Run Analysis"):
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Daily gap and sentiment
-               with st.expander("Daily Gap and Sentiment", expanded=True):
-                   st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                   st.write("Daily gap from Low to Close for selected strategies (assuming 1 share) to gauge market sentiment:")
-                   st.dataframe(daily_df.style.format({col: "{:.2f}" for col in daily_df.columns}).applymap(color_profit_loss, subset=[col for col in daily_df.columns if col.endswith("($)")]))
-                   
-                   # Add heatmap for daily gap
-                   if not daily_df.empty and any(col.endswith("($)") for col in daily_df.columns):
-                       profit_cols = [col for col in daily_df.columns if col.endswith("($)")]
-                       pivot_df = daily_df[profit_cols].T
-                       fig_heatmap = px.imshow(pivot_df,
-                                              labels=dict(x="Date", y="Strategy", color="Gap ($)"),
-                                              color_continuous_scale="RdYlGn",
-                                              aspect="auto",
-                                              title=f"Heatmap of Daily Gap by Strategy for {ticker} ({start_date} to {end_date})")
-                       fig_heatmap.update_layout(coloraxis_colorbar_title="Gap ($)")
-                       st.plotly_chart(fig_heatmap, use_container_width=True)
-                   
-                   # Sentiment categorization and volume correlation
-                   if "Min-Low to End-Close ($)" in daily_df.columns:
-                       daily_df['Sentiment'] = pd.cut(daily_df["Min-Low to End-Close ($)"],
-                                                     bins=[-float('inf'), 0, 2, 5, float('inf')],
-                                                     labels=['Neutral', 'Weak Bullish', 'Bullish', 'Strong Bullish'])
-                       # Merge with volume data
-                       sentiment_volume_df = pd.concat([daily_df[['Min-Low to End-Close ($)', 'Sentiment']], volume_data['Volume']], axis=1)
-                       sentiment_volume_df['Volume Change'] = sentiment_volume_df['Volume'].pct_change() * 100  # % change in volume
-                       st.write("Market Sentiment and Volume Correlation based on Min-Low to End-Close Gap:")
-                       st.dataframe(sentiment_volume_df.style.format({
-                           "Min-Low to End-Close ($)": "{:.2f}",
-                           "Volume": "{:.0f}",
-                           "Volume Change": "{:.2f}%"
-                       }))
-                       
-                       # Highlight days with all strategies profitable
-                       all_profitable = daily_df[[col for col in daily_df.columns if col.endswith("($)")]].apply(lambda x: x >= 0, axis=1).all(axis=1)
-                       profitable_days = daily_df[all_profitable]
-                       if not profitable_days.empty:
-                           st.write("Days with All Strategies Profitable:")
-                           st.dataframe(profitable_days.style.format({col: "{:.2f}" for col in profitable_days.columns if col.endswith("($)")}))
-                           st.write(f"Volume on these days (mean): {profitable_days.index.map(lambda x: volume_data.loc[x, 'Volume']).mean():.0f} shares")
-                   st.markdown('</div>', unsafe_allow_html=True)
+               # Daily gap and sentiment
+                with st.expander("Daily Gap and Sentiment", expanded=True):
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.write("Daily gap from Low to Close for selected strategies (assuming 1 share) to gauge market sentiment:")
+                    st.dataframe(daily_df.style.format({col: "{:.2f}" for col in daily_df.columns}).applymap(color_profit_loss, subset=[col for col in daily_df.columns if col.endswith("($)")]))
+                    
+                    # Add heatmap for daily gap
+                    if not daily_df.empty and any(col.endswith("($)") for col in daily_df.columns):
+                        profit_cols = [col for col in daily_df.columns if col.endswith("($)")]
+                        pivot_df = daily_df[profit_cols].T
+                        fig_heatmap = px.imshow(pivot_df,
+                                               labels=dict(x="Date", y="Strategy", color="Gap ($)"),
+                                               color_continuous_scale="RdYlGn",
+                                               aspect="auto",
+                                               title=f"Heatmap of Daily Gap by Strategy for {ticker} ({start_date} to {end_date})")
+                        fig_heatmap.update_layout(coloraxis_colorbar_title="Gap ($)")
+                        st.plotly_chart(fig_heatmap, use_container_width=True)
+                    
+                    # Sentiment categorization and volume correlation
+                    if "Min-Low to End-Close ($)" in daily_df.columns:
+                        daily_df['Sentiment'] = pd.cut(daily_df["Min-Low to End-Close ($)"],
+                                                      bins=[-float('inf'), 0, 2, 5, float('inf')],
+                                                      labels=['Neutral', 'Weak Bullish', 'Bullish', 'Strong Bullish'])
+                        # Merge with volume data
+                        sentiment_volume_df = pd.concat([daily_df[['Min-Low to End-Close ($)', 'Sentiment']], volume_data['Volume']], axis=1)
+                        sentiment_volume_df['Volume Change'] = sentiment_volume_df['Volume'].pct_change() * 100  # % change in volume
+                        st.write("Market Sentiment and Volume Correlation based on Min-Low to End-Close Gap:")
+                        st.dataframe(sentiment_volume_df.style.format({
+                            "Min-Low to End-Close ($)": "{:.2f}",
+                            "Volume": "{:.0f}",
+                            "Volume Change": "{:.2f}%"
+                        }))
+                        
+                        # Highlight days with all strategies profitable
+                        all_profitable = daily_df[[col for col in daily_df.columns if col.endswith("($)")]].apply(lambda x: x >= 0, axis=1).all(axis=1)
+                        profitable_days = daily_df[all_profitable]
+                        if not profitable_days.empty:
+                            st.write("Days with All Strategies Profitable:")
+                            st.dataframe(profitable_days.style.format({col: "{:.2f}" for col in profitable_days.columns if col.endswith("($)")}))
+                            st.write(f"Volume on these days (mean): {profitable_days.index.map(lambda x: volume_data.loc[x, 'Volume']).mean():.0f} shares")
+                    
+                    # High Price and Volume Analysis
+                    st.subheader("High Price and Volume Analysis")
+                    data_with_volume = pd.concat([data[['High', 'Close']], volume_data['Volume']], axis=1)
+                    high_price_threshold = data['High'].quantile(0.9)  # 90th percentile of daily highs
+                    avg_volume = data['Volume'].mean()
+                    data_with_volume['Is High Price'] = data_with_volume['High'] >= high_price_threshold
+                    data_with_volume['Volume vs Avg'] = (data_with_volume['Volume'] - avg_volume) / avg_volume * 100  # % above/below avg
+                    high_price_days = data_with_volume[data_with_volume['Is High Price']]
+                    
+                    if not high_price_days.empty:
+                        st.write(f"Days with High Price (above {high_price_threshold:.2f}):")
+                        st.dataframe(high_price_days.style.format({
+                            "High": "{:.2f}",
+                            "Close": "{:.2f}",
+                            "Volume": "{:.0f}",
+                            "Volume vs Avg": "{:.2f}%"
+                        }))
+                        st.write(f"Average Volume on High Price Days: {high_price_days['Volume'].mean():.0f} shares")
+                        st.write(f"Overall Average Volume: {avg_volume:.0f} shares")
+                        
+                        # Plot High Price vs Volume
+                        fig = px.scatter(high_price_days, x="High", y="Volume",
+                                         size="Volume vs Avg", color="Volume vs Avg",
+                                         title="High Price Days vs Volume (Size reflects % above Avg Volume)",
+                                         labels={"High": "High Price ($)", "Volume": "Volume (shares)", "Volume vs Avg": "% Above Avg Volume"})
+                        fig.update_traces(marker=dict(sizemode='area', sizeref=2. * max(high_price_days['Volume vs Avg']) / (40**2)))
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Correlate with Sentiment
+                        high_price_sentiment = sentiment_volume_df[sentiment_volume_df.index.isin(high_price_days.index)]
+                        if not high_price_sentiment.empty:
+                            st.write("Sentiment on High Price Days:")
+                            st.dataframe(high_price_sentiment.style.format({
+                                "Min-Low to End-Close ($)": "{:.2f}",
+                                "Volume": "{:.0f}",
+                                "Volume Change": "{:.2f}%"
+                            }))
+                    else:
+                        st.write("No days identified with high prices based on the 90th percentile threshold.")
+                    st.markdown('</div>', unsafe_allow_html=True)
 
                 # Aggregated profit/loss
                 with st.expander("Aggregated Profit/Loss", expanded=True):
