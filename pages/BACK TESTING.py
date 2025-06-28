@@ -6,17 +6,22 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import streamlit.components.v1 as components
 
-# Custom CSS for Tailwind styling with enhancements
+# Custom CSS for modern, stylish design
 st.markdown("""
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
-        .custom-container { padding: 1.5rem; background-color: #f9fafb; border-radius: 0.5rem; margin-bottom: 1.5rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        body { font-family: 'Inter', sans-serif; }
         .custom-table { max-width: 100%; overflow-x: auto; }
-        .custom-table table { width: 100%; border-collapse: collapse; }
+        .custom-table table { width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb; }
         .custom-table th, .custom-table td { padding: 0.75rem; border: 1px solid #e5e7eb; }
-        .custom-table th { background-color: #e5e7eb; font-weight: 600; }
-        .suggestion-box { background-color: #e0f2fe; padding: 1rem; border-radius: 0.5rem; margin-top: 1rem; }
+        .custom-table th { background-color: #f3f4f6; font-weight: 600; color: #1f2937; }
+        .custom-table tr:nth-child(even) { background-color: #f9fafb; }
+        .custom-table tr:hover { background-color: #e0f2fe; transition: background-color 0.2s; }
+        .suggestion-box { background-color: #e0f2fe; padding: 1rem; border-radius: 0.5rem; border: 1px solid #bae6fd; margin-top: 1rem; }
         h2, h3, h4 { color: #1f2937; }
+        .sidebar .form-control { border-radius: 0.375rem; border: 1px solid #d1d5db; padding: 0.5rem; }
+        .sidebar .btn { background-color: #2563eb; color: white; border-radius: 0.375rem; padding: 0.5rem 1rem; }
+        .sidebar .btn:hover { background-color: #1d4ed8; transition: background-color 0.2s; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -274,17 +279,18 @@ def calculate_metrics(equity, data):
 # Plot Price with Signals
 def plot_price(data, trades, strategy_name):
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=data.index, y=data['Close'], name='Price', line=dict(color='blue')))
+    fig.add_trace(go.Scatter(x=data.index, y=data['Close'], name='Price', line=dict(color='#2563eb')))
     buy_signals = [(t[1], t[2]) for t in trades if t[0] == 'BUY' and isinstance(t[2], (int, float)) and not pd.isna(t[2])]
     sell_signals = [(t[1], t[2]) for t in trades if t[0] == 'SELL' and isinstance(t[2], (int, float)) and not pd.isna(t[2])]
-    fig.add_trace(go.Scatter(x=[t[0] for t in buy_signals], y=[t[1] for t in buy_signals], mode='markers', name='Buy', marker=dict(symbol='triangle-up', size=10, color='green')))
-    fig.add_trace(go.Scatter(x=[t[0] for t in sell_signals], y=[t[1] for t in sell_signals], mode='markers', name='Sell', marker=dict(symbol='triangle-down', size=10, color='red')))
+    fig.add_trace(go.Scatter(x=[t[0] for t in buy_signals], y=[t[1] for t in buy_signals], mode='markers', name='Buy', marker=dict(symbol='triangle-up', size=10, color='#16a34a')))
+    fig.add_trace(go.Scatter(x=[t[0] for t in sell_signals], y=[t[1] for t in sell_signals], mode='markers', name='Sell', marker=dict(symbol='triangle-down', size=10, color='#dc2626')))
     fig.update_layout(
         title=f'{strategy_name} - Price with Signals',
         xaxis_title='Date',
         yaxis_title='Price',
         template='plotly_white',
-        margin=dict(l=20, r=20, t=50, b=20)
+        margin=dict(l=20, r=20, t=50, b=20),
+        font=dict(family='Inter', size=12, color='#1f2937')
     )
     return fig
 
@@ -293,13 +299,14 @@ def plot_equity_curves(results, data):
     fig = go.Figure()
     for strategy_name, result in results.items():
         if result['equity'] and len(result['equity']) == len(data):
-            fig.add_trace(go.Scatter(x=data.index, y=result['equity'], name=strategy_name))
+            fig.add_trace(go.Scatter(x=data.index, y=result['equity'], name=strategy_name, line=dict(width=2)))
     fig.update_layout(
         title='Equity Curves Comparison',
         xaxis_title='Date',
         yaxis_title='Portfolio Value ($)',
         template='plotly_white',
-        margin=dict(l=20, r=20, t=50, b=20)
+        margin=dict(l=20, r=20, t=50, b=20),
+        font=dict(family='Inter', size=12, color='#1f2937')
     )
     return fig
 
@@ -332,22 +339,22 @@ def generate_suggestions(results):
 
 # Streamlit App
 st.markdown("""
-    <div class="custom-container">
-        <h1 class="text-3xl font-bold text-center text-gray-800 mb-4">Stock Backtesting Dashboard</h1>
-        <p class="text-center text-gray-600 mb-6">Test and compare trading strategies with historical stock data.</p>
+    <div class="mt-4 mb-6">
+        <h1 class="text-3xl font-bold text-center text-gray-800">Stock Backtesting Dashboard</h1>
+        <p class="text-center text-gray-600 mt-2">Test and compare trading strategies with historical stock data.</p>
     </div>
 """, unsafe_allow_html=True)
 
 # Input Form in Sidebar
 with st.sidebar:
     with st.form("backtest_form"):
-        st.markdown("<h3 class='text-lg font-semibold text-gray-700'>Backtest Parameters</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 class='text-lg font-semibold text-gray-700 mb-4'>Backtest Parameters</h3>", unsafe_allow_html=True)
         col1, col2 = st.columns(2)
         with col1:
-            symbol = st.text_input("Stock Symbol (e.g., AAPL)", "AAPL")
-            start_date = st.date_input("Start Date", value=datetime(2025, 1, 2))
+            symbol = st.text_input("Stock Symbol (e.g., AAPL)", "AAPL", help="Enter a valid stock ticker")
         with col2:
-            end_date = st.date_input("End Date", value=datetime(2025, 6, 28))
+            start_date = st.date_input("Start Date", value=datetime(2025, 1, 2), help="Select start date for backtest")
+            end_date = st.date_input("End Date", value=datetime(2025, 6, 28), help="Select end date for backtest")
         
         st.markdown("<h4 class='text-md font-semibold text-gray-700 mt-4'>Select Strategies</h4>", unsafe_allow_html=True)
         strategies = {
@@ -401,21 +408,20 @@ if submitted:
             else:
                 # Dynamic Heading
                 st.markdown(
-                    f"<h2 class='text-2xl font-bold text-gray-800 mt-6'>Backtest Results for {symbol} ({start_date} to {end_date})</h2>",
+                    f"<h2 class='text-2xl font-bold text-gray-800 mt-6 mb-4'>Backtest Results for {symbol} ({start_date} to {end_date})</h2>",
                     unsafe_allow_html=True
                 )
                 
                 # Display Results in Expanders
                 for strategy_name, result in results.items():
                     with st.expander(f"{strategy_name}", expanded=True):
-                        st.markdown("<div class='custom-container'>", unsafe_allow_html=True)
-                        st.markdown("<h4 class='text-lg font-semibold text-gray-700'>Performance Metrics</h4>", unsafe_allow_html=True)
+                        st.markdown("<h4 class='text-lg font-semibold text-gray-700 mb-3'>Performance Metrics</h4>", unsafe_allow_html=True)
                         metrics_df = pd.DataFrame(result['metrics'].items(), columns=['Metric', 'Value'])
                         st.markdown(
                             f'<div class="custom-table">{metrics_df.to_html(index=False, classes=["table-auto"])}</div>',
                             unsafe_allow_html=True
                         )
-                        st.markdown("<h4 class='text-lg font-semibold text-gray-700 mt-4'>Trades</h4>", unsafe_allow_html=True)
+                        st.markdown("<h4 class='text-lg font-semibold text-gray-700 mt-6 mb-3'>Trades</h4>", unsafe_allow_html=True)
                         trades_df = pd.DataFrame(result['trades'], columns=['Action', 'Date', 'Price', 'Shares'])
                         if not trades_df.empty:
                             trades_df['Price'] = pd.to_numeric(trades_df['Price'], errors='coerce')
@@ -430,12 +436,11 @@ if submitted:
                                 st.write("No valid trades executed.")
                         else:
                             st.write("No trades executed.")
-                        st.markdown("<h4 class='text-lg font-semibold text-gray-700 mt-4'>Price Chart</h4>", unsafe_allow_html=True)
+                        st.markdown("<h4 class='text-lg font-semibold text-gray-700 mt-6 mb-3'>Price Chart</h4>", unsafe_allow_html=True)
                         st.plotly_chart(plot_price(data, result['trades'], strategy_name), use_container_width=True)
-                        st.markdown("</div>", unsafe_allow_html=True)
                 
                 # Suggestions Section
-                st.markdown("<h3 class='text-xl font-semibold text-gray-700 mt-6'>Suggestions</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 class='text-xl font-semibold text-gray-700 mt-6 mb-3'>Suggestions</h3>", unsafe_allow_html=True)
                 suggestions = generate_suggestions(results)
                 st.markdown("<div class='suggestion-box'>", unsafe_allow_html=True)
                 for suggestion in suggestions:
@@ -444,5 +449,5 @@ if submitted:
                 
                 # Equity Curve Comparison
                 if len(results) > 1:
-                    st.markdown("<h3 class='text-xl font-semibold text-gray-700 mt-6'>Equity Curves Comparison</h3>", unsafe_allow_html=True)
+                    st.markdown("<h3 class='text-xl font-semibold text-gray-700 mt-6 mb-3'>Equity Curves Comparison</h3>", unsafe_allow_html=True)
                     st.plotly_chart(plot_equity_curves(results, data), use_container_width=True)
