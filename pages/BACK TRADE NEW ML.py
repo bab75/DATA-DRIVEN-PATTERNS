@@ -734,23 +734,28 @@ if st.button("Run Analysis"):
                         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                         st.write(f"**Consolidated Insights for {ticker} ({start_date} to {end_date})**")
                         
-                        strong_bullish_days = sentiment_volume_df[sentiment_volume_df['Sentiment'] == 'Strong Bullish']
-                        if not strong_bullish_days.empty:
-                            intraday_day = strong_bullish_days.index[0].strftime('%Y-%m-%d')
-                            intraday_volume = strong_bullish_days['Volume'].iloc[0]
-                            st.write(f"- **Intraday Trading**: Focus on 'Strong Bullish' days like {intraday_day} with gap > $5 and volume {intraday_volume:.0f} shares. Buy at daily low, sell at close or high for potential gains.")
+                        if data is None or data.empty:
+                            st.error("No valid data available for analysis.")
                         else:
-                            st.write("- **Intraday Trading**: No strong bullish days identified. Monitor for gaps > $5 with high volume.")
-                        
-                        best_ml_strategy = max(ml_predictions.items(), key=lambda x: x[1]["Predicted Increase"])[0] if ml_predictions else "N/A"
-                        best_ml_pred = max(ml_predictions.values(), key=lambda x: x["Predicted Increase"])["Predicted Increase"] if ml_predictions else 0
-                        st.write(f"- **Short-Term Trading**: Target {best_ml_strategy} with ML predicted gap ${best_ml_pred:.2f}. Enter at recent lows (e.g., {price_extremes['Lowest Date'][2]} at ${price_extremes['Lowest Value'][2]:.2f}), exit at predicted highs over weeks.")
-                        
-                        st.write(f"- **Long-Term Investment**: Buy at period low ${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]} with volatility {volatility:.2f}. Hold for stable growth if trends remain positive.")
-                        
-                        correlation_df = data[['High', 'Volume']].dropna()
-                        correlation = correlation_df['High'].corr(correlation_df['Volume']) if len(correlation_df) > 1 else 0
-                        st.write(f"- **Other Insights**: Price-volume correlation {correlation:.3f} indicates {'strong' if abs(correlation) > 0.5 else 'moderate'} demand on high-price days. Volume-weighted profits suggest {max(volume_weighted_profits, key=volume_weighted_profits.get)} as the most impactful strategy (${max(volume_weighted_profits.values()):.2f}).")
+                            st.write(f"Data type: {type(data)}, Columns: {data.columns.tolist()}")  # Debug output
+                            
+                            strong_bullish_days = sentiment_volume_df[sentiment_volume_df['Sentiment'] == 'Strong Bullish']
+                            if not strong_bullish_days.empty:
+                                intraday_day = strong_bullish_days.index[0].strftime('%Y-%m-%d')
+                                intraday_volume = strong_bullish_days['Volume'].iloc[0]
+                                st.write(f"- **Intraday Trading**: Focus on 'Strong Bullish' days like {intraday_day} with gap > $5 and volume {intraday_volume:.0f} shares. Buy at daily low, sell at close or high for potential gains.")
+                            else:
+                                st.write("- **Intraday Trading**: No strong bullish days identified. Monitor for gaps > $5 with high volume.")
+                            
+                            best_ml_strategy = max(ml_predictions.items(), key=lambda x: x[1]["Predicted Increase"])[0] if ml_predictions else "N/A"
+                            best_ml_pred = max(ml_predictions.values(), key=lambda x: x["Predicted Increase"])["Predicted Increase"] if ml_predictions else 0
+                            st.write(f"- **Short-Term Trading**: Target {best_ml_strategy} with ML predicted gap ${best_ml_pred:.2f}. Enter at recent lows (e.g., {price_extremes['Lowest Date'][2]} at ${price_extremes['Lowest Value'][2]:.2f}), exit at predicted highs over weeks.")
+                            
+                            st.write(f"- **Long-Term Investment**: Buy at period low ${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]} with volatility {volatility:.2f}. Hold for stable growth if trends remain positive.")
+                            
+                            correlation_df = data[['High', 'Volume']].copy().dropna()
+                            correlation = correlation_df['High'].corr(correlation_df['Volume']) if len(correlation_df) > 1 else 0
+                            st.write(f"- **Other Insights**: Price-volume correlation {correlation:.3f} indicates {'strong' if abs(correlation) > 0.5 else 'moderate'} demand on high-price days. Volume-weighted profits suggest {max(volume_weighted_profits, key=volume_weighted_profits.get)} as the most impactful strategy (${max(volume_weighted_profits.values()):.2f}).")
                         
                         st.markdown('</div>', unsafe_allow_html=True)
                     
