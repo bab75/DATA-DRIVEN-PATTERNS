@@ -54,7 +54,11 @@ def load_financial_data(file):
         df = df.set_index(df.columns[0])
         df.columns = df.columns.astype(str).str.strip()
         df.index = df.index.astype(str).str.strip()
-        df = df.apply(pd.to_numeric, errors="coerce").dropna(how="all")
+        df = df.apply(pd.to_numeric, errors="coerce")
+
+        # Drop columns that are all NaN or all zeros
+        df = df.loc[:, ~df.isna().all()]
+        df = df.loc[:, (df != 0).any(axis=0)]
 
         df = df.T
         df.index.name = "Year"
@@ -64,6 +68,10 @@ def load_financial_data(file):
 
         if df.empty:
             raise ValueError("No valid data after processing.")
+        
+        # Replace NaN with None for JSON compatibility
+        df = df.where(df.notna(), None)
+        
         return df
     except Exception as e:
         st.session_state.error_message = f"Error loading file: {str(e)}"
@@ -82,7 +90,11 @@ if submitted and uploaded_file:
     
     # Display the cleaned DataFrame
     st.subheader("📋 Loaded Data")
-    st.dataframe(df)
+    # Debug: Show DataFrame info
+    st.write("DataFrame Info:", df.info())
+    # Replace None with 0 for display purposes only
+    display_df = df.fillna(0)
+    st.dataframe(display_df)
 
     years = sorted([int(y) for y in df.index if str(y).isdigit()])
     all_metrics = df.columns.tolist()
@@ -153,6 +165,8 @@ if submitted and uploaded_file:
                 for m in metrics:
                     if m in table.columns:
                         table[f"{m} YOY (%)"] = table[m].pct_change().round(4) * 100
+                # Replace None with 0 in table for display
+                table = table.fillna(0)
                 results["table"] = table
             
             # Store results in session state
