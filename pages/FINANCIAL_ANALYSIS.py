@@ -93,62 +93,85 @@ if submitted and uploaded_file:
         yr_range = st.slider("📆 Select Year Range", min(years), max(years), (min(years), max(years)), key="year_range")
         analyze_button = st.form_submit_button("🔍 Generate Analysis")
 
-    if analyze_button:
+    if analyze_button and metrics:  # Ensure metrics are selected
         try:
-            st.session_state.selected_metrics = metrics
-            st.session_state.selected_years = [str(y) for y in years if yr_range[0] <= y <= yr_range[1]]
+            # Clear previous results
+            st.session_state.analysis_results = None
             st.session_state.error_message = None
-            st.session_state.analysis_generated = True
+            
+            selected_years = [str(y) for y in years if yr_range[0] <= y <= yr_range[1]]
+            
+            if not metrics:
+                st.warning("Please select at least one metric to analyze.")
+                st.stop()
+            
+            if not selected_years:
+                st.warning("No valid years in selected range.")
+                st.stop()
 
             results = {"charts": [], "table": None}
-            for metric in st.session_state.selected_metrics:
+            
+            # Generate charts
+            for metric in metrics:
                 if metric not in df.columns:
                     st.warning(f"Metric '{metric}' not found in data, skipping.")
                     continue
-                series = df.loc[st.session_state.selected_years, metric]
-                if series.empty:
-                    st.warning(f"No data for '{metric}' in selected years, skipping.")
+                    
+                series = df.loc[selected_years, metric].dropna()
+                if len(series) == 0:
+                    st.warning(f"No valid data for '{metric}' in selected years.")
                     continue
-                fig = px.line(series, markers=True, title=f"{metric} Over Time", labels={"index": "Year", "value": metric})
                 
-                # Trendline
-                z = np.polyfit(range(len(series)), series.values, 1)
-                trend = np.poly1d(z)(range(len(series)))
-                fig.add_trace(go.Scatter(x=st.session_state.selected_years, y=trend, name="Trendline",
-                                        mode="lines", line=dict(dash="dot", color="gray")))
+                # Create chart
+                fig = px.line(series, markers=True, title=f"{metric} Over Time", 
+                             labels={"index": "Year", "value": metric})
                 
-                # Deviation flags
-                pct = series.pct_change().fillna(0) * 100
-                for i, v in enumerate(pct):
-                    if abs(v) > 30:
-                        fig.add_vline(x=st.session_state.selected_years[i], line=dict(color="red", dash="dot"),
-                                    annotation_text="⚠️ Deviation", annotation_position="top right")
+                # Add trendline if we have enough data points
+                if len(series) > 1:
+                    z = np.polyfit(range(len(series)), series.values, 1)
+                    trend = np.poly1d(z)(range(len(series)))
+                    fig.add_trace(go.Scatter(x=series.index, y=trend, name="Trendline",
+                                           mode="lines", line=dict(dash="dot", color="gray")))
+                
+                # Add deviation flags
+                pct_change = series.pct_change().fillna(0) * 100
+                for i, (year, pct_val) in enumerate(pct_change.items()):
+                    if abs(pct_val) > 30:
+                        fig.add_vline(x=year, line=dict(color="red", dash="dot"),
+                                     annotation_text="⚠️ Deviation", annotation_position="top right")
+                
                 results["charts"].append(fig)
-                st.write(f"Generated chart for {metric}")  # Debugging output
-
-            # YOY Table
-            table = df.loc[st.session_state.selected_years, st.session_state.selected_metrics].copy()
-            if table.empty:
-                raise ValueError("No data available for YOY calculation.")
-            for m in st.session_state.selected_metrics:
-                table[f"{m} YOY (%)"] = table[m].pct_change().round(4) * 100
-            results["table"] = table
-            st.write("Generated YOY table")  # Debugging output
-
+            
+            # Generate YOY table
+            if metrics and selected_years:
+                table = df.loc[selected_years, metrics].copy()
+                for m in metrics:
+                    if m in table.columns:
+                        table[f"{m} YOY (%)"] = table[m].pct_change().round(4) * 100
+                results["table"] = table
+            
+            # Store results in session state
             st.session_state.analysis_results = results
+            st.session_state.analysis_generated = True
+            
         except Exception as e:
             st.session_state.error_message = f"Error generating analysis: {str(e)}"
+            st.session_state.analysis_results = None
             st.session_state.analysis_generated = False
 
 # Display results
 if st.session_state.error_message:
     st.error(st.session_state.error_message)
-elif st.session_state.analysis_generated and st.session_state.analysis_results and st.session_state.selected_metrics and st.session_state.selected_years:
+elif st.session_state.analysis_results is not None:
     st.success("✅ Analysis generated successfully!")
-    for fig in st.session_state.analysis_results["charts"]:
-        st.plotly_chart(fig, use_container_width=True)
     
-    if st.session_state.analysis_results["table"] is not None:
+    # Display charts
+    if "charts" in st.session_state.analysis_results and st.session_state.analysis_results["charts"]:
+        for fig in st.session_state.analysis_results["charts"]:
+            st.plotly_chart(fig, use_container_width=True)
+    
+    # Display table
+    if "table" in st.session_state.analysis_results and st.session_state.analysis_results["table"] is not None:
         st.subheader("📊 YOY Change Table")
         st.dataframe(st.session_state.analysis_results["table"])
         
