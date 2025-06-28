@@ -471,9 +471,14 @@ if st.button("Run Analysis"):
                     avg_volume = data['Volume'].mean()
                     data_with_volume['Is High Price'] = data_with_volume['High'] >= high_price_threshold
                     data_with_volume['Volume vs Avg'] = (data_with_volume['Volume'] - avg_volume) / avg_volume * 100  # % above/below avg
-                    high_price_days = data_with_volume[data_with_volume['Is High Price']]
-                    
+                    high_price_days = data_with_volume[data_with_volume['Is High Price']].copy()  # Ensure a copy to avoid SettingWithCopyWarning
+
                     if not high_price_days.empty:
+                        # Handle invalid values for plotting
+                        high_price_days['Volume vs Avg'] = high_price_days['Volume vs Avg'].fillna(0).clip(lower=0)  # Replace NaN and negative with 0
+                        if high_price_days['Volume vs Avg'].isna().any() or (high_price_days['Volume vs Avg'] < 0).any():
+                            st.warning("Some Volume vs Avg values were invalid and have been adjusted to 0 for plotting.")
+                        
                         st.write(f"Days with High Price (above {high_price_threshold:.2f}):")
                         st.dataframe(high_price_days.style.format({
                             "High": "{:.2f}",
