@@ -391,8 +391,7 @@ Strategy & Max Daily Gap (\$) & Max Daily Return (\%) & Aggregated Profit (\$) &
 
     for _, row in comparison_df.iterrows():
         latex_content += "%s & %.2f & %.2f & %.2f & %.2f \\\\\n" % (row['Strategy'], row['Max Daily Gap ($)'] or 0, row['Max Daily Return (%)'] or 0, row['Aggregated Profit ($)'] or 0, row['Aggregated Return (%)'] or 0)
-    latex_content += r"\bottomrule
-\end{longtable}
+    latex_content += r"\bottomrule\end{longtable}
 
 \subsection*{Aggregated Profit/Loss Advisory}
 \begin{itemize}
