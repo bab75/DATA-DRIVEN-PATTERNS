@@ -68,6 +68,7 @@ if end_date > today:
 
 # Cache data fetching for performance
 @st.cache_data
+@st.cache_data
 def fetch_data(ticker, start_date, end_date):
     try:
         end_date_adjusted = end_date + timedelta(days=1)
@@ -80,9 +81,10 @@ def fetch_data(ticker, start_date, end_date):
         required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
         actual_columns = data.columns.tolist()
         if not all(col in actual_columns for col in required_columns):
-            st.error(f"Data for {ticker} missing required columns. Expected: {required_columns}, Found: {actual_columns}")
+            st.error(f"Missing required columns. Expected: {required_columns}, Found: {actual_columns}")
             return None
         data.columns = [col.capitalize() for col in data.columns]
+        print(f"Columns after fetch: {data.columns.tolist()}")  # Debug print
         data.index = pd.to_datetime(data.index)
         data = data.loc[start_date:end_date]
         if data.empty:
@@ -747,7 +749,7 @@ if st.button("Run Analysis"):
                         
                         st.write(f"- **Long-Term Investment**: Buy at period low ${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]} with volatility {volatility:.2f}. Hold for stable growth if trends remain positive.")
                         
-                        correlation = data['High'].corr(data['Volume']) if len(data) > 1 else 0
+                        correlation = (data['High'].corr(data['Volume']) if 'High' in data.columns and 'Volume' in data.columns and len(data) > 1 else 0)
                         st.write(f"- **Other Insights**: Price-volume correlation {correlation:.3f} indicates {'strong' if abs(correlation) > 0.5 else 'moderate'} demand on high-price days. Volume-weighted profits suggest {max(volume_weighted_profits, key=volume_weighted_profits.get)} as the most impactful strategy (${max(volume_weighted_profits.values()):.2f}).")
                         
                         st.markdown('</div>', unsafe_allow_html=True)
