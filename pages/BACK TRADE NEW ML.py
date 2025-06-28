@@ -716,8 +716,13 @@ if st.button("Run Analysis"):
                     st.write(f"**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for the next trading day, {next_trading_day.date().strftime('%B %d, %Y')})")
             
                     # Retain original strategy_names definition (move this up if not already defined earlier)
-                    strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]  # Adjust based on earlier definition
+                    strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
                     conf_numbers = []
+                    conf_ranges = []
+                    variations = []
+                    means = []
+                    ml_predictions_list = []
+                    rmse_list = []
                     
                     for s in strategy_names:
                         if strategy_predictions and s in strategy_predictions:
