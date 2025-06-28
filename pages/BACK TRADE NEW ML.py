@@ -392,9 +392,19 @@ def generate_html_report(ticker, start_date, end_date, comparison_df, aggregated
     <ul>
         <li><strong>Intraday Trading</strong>: Focus on days with 'Strong Bullish' sentiment (gap > $5) and high volume (e.g., """
     html_content += f"{high_price_days.index[0].strftime('%Y-%m-%d') if not high_price_days.empty else 'N/A'}, avg volume {avg_volume:.0f}). Buy at daily low, sell at close or high.</li>"
-    html_content += f"<li><strong>Short-Term Trading</strong>: Target strategies with positive ML predictions (e.g., {max(ml_predictions.items(), key=lambda x: x[1]['Predicted Increase'])[0] if ml_predictions else 'N/A'}: ${max(ml_predictions.values(), key=lambda x: x['Predicted Increase'])['Predicted Increase']:.2f if ml_predictions else 0}). Enter at recent lows, exit at predicted highs over weeks.</li>"
-    html_content += f"<li><strong>Long-Term Investment</strong>: Consider buying at period low (${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]}) with low volatility ({volatility:.2f}), hold for stable growth.</li>"
-    html_content += f"<li><strong>Other Insights</strong>: High price-volume correlation ({data['High'].corr(data['Volume']):.3f if len(data) > 1 else 0}) suggests strong demand on peak days.</li>"
+    
+        # Fix for Short-Term Trading
+        if ml_predictions:
+            best_strategy = max(ml_predictions.items(), key=lambda x: x[1]['Predicted Increase'])[0]
+            best_pred = max(ml_predictions.values(), key=lambda x: x['Predicted Increase'])['Predicted Increase']
+            pred_value = f"${best_pred:.2f}"
+        else:
+            best_strategy = "N/A"
+            pred_value = "$0.00"
+        html_content += f"<li><strong>Short-Term Trading</strong>: Target strategies with positive ML predictions (e.g., {best_strategy}: {pred_value}). Enter at recent lows, exit at predicted highs over weeks.</li>"
+        
+        html_content += f"<li><strong>Long-Term Investment</strong>: Consider buying at period low (${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]}) with low volatility ({volatility:.2f}), hold for stable growth.</li>"
+        html_content += f"<li><strong>Other Insights</strong>: High price-volume correlation ({data['High'].corr(data['Volume']):.3f if len(data) > 1 else 0}) suggests strong demand on peak days.</li>"
     html_content += "</ul>"
 
     html_content += """
@@ -423,12 +433,12 @@ if st.button("Run Analysis"):
             st.error("Please select at least one comparison strategy.")
         else:
             data = fetch_data(ticker, start_date, end_date)
-            print(f"Data after fetch: {type(data)}, {data}")  # Debug after fetch
+            print(f"Data after fetch: {type(data)}, {data}")
             if data is None:
                 st.error(f"Failed to fetch data for {ticker}. Please check the ticker or date range and try again.")
                 st.stop()
             daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions, ml_predictions = calculate_profits(data, strategies, strategy_variant, start_date, end_date)
-            print(f"Data in insights: {type(data)}, {data.head()}")  # Debug before insights
+            print(f"Data in insights: {type(data)}, {data.head()}")
             
             # Tabbed Interface
             tabs = st.tabs(["Quick Summary", "Data & Metrics", "Analysis", "Predictions", "Insights"])
