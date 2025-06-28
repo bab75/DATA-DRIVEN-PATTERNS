@@ -495,7 +495,7 @@ if st.button("Run Analysis"):
                 
                 with st.expander("Aggregated Profit/Loss"):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                   92                    st.write(f"Aggregated Profit/Loss ({start_date} to {end_date}):")
+                    st.write(f"Aggregated Profit/Loss ({start_date} to {end_date}):")
                     agg_data = []
                     for strategy in strategies:
                         if strategies[strategy] and f"{strategy} ($)" in aggregated_profit:
