@@ -38,7 +38,7 @@ with st.sidebar:
 
     st.subheader("Select Comparison Strategies")
     strategies = {
-        "Min-Low to End-Close": st.checkbox("Min-Low to End-Close (Buy at Min Low, Sell at End Close)", value=True, help="Buys at the lowest Low price and sells at the Close on the last day."),
+        "Min-Low to End-Close": st.checkbox("Min-Low to End-Close (Buy at Min Low, Sell at End Close)", value=True, help="Measures gap from daily Low to Close to gauge market sentiment."),
         "Open-High": st.checkbox("Open to High (Buy at Open, Sell at High)", value=True),
         "Open-Close": st.checkbox("Open to Close (Buy at Open, Sell at Close)", value=True),
         "Min-Low to Max-High": st.checkbox("Min-Low to Max-High (Buy at Min Low, Sell at Max High)", value=True)
@@ -121,9 +121,9 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         low = data.loc[date, 'Low']
         
         if strategies["Min-Low to End-Close"]:
-            profit = close - low
-            daily_profit["Min-Low to End-Close ($)"] = profit
-            daily_profit["Min-Low to End-Close (%)"] = (profit / low * 100) if low != 0 else 0
+            gap = close - low  # Gap for sentiment analysis
+            daily_profit["Min-Low to End-Close ($)"] = gap
+            daily_profit["Min-Low to End-Close (%)"] = (gap / low * 100) if low != 0 else 0
         if strategies["Open-High"]:
             profit = high - open_price
             daily_profit["Open-High ($)"] = profit
@@ -235,7 +235,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     for strategy in strategies:
         if strategies[strategy]:
             if strategy == "Min-Low to End-Close":
-                daily_diffs[strategy] = data['Close'] - data['Low']
+                daily_diffs[strategy] = data['Close'] - data['Low']  # Gap for sentiment
             elif strategy == "Open-High":
                 daily_diffs[strategy] = data['High'] - data['Open']
             elif strategy == "Open-Close":
@@ -243,14 +243,14 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
             elif strategy == "Min-Low to Max-High":
                 daily_diffs[strategy] = data['High'] - data['Low']
     
-    # Historical prediction for each strategy
+    # Historical prediction for each strategy with sentiment focus
     strategy_predictions = {}
     for strategy, diffs in daily_diffs.items():
         if len(diffs) > 1:
             mean = diffs.mean()
             std = diffs.std()
             conf_interval = [mean - 1.96 * std, mean + 1.96 * std]  # 95% confidence interval
-            # Cap Conf Lower at 0 for strategies where losses are mathematically impossible
+            # Cap Conf Lower at 0 for Min-Low to End-Close to reflect minimum gap
             conf_lower = max(conf_interval[0], 0) if strategy == "Min-Low to End-Close" else conf_interval[0]
             strategy_predictions[strategy] = {
                 "Mean": mean,
@@ -337,14 +337,14 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         if selected and f"{strategy} ($)" in daily_df.columns:
             dollar_col = f"{strategy} ($)"
             percent_col = f"{strategy} (%)"
-            max_daily_profit = daily_df[dollar_col].max()
+            max_daily_gap = daily_df[dollar_col].max()
             max_daily_percent = daily_df[percent_col].max()
-            max_day = daily_df[dollar_col].idxmax() if max_daily_profit else None
+            max_day = daily_df[dollar_col].idxmax() if max_daily_gap else None
             agg_profit = aggregated_profit.get(dollar_col, None)
             agg_percent = aggregated_profit.get(percent_col, None)
             comparison.append({
                 "Strategy": strategy,
-                "Max Daily Profit ($)": max_daily_profit,
+                "Max Daily Gap ($)": max_daily_gap,
                 "Max Daily Return (%)": max_daily_percent,
                 "Best Day": max_day,
                 "Aggregated Profit ($)": agg_profit,
@@ -353,7 +353,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     
     comparison_df = pd.DataFrame(comparison)
     if not comparison_df.empty:
-        comparison_df.sort_values(by="Aggregated Return (%)", ascending=False, inplace=True)
+        comparison_df.sort_values(by="Max Daily Gap ($)", ascending=False, inplace=True)  # Sort by gap for sentiment
     
     return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions, ml_predictions
 
@@ -373,8 +373,8 @@ if st.button("Run Analysis"):
                 if strategy_predictions and ml_predictions:
                     best_confident = max(strategy_predictions.items(), key=lambda x: x[1]["Conf Lower"])
                     best_ml = max(ml_predictions.items(), key=lambda x: x[1]["Predicted Increase"])
-                    st.write(f"Best confident gain: {best_confident[0]} (${best_confident[1]['Conf Lower']:.2f}). "
-                             f"Best ML prediction: {best_ml[0]} (${best_ml[1]['Predicted Increase']:.2f}).")
+                    st.write(f"Best confident gap: {best_confident[0]} (${best_confident[1]['Conf Lower']:.2f}). "
+                             f"Best ML predicted gap: {best_ml[0]} (${best_ml[1]['Predicted Increase']:.2f}).")
                 st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Raw stock data
@@ -417,24 +417,31 @@ if st.button("Run Analysis"):
                     st.dataframe(extremes_df.style.format({"Highest Value": "{:.2f}", "Lowest Value": "{:.2f}"}))
                     st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Daily profit/loss
-                with st.expander("Daily Profit/Loss", expanded=True):
+                # Daily gap and sentiment
+                with st.expander("Daily Gap and Sentiment", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.write("Profit/loss per day for selected strategies (assuming 1 share):")
+                    st.write("Daily gap from Low to Close for selected strategies (assuming 1 share) to gauge market sentiment:")
                     st.dataframe(daily_df.style.format({col: "{:.2f}" for col in daily_df.columns}).applymap(color_profit_loss, subset=[col for col in daily_df.columns if col.endswith("($)")]))
                     
-                    # Add heatmap for daily profit/loss
+                    # Add heatmap for daily gap
                     if not daily_df.empty and any(col.endswith("($)") for col in daily_df.columns):
                         profit_cols = [col for col in daily_df.columns if col.endswith("($)")]
                         pivot_df = daily_df[profit_cols].T
                         fig_heatmap = px.imshow(pivot_df,
-                                               labels=dict(x="Date", y="Strategy", color="Profit/Loss ($)"),
+                                               labels=dict(x="Date", y="Strategy", color="Gap ($)"),
                                                color_continuous_scale="RdYlGn",
                                                aspect="auto",
-                                               title=f"Heatmap of Daily Profit/Loss by Strategy for {ticker} ({start_date} to {end_date})")
-                        fig_heatmap.update_layout(coloraxis_colorbar_title="Profit/Loss ($)")
+                                               title=f"Heatmap of Daily Gap by Strategy for {ticker} ({start_date} to {end_date})")
+                        fig_heatmap.update_layout(coloraxis_colorbar_title="Gap ($)")
                         st.plotly_chart(fig_heatmap, use_container_width=True)
                     
+                    # Simple sentiment categorization
+                    if "Min-Low to End-Close ($)" in daily_df.columns:
+                        daily_df['Sentiment'] = pd.cut(daily_df["Min-Low to End-Close ($)"],
+                                                      bins=[-float('inf'), 0, 2, 5, float('inf')],
+                                                      labels=['Neutral', 'Weak Bullish', 'Bullish', 'Strong Bullish'])
+                        st.write("Market Sentiment based on Min-Low to End-Close Gap:")
+                        st.dataframe(daily_df[['Min-Low to End-Close ($)', 'Sentiment']].style.format({"Min-Low to End-Close ($)": "{:.2f}"}))
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Aggregated profit/loss
@@ -492,23 +499,23 @@ if st.button("Run Analysis"):
                 # Comparison
                 with st.expander("Comparison of Strategies", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.write("Comparing max daily profit vs. aggregated profit (sorted by aggregated return):")
+                    st.write("Comparing max daily gap vs. aggregated profit (sorted by max daily gap):")
                     st.dataframe(comparison_df.style.format({
-                        "Max Daily Profit ($)": "{:.2f}",
+                        "Max Daily Gap ($)": "{:.2f}",
                         "Max Daily Return (%)": "{:.2f}",
                         "Aggregated Profit ($)": "{:.2f}",
                         "Aggregated Return (%)": "{:.2f}"
-                    }).applymap(color_profit_loss, subset=["Max Daily Profit ($)", "Aggregated Profit ($)"]))
+                    }).applymap(color_profit_loss, subset=["Max Daily Gap ($)", "Aggregated Profit ($)"]))
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Profit/loss and volume trends
                 if not daily_df.empty:
-                    with st.expander("Profit/Loss and Volume Trends", expanded=True):
+                    with st.expander("Gap and Volume Trends", expanded=True):
                         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                         dollar_cols = [col for col in daily_df.columns if col.endswith("($)")]
                         fig = px.line(daily_df, x=daily_df.index, y=dollar_cols,
-                                     title=f"Daily Profit/Loss for {ticker}",
-                                     labels={"value": "Profit/Loss ($)", "Date": "Date", "variable": "Strategy"})
+                                     title=f"Daily Gap for {ticker}",
+                                     labels={"value": "Gap ($)", "Date": "Date", "variable": "Strategy"})
                         fig.add_scatter(x=volume_data.index, y=volume_data['Volume'], yaxis="y2", name="Volume", line=dict(color="purple", dash="dash"))
                         fig.update_layout(
                             hovermode='x unified',
@@ -524,26 +531,26 @@ if st.button("Run Analysis"):
                 
                 # Sunburst chart
                 if not daily_df.empty:
-                    with st.expander("Profit Contribution (Sunburst)", expanded=True):
+                    with st.expander("Gap Contribution (Sunburst)", expanded=True):
                         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                         sunburst_data = []
                         for strategy, selected in strategies.items():
                             if selected and f"{strategy} ($)" in daily_df.columns:
-                                for date, profit in daily_df[f"{strategy} ($)"].items():
-                                    if profit > 0:
+                                for date, gap in daily_df[f"{strategy} ($)"].items():
+                                    if gap > 0:
                                         sunburst_data.append({
                                             "Strategy": strategy,
                                             "Date": date.strftime('%Y-%m-%d'),
-                                            "Profit": profit
+                                            "Gap": gap
                                         })
                         sunburst_df = pd.DataFrame(sunburst_data)
                         if not sunburst_df.empty:
-                            fig_sunburst = px.sunburst(sunburst_df, path=['Strategy', 'Date'], values='Profit',
-                                                      title=f"Profit Contribution by Strategy and Day for {ticker}")
+                            fig_sunburst = px.sunburst(sunburst_df, path=['Strategy', 'Date'], values='Gap',
+                                                      title=f"Gap Contribution by Strategy and Day for {ticker}")
                             fig_sunburst.update_traces(hovertemplate='%{label}: %{value:.2f} $')
                             st.plotly_chart(fig_sunburst, use_container_width=True)
                         else:
-                            st.write("No positive profits to display in sunburst chart.")
+                            st.write("No positive gaps to display in sunburst chart.")
                         st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Daily stock increase analysis
@@ -567,7 +574,7 @@ if st.button("Run Analysis"):
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Prediction Tabs
-                tabs = st.tabs(["Average Contribution", "Predicted Daily Increase"])
+                tabs = st.tabs(["Average Contribution", "Predicted Daily Gap"])
 
                 with tabs[0]:
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -578,7 +585,7 @@ if st.button("Run Analysis"):
 
                 with tabs[1]:
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.write("**Predicted Daily Increase by Strategy:** (Reliable gains and smart predictions for tomorrow, June 28, 2025)")
+                    st.write("**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for tomorrow, June 28, 2025)")
                     strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
                     conf_numbers = []
                     conf_ranges = []
@@ -607,32 +614,32 @@ if st.button("Run Analysis"):
                     data = {
                         "Strategy": strategy_names,
                         "Mean ($)": means,
-                        "Confident Number ($)": conf_numbers,
+                        "Confident Gap ($)": conf_numbers,
                         "Confidence Range ($)": conf_ranges,
                         "Variation ($)": variations,
                         "RMSE ($)": rmse_list,
-                        "ML Prediction ($)": ml_predictions_list
+                        "ML Predicted Gap ($)": ml_predictions_list
                     }
                     df_predictions = pd.DataFrame(data)
                     styled_df = df_predictions.style.format({
                         "Mean ($)": lambda x: x,
-                        "Confident Number ($)": lambda x: x,
+                        "Confident Gap ($)": lambda x: x,
                         "Confidence Range ($)": lambda x: x,
                         "Variation ($)": lambda x: x,
                         "RMSE ($)": lambda x: x,
-                        "ML Prediction ($)": lambda x: x
+                        "ML Predicted Gap ($)": lambda x: x
                     }).set_properties(**{'text-align': 'left'})
                     st.dataframe(styled_df)
                     st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Highlight most profitable strategy
+                # Highlight most significant gap
                 if not comparison_df.empty:
                     with st.expander("Key Insights", expanded=True):
                         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                        best_daily = comparison_df.loc[comparison_df["Max Daily Profit ($)"].idxmax()]
+                        best_daily = comparison_df.loc[comparison_df["Max Daily Gap ($)"].idxmax()]
                         best_agg = comparison_df.loc[comparison_df["Aggregated Profit ($)"].idxmax()]
-                        st.write(f"**Most Profitable Daily Strategy**: {best_daily['Strategy']} on {best_daily['Best Day']} "
-                                 f"(${best_daily['Max Daily Profit ($)']:.2f}, {best_daily['Max Daily Return (%)']:.2f}%)")
+                        st.write(f"**Largest Daily Gap Strategy**: {best_daily['Strategy']} on {best_daily['Best Day']} "
+                                 f"(${best_daily['Max Daily Gap ($)']:.2f}, {best_daily['Max Daily Return (%)']:.2f}%)")
                         st.write(f"**Most Profitable Aggregated Strategy**: {best_agg['Strategy']} "
                                  f"(${best_agg['Aggregated Profit ($)']:.2f}, {best_agg['Aggregated Return (%)']:.2f}%) "
                                  f"from buy on {aggregated_profit[f'{best_agg['Strategy']} Buy Date']} "
