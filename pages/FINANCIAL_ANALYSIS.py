@@ -16,6 +16,10 @@ if "analysis_results" not in st.session_state:
     st.session_state.analysis_results = None
 if "error_message" not in st.session_state:
     st.session_state.error_message = None
+if "metrics" not in st.session_state:
+    st.session_state.metrics = []
+if "years" not in st.session_state:
+    st.session_state.years = []
 
 # Function to load and process financial data
 @st.cache_data
@@ -34,14 +38,14 @@ def load_financial_data(file):
                 header_row = idx
                 break
         if header_row is None:
-            raise ValueError("No year headers (e.g., 2022, 2023) found in file.")
+            return None, "No year headers (e.g., 2022, 2023) found in file."
 
         # Set up DataFrame
         df = raw.iloc[header_row+1:].copy()
         df.columns = raw.iloc[header_row]
         df = df.dropna(axis=1, how="all").dropna(axis=0, how="all")
         if df.empty or df.shape[1] < 2:
-            raise ValueError("DataFrame is empty or has insufficient columns.")
+            return None, "DataFrame is empty or has insufficient columns."
         
         # Set first column as index (metrics)
         df = df.set_index(df.columns[0])
@@ -56,9 +60,9 @@ def load_financial_data(file):
         df = df.dropna().astype(float)
 
         if df.empty:
-            raise ValueError("No valid data after processing.")
+            return None, "No valid data after processing."
         
-        return df
+        return df, None
     except Exception as e:
         return None, f"Error loading file: {str(e)}"
 
@@ -74,6 +78,11 @@ if st.sidebar.button("📤 Submit") and uploaded_file:
         # Store available metrics and years
         st.session_state.metrics = st.session_state.df.columns.tolist()
         st.session_state.years = sorted([int(y) for y in st.session_state.df.index if str(y).isdigit()])
+        # Minimal debug output
+        with st.expander("Debug Info"):
+            st.write(f"DataFrame shape: {st.session_state.df.shape}")
+            st.write(f"Years: {st.session_state.years}")
+            st.write(f"Metrics (first 5): {st.session_state.metrics[:5]}")
 
 # Analysis form
 if st.session_state.df is not None:
