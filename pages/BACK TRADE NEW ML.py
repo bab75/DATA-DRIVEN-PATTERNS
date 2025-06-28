@@ -391,7 +391,7 @@ def generate_html_report(ticker, start_date, end_date, comparison_df, aggregated
     <h2>Market Insights and Advisory</h2>
     <ul>
         <li><strong>Intraday Trading</strong>: Focus on days with 'Strong Bullish' sentiment (gap > $5) and high volume (e.g., {high_price_days.index[0].strftime('%Y-%m-%d') if not high_price_days.empty else 'N/A'}, avg volume {avg_volume:.0f}). Buy at daily low, sell at close or high.</li>
-        <li><strong>Short-Term Trading</strong>: Target strategies with positive ML predictions (e.g., {max(ml_predictions.items(), key=lambda x: x[1]['Predicted Increase'])[0] if ml_predictions else 'N/A'}: ${max(ml_predictions.values(), key=lambda x: x['Predicted Increase'])['Predicted Increase']:.2f if ml_predictions else 0.0}). Enter at recent lows, exit at predicted highs over weeks.</li>
+        <li><strong>Short-Term Trading</strong>: Target strategies with positive ML predictions (e.g., { max(ml_predictions.items(), key=lambda x: x[1].get('Predicted Increase', 0))[0] + ': $' + str(round(max(ml_predictions.values(), key=lambda x: x.get('Predicted Increase', 0)).get('Predicted Increase', 0), 2)) if ml_predictions and any(pred.get('Predicted Increase', 0) > 0 for pred in ml_predictions.values()) else 'N/A: $0.00'}). Enter at recent lows, exit at predicted highs over weeks.</li>
         <li><strong>Long-Term Investment</strong>: Consider buying at period low (${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]}) with low volatility ({volatility:.2f}), hold for stable growth.</li>
         <li><strong>Other Insights</strong>: High price-volume correlation ({data['High'].corr(data['Volume']):.3f if len(data) > 1 else 0}) suggests strong demand on peak days.</li>
     </ul>
