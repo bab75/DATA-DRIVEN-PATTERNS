@@ -18,6 +18,6 @@ yfinance>=0.2.44
 ta
 uuid
 backtesting
-holidays
+pandas_market_calendars>=4.0.0
 
 
