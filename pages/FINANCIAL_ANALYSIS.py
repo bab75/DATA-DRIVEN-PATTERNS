@@ -31,14 +31,15 @@ def load_financial_data(file):
         else:
             raw = pd.read_excel(file, header=None)
 
-        # Detect header row with years
+        # Detect header row with years (look for FY 20XX or 20XX-12-31)
         header_row = None
         for idx, row in raw.iterrows():
-            if sum(bool(re.search(r'20\d{2}', str(cell))) for cell in row) >= 3:
+            year_count = sum(bool(re.search(r'(FY\s*20\d{2}|20\d{2}-\d{2}-\d{2})', str(cell))) for cell in row)
+            if year_count >= 3:
                 header_row = idx
                 break
         if header_row is None:
-            return None, "No year headers (e.g., 2022, 2023) found in file."
+            return None, "No year headers (e.g., FY 20XX or 20XX-12-31) found in file."
 
         # Set up DataFrame
         df = raw.iloc[header_row+1:].copy()
@@ -53,11 +54,16 @@ def load_financial_data(file):
         df.index = df.index.astype(str).str.strip()
         
         # Convert to numeric and transpose
-        df = df.apply(pd.to_numeric, errors="coerce").dropna(how="all")
+        df = df.apply(pd.to_numeric, errors="coerce")
+        # Drop columns (metrics) with all NaN values
+        df = df.dropna(axis=1, how="all")
         df = df.T
         df.index.name = "Year"
-        df.index = [re.search(r"20\d{2}", str(x)).group(0) if re.search(r"20\d{2}", str(x)) else None for x in df.index]
-        df = df.dropna().astype(float)
+        # Extract year from FY 20XX or 20XX-12-31
+        df.index = [re.search(r'20\d{2}', str(x)).group(0) if re.search(r'20\d{2}', str(x)) else None for x in df.index]
+        # Drop rows with None index (invalid years)
+        df = df[df.index.notnull()]
+        df = df.astype(float)
 
         if df.empty:
             return None, "No valid data after processing."
@@ -119,7 +125,7 @@ if st.session_state.df is not None:
             for metric in metrics:
                 try:
                     series = st.session_state.df.loc[valid_years, metric].dropna()
-                    if series.empty or series.isna().all():
+                    if series.empty or series.isna().all() or len(series) < 1:
                         st.warning(f"No valid data for '{metric}' in selected years.")
                         continue
                     
