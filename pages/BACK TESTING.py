@@ -18,28 +18,42 @@ def fetch_data(symbol, start_date, end_date):
         if data is None or data.empty or len(data) < 50:
             st.error(f"Insufficient or no data for {symbol}. Need at least 50 days.")
             return None
-        # Ensure Close column exists
-        if 'Close' not in data.columns:
-            st.error(f"No 'Close' column in data for {symbol}.")
+        
+        # Handle MultiIndex columns from yfinance
+        if isinstance(data.columns, pd.MultiIndex):
+            # Flatten MultiIndex columns - take the first level (OHLCV names)
+            data.columns = [col[0] if isinstance(col, tuple) else col for col in data.columns]
+        
+        # Ensure required columns exist
+        required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        if missing_columns:
+            st.error(f"Missing required columns for {symbol}: {missing_columns}")
             return None
-        # Convert to numeric, handle non-numeric values
-        try:
-            data['Close'] = pd.to_numeric(data['Close'], errors='coerce')
-        except Exception as e:
-            st.error(f"Error converting 'Close' to numeric for {symbol}: {e}")
-            return None
-        # Drop NaN and ensure sufficient data
+        
+        # Convert all columns to numeric, handle non-numeric values
+        for col in required_columns:
+            try:
+                data[col] = pd.to_numeric(data[col], errors='coerce')
+            except Exception as e:
+                st.error(f"Error converting '{col}' to numeric for {symbol}: {e}")
+                return None
+        
+        # Drop rows with NaN values and ensure sufficient data
         data = data.dropna()
         if len(data) < 50:
             st.error(f"Insufficient valid data for {symbol} after cleaning ({len(data)} days).")
             return None
-        # Check for valid prices
+        
+        # Check for valid prices (no zero or negative values)
         if (data['Close'] <= 0).any():
             st.error(f"Invalid data for {symbol}: Contains zero or negative prices.")
             return None
-        # Select relevant columns and ensure float type
-        data = data[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+        
+        # Select only required columns and ensure float type
+        data = data[required_columns].astype(float)
         return data
+        
     except Exception as e:
         st.error(f"Error fetching data for {symbol}: {e}")
         return None
