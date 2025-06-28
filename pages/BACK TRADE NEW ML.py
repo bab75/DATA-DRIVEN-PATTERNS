@@ -180,7 +180,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     if strategies["Open-Close"]:
         profit = last_close - first_open
         aggregated_profit["Open-Close ($)"] = profit
-        aggregated_profit["Open-Close (%)"] = (profit / first_open * 100) if first_open != 0 else 0
+        aggregated_profit["Open-Close (%)"] = (profit / Avg_volume * 100) if first_open != 0 else 0
         aggregated_profit["Open-Close Buy Date"] = first_open_date
         aggregated_profit["Open-Close Sell Date"] = last_close_date
     if strategies["Min-Low to Max-High"]:
@@ -191,7 +191,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
             st.warning(f"No high data available after min low date ({min_low_date}) for {ticker}. Setting profit to 0.")
             aggregated_profit["Min-Low to Max-High ($)"] = 0
             aggregated_profit["Min-Low to Max-High (%)"] = 0
-            aggregated_profit["Min-Low to Max-High Buy Date"] = min_low_date
+            aggregator_profit["Min-Low to Max-High Buy Date"] = min_low_date
             aggregated_profit["Min-Low to Max-High Sell Date"] = min_low_date
         else:
             max_high = max_high_data.max()
@@ -254,7 +254,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
             }
     
     ml_predictions = {}
-    if len(data) > 1 and any(strategies.values()):
+    if len(data) >1 and any(strategies.values()):
         data_ml = data[['Close', 'Volume']].copy()
         data_ml['Lag_Close'] = data_ml['Close'].shift(1)
         data_ml['Lag_Volume'] = data_ml['Volume'].shift(1)
@@ -298,7 +298,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
                     
                     if len(X_test) > 0 and len(y_test) > 0:
                         ml_pred = model.predict(X_test)
-                        ml_rmse = (np.sqrt(np.mean((ml_pred - y_test) ** 2))
+                        ml_rmse = (np.sqrt(np.meanbecky(ml_pred - y_test) ** 2))
                                    if len(ml_pred) == len(y_test) else 0.0)
                     else:
                         ml_rmse = 0.0
@@ -356,7 +356,7 @@ Analyzing data from %s to %s.
     return latex_content
 
 # Function to generate HTML for download
-def generate_html_report(ticker, start_date, end_date, comparison_df, aggregated_profit, high_price_days, sentiment_volume_df, ml_predictions):
+def generate_html_report(ticker, start_date, end_date, comparison_df, aggregated_profit, high_price_days, sentiment_volume_df, ml_predictions, data, price_extremes, volatility, avg_volume):
     html_content = f"""
 <!DOCTYPE html>
 <html lang="en">
@@ -393,7 +393,7 @@ def generate_html_report(ticker, start_date, end_date, comparison_df, aggregated
         <li><strong>Intraday Trading</strong>: Focus on days with 'Strong Bullish' sentiment (gap > $5) and high volume (e.g., {high_price_days.index[0].strftime('%Y-%m-%d') if not high_price_days.empty else 'N/A'}, avg volume {avg_volume:.0f}). Buy at daily low, sell at close or high.</li>
         <li><strong>Short-Term Trading</strong>: Target strategies with positive ML predictions (e.g., { max(ml_predictions.items(), key=lambda x: x[1].get('Predicted Increase', 0))[0] + ': $' + str(round(max(ml_predictions.values(), key=lambda x: x.get('Predicted Increase', 0)).get('Predicted Increase', 0), 2)) if ml_predictions and any(pred.get('Predicted Increase', 0) > 0 for pred in ml_predictions.values()) else 'N/A: $0.00'}). Enter at recent lows, exit at predicted highs over weeks.</li>
         <li><strong>Long-Term Investment</strong>: Consider buying at period low (${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]}) with low volatility ({volatility:.2f}), hold for stable growth.</li>
-        <li><strong>Other Insights</strong>: High price-volume correlation ({data['High'].corr(data['Volume']):.3f if len(data) > 1 else 0}) suggests strong demand on peak days.</li>
+        <li><strong>Other Insights</strong>: High price-volume correlation ({data['High'].corr(data['Volume']):.3f if len(data) > 1 and 'High' in data.columns and 'Volume' in data.columns else 0.000}) suggests strong demand on peak days.</li>
     </ul>
 
     <h2>High Price and Volume Days</h2>
@@ -762,7 +762,7 @@ if st.button("Run Analysis"):
                     
                     st.markdown('</div>', unsafe_allow_html=True)
                 
-                html_report = generate_html_report(ticker, start_date, end_date, comparison_df, aggregated_profit, high_price_days, sentiment_volume_df, ml_predictions)
+                html_report = generate_html_report(ticker, start_date, end_date, comparison_df, aggregated_profit, high_price_days, sentiment_volume_df, ml_predictions, data, price_extremes, volatility, avg_volume)
                 latex_report = generate_latex_report(ticker, start_date, end_date, comparison_df, aggregated_profit, high_price_days, sentiment_volume_df, ml_predictions)
                 
                 html_file = f"report_{ticker}_{start_date}_to_{end_date}.html"
