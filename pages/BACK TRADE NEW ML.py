@@ -568,9 +568,7 @@ if st.button("Run Analysis"):
                             "Aggregated Return (%)": "{:.2f}"
                         }).applymap(color_profit_loss, subset=["Aggregated Profit ($)"])
                         st.dataframe(styled_agg_df)
-                        pivot_df = agg_df.pivot_table(index="Strategy", columns="Buy Date", values="Aggregated Profit ($)", fill
-
-_value=0)
+                        pivot_df = agg_df.pivot_table(index="Strategy", columns="Buy Date", values="Aggregated Profit ($)", fill_value=0)
                         fig_heatmap = px.imshow(pivot_df,
                                                labels=dict(x="Buy Date", y="Strategy", color="Aggregated Profit ($)"),
                                                color_continuous_scale="RdYlGn",
