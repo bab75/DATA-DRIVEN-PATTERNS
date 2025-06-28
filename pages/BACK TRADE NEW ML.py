@@ -152,7 +152,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         if strategies["Min-Low to Max-High"]:
             profit = high - low
             daily_profit["Min-Low to Max-High ($)"] = profit
-            daily_profit["Min-Low to Max-High (%)"] = (profitUX: / low * 100) if low != 0 else 0
+            daily_profit["Min-Low to Max-High (%)"] = (profit / low * 100) if low != 0 else 0
         
         daily_results.append({
             "Date": date,
