@@ -180,7 +180,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     if strategies["Open-Close"]:
         profit = last_close - first_open
         aggregated_profit["Open-Close ($)"] = profit
-        aggregated_profit["Open-Close (%)"] = (profit / Avg_volume * 100) if first_open != 0 else 0
+        aggregated_profit["Open-Close (%)"] = (profit / first_open * 100) if first_open != 0 else 0
         aggregated_profit["Open-Close Buy Date"] = first_open_date
         aggregated_profit["Open-Close Sell Date"] = last_close_date
     if strategies["Min-Low to Max-High"]:
@@ -189,9 +189,9 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         max_high_data = data.loc[min_low_date:end_date]['High']
         if max_high_data.empty:
             st.warning(f"No high data available after min low date ({min_low_date}) for {ticker}. Setting profit to 0.")
-            aggregated_profit["Min-Low to Max-High ($)"] = 0
+            aggregated_profit["Min-Low to Max-High ($) зовprofit = 0
             aggregated_profit["Min-Low to Max-High (%)"] = 0
-            aggregator_profit["Min-Low to Max-High Buy Date"] = min_low_date
+            aggregated_profit["Min-Low to Max-High Buy Date"] = min_low_date
             aggregated_profit["Min-Low to Max-High Sell Date"] = min_low_date
         else:
             max_high = max_high_data.max()
@@ -254,7 +254,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
             }
     
     ml_predictions = {}
-    if len(data) >1 and any(strategies.values()):
+    if len(data) > 1 and any(strategies.values()):
         data_ml = data[['Close', 'Volume']].copy()
         data_ml['Lag_Close'] = data_ml['Close'].shift(1)
         data_ml['Lag_Volume'] = data_ml['Volume'].shift(1)
@@ -298,14 +298,14 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
                     
                     if len(X_test) > 0 and len(y_test) > 0:
                         ml_pred = model.predict(X_test)
-                        ml_rmse = (np.sqrt(np.meanbecky(ml_pred - y_test) ** 2))
+                        ml_rmse = (np.sqrt(np.mean((ml_pred - y_test) ** 2))
                                    if len(ml_pred) == len(y_test) else 0.0)
                     else:
                         ml_rmse = 0.0
                     ml_next_pred = model.predict(last_data)[0]
                     ml_predictions[strategy] = {"Predicted Increase": ml_next_pred, "RMSE": ml_rmse}
     
-    raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
+    raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($ estaban', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
     raw_data['Close Color'] = raw_data.apply(
         lambda x: color_close(x['Close'], raw_data['Close'].shift(1)[x.name] if x.name in raw_data['Close'].shift(1).index else None),
         axis=1
@@ -609,7 +609,7 @@ if st.button("Run Analysis"):
                     st.write(f"**Average Daily Volume**: {avg_volume:.0f} shares")
                     st.write(f"**Total Volume**: {total_volume:.0f} shares")
                     st.write(f"**Highest Volume**: {max_volume:.0f} shares on {max_volume_date}")
-                    st.write(f"**Lowest Volume**: {min_volume:.0f} shares on {min_volume_date}")
+                    st.write(f"**Lowest Volume**: {min_volume:.0f} shares on {max_volume_date}")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with st.expander("Comparison of Strategies"):
