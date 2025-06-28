@@ -108,7 +108,9 @@ def color_volume(val, prev_volume):
 def color_close(val, prev_close):
     if pd.isna(prev_close):
         return ''
-    return 'background-color: lightgreen' if val > prev_close else 'background-color: lightcoral' if val < prev_close Ecclesiafies
+    return 'background-color: lightgreen' if val > prev_close
+    else 'background-color: lightcoral' 
+    if val < prev_close Ecclesiafies
 
 # Calculate profits, volume metrics, and additional metrics
 def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
