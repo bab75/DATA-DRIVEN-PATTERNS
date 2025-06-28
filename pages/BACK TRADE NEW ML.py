@@ -5,6 +5,7 @@ import plotly.express as px
 from datetime import datetime, date, timedelta
 import numpy as np
 from sklearn.linear_model import LinearRegression
+import holidays
 
 # Streamlit page configuration
 st.set_page_config(page_title="Stock Price Comparison Dashboard", page_icon="📊", layout="wide")
@@ -696,20 +697,27 @@ if st.button("Run Analysis"):
             with tabs[3]:
                 with st.expander("Predicted Daily Gap", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    import holidays  # Insert at line 573
+            
+                    # Define U.S. stock market holidays for 2025
+                    us_holidays = holidays.US(market=True, years=2025)
+                    today = datetime.now().date()  # 2025-06-28
+                    next_day = today + timedelta(days=1)  # Initial next day (2025-06-29)
+            
+                    # Shift to next trading day
+                    while next_day.weekday() >= 5 or next_day in us_holidays:
+                        next_day += timedelta(days=1)
+            
+                    # Update the prediction note with the correct date
                     st.markdown("""
                     **Note**: Predictions use a simple Linear Regression model based on lagged Close and Volume. 
                     Results are indicative and may not capture complex market dynamics. 
                     At least 10 data points are recommended for reliable predictions. 
                     Validate with other indicators before acting on these forecasts.
                     """)
-                    st.write("**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for tomorrow, June 29, 2025)")
+                    st.write(f"**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for the next trading day, {next_day.strftime('%B %d, %Y')})")
                     strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
                     conf_numbers = []
-                    conf_ranges = []
-                    variations = []
-                    means = []
-                    ml_predictions_list = []
-                    rmse_list = []
                     
                     for s in strategy_names:
                         if strategy_predictions and s in strategy_predictions:
