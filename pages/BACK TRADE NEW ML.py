@@ -418,32 +418,47 @@ if st.button("Run Analysis"):
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Daily gap and sentiment
-                with st.expander("Daily Gap and Sentiment", expanded=True):
-                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.write("Daily gap from Low to Close for selected strategies (assuming 1 share) to gauge market sentiment:")
-                    st.dataframe(daily_df.style.format({col: "{:.2f}" for col in daily_df.columns}).applymap(color_profit_loss, subset=[col for col in daily_df.columns if col.endswith("($)")]))
-                    
-                    # Add heatmap for daily gap
-                    if not daily_df.empty and any(col.endswith("($)") for col in daily_df.columns):
-                        profit_cols = [col for col in daily_df.columns if col.endswith("($)")]
-                        pivot_df = daily_df[profit_cols].T
-                        fig_heatmap = px.imshow(pivot_df,
-                                               labels=dict(x="Date", y="Strategy", color="Gap ($)"),
-                                               color_continuous_scale="RdYlGn",
-                                               aspect="auto",
-                                               title=f"Heatmap of Daily Gap by Strategy for {ticker} ({start_date} to {end_date})")
-                        fig_heatmap.update_layout(coloraxis_colorbar_title="Gap ($)")
-                        st.plotly_chart(fig_heatmap, use_container_width=True)
-                    
-                    # Simple sentiment categorization
-                    if "Min-Low to End-Close ($)" in daily_df.columns:
-                        daily_df['Sentiment'] = pd.cut(daily_df["Min-Low to End-Close ($)"],
-                                                      bins=[-float('inf'), 0, 2, 5, float('inf')],
-                                                      labels=['Neutral', 'Weak Bullish', 'Bullish', 'Strong Bullish'])
-                        st.write("Market Sentiment based on Min-Low to End-Close Gap:")
-                        st.dataframe(daily_df[['Min-Low to End-Close ($)', 'Sentiment']].style.format({"Min-Low to End-Close ($)": "{:.2f}"}))
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
+               with st.expander("Daily Gap and Sentiment", expanded=True):
+                   st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                   st.write("Daily gap from Low to Close for selected strategies (assuming 1 share) to gauge market sentiment:")
+                   st.dataframe(daily_df.style.format({col: "{:.2f}" for col in daily_df.columns}).applymap(color_profit_loss, subset=[col for col in daily_df.columns if col.endswith("($)")]))
+                   
+                   # Add heatmap for daily gap
+                   if not daily_df.empty and any(col.endswith("($)") for col in daily_df.columns):
+                       profit_cols = [col for col in daily_df.columns if col.endswith("($)")]
+                       pivot_df = daily_df[profit_cols].T
+                       fig_heatmap = px.imshow(pivot_df,
+                                              labels=dict(x="Date", y="Strategy", color="Gap ($)"),
+                                              color_continuous_scale="RdYlGn",
+                                              aspect="auto",
+                                              title=f"Heatmap of Daily Gap by Strategy for {ticker} ({start_date} to {end_date})")
+                       fig_heatmap.update_layout(coloraxis_colorbar_title="Gap ($)")
+                       st.plotly_chart(fig_heatmap, use_container_width=True)
+                   
+                   # Sentiment categorization and volume correlation
+                   if "Min-Low to End-Close ($)" in daily_df.columns:
+                       daily_df['Sentiment'] = pd.cut(daily_df["Min-Low to End-Close ($)"],
+                                                     bins=[-float('inf'), 0, 2, 5, float('inf')],
+                                                     labels=['Neutral', 'Weak Bullish', 'Bullish', 'Strong Bullish'])
+                       # Merge with volume data
+                       sentiment_volume_df = pd.concat([daily_df[['Min-Low to End-Close ($)', 'Sentiment']], volume_data['Volume']], axis=1)
+                       sentiment_volume_df['Volume Change'] = sentiment_volume_df['Volume'].pct_change() * 100  # % change in volume
+                       st.write("Market Sentiment and Volume Correlation based on Min-Low to End-Close Gap:")
+                       st.dataframe(sentiment_volume_df.style.format({
+                           "Min-Low to End-Close ($)": "{:.2f}",
+                           "Volume": "{:.0f}",
+                           "Volume Change": "{:.2f}%"
+                       }))
+                       
+                       # Highlight days with all strategies profitable
+                       all_profitable = daily_df[[col for col in daily_df.columns if col.endswith("($)")]].apply(lambda x: x >= 0, axis=1).all(axis=1)
+                       profitable_days = daily_df[all_profitable]
+                       if not profitable_days.empty:
+                           st.write("Days with All Strategies Profitable:")
+                           st.dataframe(profitable_days.style.format({col: "{:.2f}" for col in profitable_days.columns if col.endswith("($)")}))
+                           st.write(f"Volume on these days (mean): {profitable_days.index.map(lambda x: volume_data.loc[x, 'Volume']).mean():.0f} shares")
+                   st.markdown('</div>', unsafe_allow_html=True)
+
                 # Aggregated profit/loss
                 with st.expander("Aggregated Profit/Loss", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
