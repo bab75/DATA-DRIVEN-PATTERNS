@@ -68,7 +68,6 @@ if end_date > today:
 
 # Cache data fetching for performance
 @st.cache_data
-@st.cache_data
 def fetch_data(ticker, start_date, end_date):
     try:
         end_date_adjusted = end_date + timedelta(days=1)
@@ -749,7 +748,8 @@ if st.button("Run Analysis"):
                         
                         st.write(f"- **Long-Term Investment**: Buy at period low ${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]} with volatility {volatility:.2f}. Hold for stable growth if trends remain positive.")
                         
-                        correlation = (data['High'].corr(data['Volume']) if 'High' in data.columns and 'Volume' in data.columns and len(data) > 1 else 0)
+                        correlation_df = data[['High', 'Volume']].dropna()
+                        correlation = correlation_df['High'].corr(correlation_df['Volume']) if len(correlation_df) > 1 else 0
                         st.write(f"- **Other Insights**: Price-volume correlation {correlation:.3f} indicates {'strong' if abs(correlation) > 0.5 else 'moderate'} demand on high-price days. Volume-weighted profits suggest {max(volume_weighted_profits, key=volume_weighted_profits.get)} as the most impactful strategy (${max(volume_weighted_profits.values()):.2f}).")
                         
                         st.markdown('</div>', unsafe_allow_html=True)
