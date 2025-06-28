@@ -6,9 +6,18 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import streamlit.components.v1 as components
 
-# Custom CSS for Tailwind styling
+# Custom CSS for Tailwind styling with enhancements
 st.markdown("""
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .custom-container { padding: 1.5rem; background-color: #f9fafb; border-radius: 0.5rem; margin-bottom: 1.5rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .custom-table { max-width: 100%; overflow-x: auto; }
+        .custom-table table { width: 100%; border-collapse: collapse; }
+        .custom-table th, .custom-table td { padding: 0.75rem; border: 1px solid #e5e7eb; }
+        .custom-table th { background-color: #e5e7eb; font-weight: 600; }
+        .suggestion-box { background-color: #e0f2fe; padding: 1rem; border-radius: 0.5rem; margin-top: 1rem; }
+        h2, h3 { color: #1f2937; }
+    </style>
 """, unsafe_allow_html=True)
 
 # Function to fetch and clean data
@@ -21,7 +30,6 @@ def fetch_data(symbol, start_date, end_date):
         
         # Handle MultiIndex columns from yfinance
         if isinstance(data.columns, pd.MultiIndex):
-            # Flatten MultiIndex columns - take the first level (OHLCV names)
             data.columns = [col[0] if isinstance(col, tuple) else col for col in data.columns]
         
         # Ensure required columns exist
@@ -91,7 +99,7 @@ def sma_crossover_backtest(data, short_period=20, long_period=50):
                     position = 0
                     trades.append(('SELL', data.index[i], close_price, shares))
         equity_value = cash + (shares * close_price if position == 1 else 0)
-        equity.append(max(equity_value, 0))  # Ensure equity is non-negative
+        equity.append(max(equity_value, 0))
     
     final_value = cash + (shares * data['Close'].iloc[-1] if position == 1 else 0)
     return trades, final_value, equity
@@ -130,7 +138,7 @@ def rsi_mean_reversion_backtest(data, rsi_period=14, oversold=30, overbought=70)
                 position = 0
                 trades.append(('SELL', data.index[i], close_price, shares))
         equity_value = cash + (shares * close_price if position == 1 else 0)
-        equity.append(max(equity_value, 0))  # Ensure equity is non-negative
+        equity.append(max(equity_value, 0))
     
     final_value = cash + (shares * data['Close'].iloc[-1] if position == 1 else 0)
     return trades, final_value, equity
@@ -168,7 +176,7 @@ def bollinger_bands_backtest(data, period=20, std_dev=2):
                 position = 0
                 trades.append(('SELL', data.index[i], close_price, shares))
         equity_value = cash + (shares * close_price if position == 1 else 0)
-        equity.append(max(equity_value, 0))  # Ensure equity is non-negative
+        equity.append(max(equity_value, 0))
     
     final_value = cash + (shares * data['Close'].iloc[-1] if position == 1 else 0)
     return trades, final_value, equity
@@ -202,10 +210,7 @@ def calculate_metrics(equity, data):
         }
     
     try:
-        # Convert to numpy array and ensure no invalid values
         equity = np.array(equity, dtype=float)
-        
-        # Remove any NaN or inf values
         equity = equity[np.isfinite(equity)]
         
         if len(equity) < 2:
@@ -218,7 +223,6 @@ def calculate_metrics(equity, data):
                 'Max Drawdown (%)': 0
             }
         
-        # Ensure no zero or negative values for return calculation
         equity_clean = equity[equity > 0]
         if len(equity_clean) < 2:
             st.warning("Equity contains zero or negative values.")
@@ -230,7 +234,6 @@ def calculate_metrics(equity, data):
                 'Max Drawdown (%)': 0
             }
         
-        # Safe returns calculation
         returns = []
         for i in range(1, len(equity_clean)):
             if equity_clean[i-1] > 0:
@@ -240,17 +243,11 @@ def calculate_metrics(equity, data):
             returns = [0]
         
         returns = np.array(returns)
-        
-        # Calculate metrics safely
         total_return = (equity[-1] - 10000) / 10000 * 100 if equity[-1] > 0 else 0
-        
         days_in_period = len(data) if len(data) > 0 else 1
         annualized_return = ((equity[-1] / 10000) ** (252 / days_in_period) - 1) * 100 if equity[-1] > 0 and days_in_period > 0 else 0
-        
         volatility = np.std(returns) * np.sqrt(252) * 100 if len(returns) > 0 else 0
         sharpe_ratio = annualized_return / volatility if volatility > 0 else 0
-        
-        # Max drawdown calculation
         equity_series = pd.Series(equity)
         rolling_max = equity_series.cummax()
         drawdown = (rolling_max - equity_series) / rolling_max
@@ -282,7 +279,13 @@ def plot_price(data, trades, strategy_name):
     sell_signals = [(t[1], t[2]) for t in trades if t[0] == 'SELL' and isinstance(t[2], (int, float)) and not pd.isna(t[2])]
     fig.add_trace(go.Scatter(x=[t[0] for t in buy_signals], y=[t[1] for t in buy_signals], mode='markers', name='Buy', marker=dict(symbol='triangle-up', size=10, color='green')))
     fig.add_trace(go.Scatter(x=[t[0] for t in sell_signals], y=[t[1] for t in sell_signals], mode='markers', name='Sell', marker=dict(symbol='triangle-down', size=10, color='red')))
-    fig.update_layout(title=f'{strategy_name} - Price with Signals', xaxis_title='Date', yaxis_title='Price')
+    fig.update_layout(
+        title=f'{strategy_name} - Price with Signals',
+        xaxis_title='Date',
+        yaxis_title='Price',
+        template='plotly_white',
+        margin=dict(l=20, r=20, t=50, b=20)
+    )
     return fig
 
 # Plot Equity Curves
@@ -291,12 +294,45 @@ def plot_equity_curves(results, data):
     for strategy_name, result in results.items():
         if result['equity'] and len(result['equity']) == len(data):
             fig.add_trace(go.Scatter(x=data.index, y=result['equity'], name=strategy_name))
-    fig.update_layout(title='Equity Curves Comparison', xaxis_title='Date', yaxis_title='Portfolio Value ($)')
+    fig.update_layout(
+        title='Equity Curves Comparison',
+        xaxis_title='Date',
+        yaxis_title='Portfolio Value ($)',
+        template='plotly_white',
+        margin=dict(l=20, r=20, t=50, b=20)
+    )
     return fig
+
+# Generate Suggestions
+def generate_suggestions(results):
+    suggestions = []
+    if not results:
+        return ["No results available to generate suggestions."]
+    
+    # Find best-performing strategy by Total Return
+    best_strategy = max(results.items(), key=lambda x: x[1]['metrics']['Total Return (%)'], default=(None, {'metrics': {'Total Return (%)': 0}}))[0]
+    if best_strategy:
+        suggestions.append(f"The {best_strategy} strategy achieved the highest Total Return. Consider focusing on this strategy.")
+    
+    # Check for high volatility
+    for strategy_name, result in results.items():
+        volatility = result['metrics']['Volatility (%)']
+        if volatility > 30:
+            suggestions.append(f"{strategy_name} has high volatility ({volatility:.2f}%). Consider reducing risk by adjusting parameters or diversifying.")
+        
+        # Check for low Sharpe Ratio
+        sharpe = result['metrics']['Sharpe Ratio']
+        if sharpe < 1 and sharpe != 0:
+            suggestions.append(f"{strategy_name} has a low Sharpe Ratio ({sharpe:.2f}). Explore parameter optimization or alternative strategies.")
+    
+    if not suggestions:
+        suggestions.append("All strategies performed within expected parameters. Try testing with different periods or symbols for further insights.")
+    
+    return suggestions
 
 # Streamlit App
 st.markdown("""
-    <div class="bg-gray-100 p-6 rounded-lg shadow-md">
+    <div class="custom-container">
         <h1 class="text-3xl font-bold text-center text-gray-800 mb-4">Stock Backtesting Dashboard</h1>
         <p class="text-center text-gray-600 mb-6">Test and compare trading strategies with historical stock data.</p>
     </div>
@@ -310,7 +346,7 @@ with st.form("backtest_form"):
         start_date = st.date_input("Start Date", value=datetime(2020, 1, 1))
     with col2:
         end_date = st.date_input("End Date", value=datetime(2023, 12, 31))
-        st.write("")  # Spacer
+        st.write("")
     
     st.markdown("<h3 class='text-lg font-semibold text-gray-700'>Select Strategies</h3>", unsafe_allow_html=True)
     strategies = {
@@ -362,31 +398,28 @@ if submitted:
             if not results:
                 st.error("No valid results generated. Please check inputs or data.")
             else:
-                # Display Results
-                st.markdown("<h2 class='text-2xl font-bold text-gray-800 mt-6'>Backtest Results</h2>", unsafe_allow_html=True)
-                for strategy_name, result in results.items():
-                    st.markdown(f"<h3 class='text-xl font-semibold text-gray-700'>{strategy_name}</h3>", unsafe_allow_html=True)
-                    col1, col2 = st.columns([1, 2])
-                    with col1:
-                        st.write("**Performance Metrics**")
-                        metrics_df = pd.DataFrame(result['metrics'].items(), columns=['Metric', 'Value'])
-                        st.table(metrics_df)
-                        st.write("**Trades**")
-                        trades_df = pd.DataFrame(result['trades'], columns=['Action', 'Date', 'Price', 'Shares'])
-                        if not trades_df.empty:
-                            trades_df['Price'] = pd.to_numeric(trades_df['Price'], errors='coerce')
-                            if not trades_df['Price'].isna().all():
-                                trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
-                                trades_df['Shares'] = trades_df['Shares'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
-                                st.dataframe(trades_df)
-                            else:
-                                st.write("No valid trades executed.")
-                        else:
-                            st.write("No trades executed.")
-                    with col2:
-                        st.plotly_chart(plot_price(data, result['trades'], strategy_name))
+                # Dynamic Heading
+                st.markdown(
+                    f"<h2 class='text-2xl font-bold text-gray-800 mt-6'>Backtest Results for {symbol} ({start_date} to {end_date})</h2>",
+                    unsafe_allow_html=True
+                )
                 
-                # Equity Curve Comparison
-                if len(results) > 1:
-                    st.markdown("<h3 class='text-xl font-semibold text-gray-700'>Equity Curves Comparison</h3>", unsafe_allow_html=True)
-                    st.plotly_chart(plot_equity_curves(results, data))
+                # Display Results in Expanders
+                for strategy_name, result in results.items():
+                    with st.expander(f"{strategy_name}", expanded=True):
+                        st.markdown("<div class='custom-container'>", unsafe_allow_html=True)
+                        col1, col2 = st.columns([1, 2], gap="medium")
+                        with col1:
+                            st.markdown("<h4 class='text-lg font-semibold text-gray-700'>Performance Metrics</h4>", unsafe_allow_html=True)
+                            metrics_df = pd.DataFrame(result['metrics'].items(), columns=['Metric', 'Value'])
+                            st.markdown(
+                                f'<div class="custom-table">{metrics_df.to_html(index=False, classes=["table-auto"])}</div>',
+                                unsafe_allow_html=True
+                            )
+                            st.markdown("<h4 class='text-lg font-semibold text-gray-700 mt-4'>Trades</h4>", unsafe_allow_html=True)
+                            trades_df = pd.DataFrame(result['trades'], columns=['Action', 'Date', 'Price', 'Shares'])
+                            if not trades_df.empty:
+                                trades_df['Price'] = pd.to_numeric(trades_df['Price'], errors='coerce')
+                                if not trades_df['Price'].isna().all():
+                                    trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N ποιο
+System: * Today's date and time is 06:00 PM EDT on Saturday, June 28, 2025.
