@@ -82,7 +82,7 @@ if submitted and uploaded_file:
     # Debug information
     st.write("**Debug Info:**")
     st.write(f"DataFrame shape: {df.shape}")
-    st.write(f"DataFrame index (first 5): {df.index[:5].tolist()}")
+    st.write(f"DataFrame index: {df.index.tolist()}")
     st.write(f"DataFrame columns (first 5): {df.columns[:5].tolist()}")
     
     years = sorted([int(y) for y in df.index if str(y).isdigit()])
@@ -108,21 +108,20 @@ if submitted and uploaded_file:
             # Clear previous results
             st.session_state.analysis_results = None
             st.session_state.error_message = None
-            
+            st.session_state.selected_metrics = metrics
+            st.session_state.selected_years = [str(y) for y in years if yr_range[0] <= y <= yr_range[1]]
+
             # Debug: Check what we're working with
-            st.write(f"**Analysis Debug:**")
+            st.write("**Analysis Debug:**")
             st.write(f"Selected year range: {yr_range}")
             st.write(f"Selected metrics: {metrics}")
             
-            # Get available years from DataFrame index (ensure exact match)
+            # Get available years from DataFrame index
             available_years = [str(year) for year in df.index if str(year).isdigit()]
-            selected_years = [str(y) for y in years if yr_range[0] <= y <= yr_range[1]]
-            
-            # Filter to only years that actually exist in the DataFrame
-            valid_years = [year for year in selected_years if year in available_years]
+            valid_years = [year for year in st.session_state.selected_years if year in available_years]
             
             st.write(f"Available years in data: {available_years}")
-            st.write(f"Requested years: {selected_years}")
+            st.write(f"Requested years: {st.session_state.selected_years}")
             st.write(f"Valid years (intersection): {valid_years}")
             
             if not metrics:
@@ -130,7 +129,7 @@ if submitted and uploaded_file:
                 st.stop()
             
             if not valid_years:
-                st.warning(f"No valid years found. Data contains: {available_years}, requested: {selected_years}")
+                st.warning(f"No valid years found. Data contains: {available_years}, requested: {st.session_state.selected_years}")
                 st.stop()
 
             results = {"charts": [], "table": None}
@@ -141,10 +140,9 @@ if submitted and uploaded_file:
                     st.warning(f"Metric '{metric}' not found in data. Available: {df.columns.tolist()}")
                     continue
                 
-                # Use valid_years instead of selected_years
                 try:
                     series = df.loc[valid_years, metric]
-                    st.write(f"Data for {metric}: {len(series)} points, values: {series.values[:3]}...")
+                    st.write(f"Data for {metric}: {len(series)} points, values: {series.values.tolist()}")
                     
                     if series.empty or series.isna().all():
                         st.warning(f"No valid data for '{metric}' in selected years.")
@@ -157,6 +155,7 @@ if submitted and uploaded_file:
                         continue
                     
                     # Create chart
+                    st.write(f"Creating chart for {metric}...")
                     fig = px.line(x=series_clean.index, y=series_clean.values, 
                                  markers=True, title=f"{metric} Over Time",
                                  labels={"x": "Year", "y": metric})
@@ -169,12 +168,13 @@ if submitted and uploaded_file:
                         fig.add_trace(go.Scatter(x=series_clean.index, y=trend, name="Trendline",
                                                mode="lines", line=dict(dash="dot", color="gray")))
                     
-                    # Add deviation flags
-                    pct_change = series_clean.pct_change().fillna(0) * 100
-                    for year, pct_val in pct_change.items():
-                        if abs(pct_val) > 30:
-                            fig.add_vline(x=year, line=dict(color="red", dash="dot"),
-                                         annotation_text="⚠️ Deviation", annotation_position="top right")
+                    # Add deviation flags (handle single-year case)
+                    if len(series_clean) > 1:
+                        pct_change = series_clean.pct_change().fillna(0) * 100
+                        for year, pct_val in pct_change.items():
+                            if abs(pct_val) > 30:
+                                fig.add_vline(x=year, line=dict(color="red", dash="dot"),
+                                             annotation_text="⚠️ Deviation", annotation_position="top right")
                     
                     results["charts"].append(fig)
                     st.write(f"✅ Generated chart for {metric}")
@@ -189,15 +189,19 @@ if submitted and uploaded_file:
                     table = df.loc[valid_years, metrics].copy()
                     st.write(f"Table shape: {table.shape}")
                     
-                    for m in metrics:
-                        if m in table.columns:
-                            table[f"{m} YOY (%)"] = table[m].pct_change().round(4) * 100
+                    if len(valid_years) > 1:  # Only calculate YOY if multiple years
+                        for m in metrics:
+                            if m in table.columns:
+                                table[f"{m} YOY (%)"] = table[m].pct_change().round(4) * 100
+                    else:
+                        st.warning("Only one year selected, skipping YOY calculation.")
                     
                     results["table"] = table
                     st.write("✅ Generated YOY table")
                     
                 except Exception as e:
                     st.error(f"Error generating table: {str(e)}")
+                    results["table"] = None
             
             # Store results in session state
             st.session_state.analysis_results = results
@@ -219,7 +223,10 @@ elif st.session_state.analysis_results is not None:
     # Display charts
     if "charts" in st.session_state.analysis_results and st.session_state.analysis_results["charts"]:
         for fig in st.session_state.analysis_results["charts"]:
-            st.plotly_chart(fig, use_container_width=True)
+            try:
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error displaying chart: {str(e)}")
     
     # Display table
     if "table" in st.session_state.analysis_results and st.session_state.analysis_results["table"] is not None:
