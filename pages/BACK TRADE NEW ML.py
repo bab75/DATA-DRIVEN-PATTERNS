@@ -346,100 +346,11 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
 def generate_latex_report(ticker, start_date, end_date, comparison_df, aggregated_profit, high_price_days, sentiment_volume_df, ml_predictions):
     latex_content = r"""
 \documentclass[a4paper,12pt]{article}
-\usepackage[utf8]{inputenc}
-\usepackage{geometry}
-\geometry{margin=1in}
-\usepackage{booktabs}
-\usepackage{longtable}
-\usepackage{colortbl}
-\usepackage{amsmath}
-\usepackage{fancyhdr}
-\pagestyle{fancy}
-\fancyhf{}
-\rhead{Stock Analysis Report - {0}}
-\lhead{Generated: {1}}
-\cfoot{{\thepage}}
 \begin{document}
-
-\section*{Stock Analysis Report}
-\subsection*{Overview}
-Analyzing {0} from {2} to {3}, this report consolidates insights for intraday trading, short-term trading, and long-term investment.
-
-\subsection*{Comparison of Strategies}
-\begin{longtable}{{lcccc}}
-\toprule
-Strategy & Max Daily Gap (\$) & Max Daily Return (\%) & Aggregated Profit (\$) & Aggregated Return (\%) \\
-\midrule
-""".format(ticker, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), start_date, end_date)
-
-    for _, row in comparison_df.iterrows():
-        latex_content += "{0} & {1:.2f} & {2:.2f} & {3:.2f} & {4:.2f} \\\\\n".format(
-            row['Strategy'], row['Max Daily Gap ($)'] or 0, row['Max Daily Return (%)'] or 0, 
-            row['Aggregated Profit ($)'] or 0, row['Aggregated Return (%)'] or 0)
-    latex_content += r"\bottomrule
-\end{longtable}
-
-\subsection*{Aggregated Profit/Loss Advisory}
-\begin{itemize}
-    \item \textbf{Min-Low to End-Close}: Profit \${0:.2f} ({1:.2f}\%) from {2} to {3}.
-    \item \textbf{Open-High}: Profit \${4:.2f} ({5:.2f}\%) from {6} to {7}.
-    \item \textbf{Open-Close}: Profit \${8:.2f} ({9:.2f}\%) from {10} to {11}.
-    \item \textbf{Min-Low to Max-High}: Profit \${12:.2f} ({13:.2f}\%) from {14} to {15}.
-\end{itemize}
-""".format(
-    aggregated_profit.get("Min-Low to End-Close ($)", 0), aggregated_profit.get("Min-Low to End-Close (%)", 0),
-    aggregated_profit.get("Min-Low to End-Close Buy Date", ""), aggregated_profit.get("Min-Low to End-Close Sell Date", ""),
-    aggregated_profit.get("Open-High ($)", 0), aggregated_profit.get("Open-High (%)", 0),
-    aggregated_profit.get("Open-High Buy Date", ""), aggregated_profit.get("Open-High Sell Date", ""),
-    aggregated_profit.get("Open-Close ($)", 0), aggregated_profit.get("Open-Close (%)", 0),
-    aggregated_profit.get("Open-Close Buy Date", ""), aggregated_profit.get("Open-Close Sell Date", ""),
-    aggregated_profit.get("Min-Low to Max-High ($)", 0), aggregated_profit.get("Min-Low to Max-High (%)", 0),
-    aggregated_profit.get("Min-Low to Max-High Buy Date", ""), aggregated_profit.get("Min-Low to Max-High Sell Date", "")
-)
-
-    latex_content += r"""
-\subsection*{Market Insights and Advisory}
-\begin{itemize}
-    \item \textbf{Intraday Trading}: Focus on days with 'Strong Bullish' sentiment (gap > \$5) and high volume (e.g., {0}, avg volume {1:.0f}). Buy at daily low, sell at close or high.
-    \item \textbf{Short-Term Trading}: Target strategies with positive ML predictions (e.g., {2}: \${3:.2f}). Enter at recent lows, exit at predicted highs over weeks.
-    \item \textbf{Long-Term Investment}: Consider buying at period low (\${4:.2f} on {5}) with low volatility ({6:.2f}), hold for stable growth.
-    \item \textbf{Other Insights}: High price-volume correlation ({7:.3f}) suggests strong demand on peak days.
-\end{itemize}
-""".format(
-    high_price_days.index[0].strftime('%Y-%m-%d') if not high_price_days.empty else "N/A", avg_volume,
-    max(ml_predictions.items(), key=lambda x: x[1]["Predicted Increase"])[0] if ml_predictions else "N/A",
-    max(ml_predictions.values(), key=lambda x: x["Predicted Increase"])["Predicted Increase"] if ml_predictions else 0,
-    price_extremes["Lowest Value"][2], price_extremes["Lowest Date"][2], volatility,
-    data['High'].corr(data['Volume']) if len(data) > 1 else 0
-)
-
-    latex_content += r"""
-\subsection*{High Price and Volume Days}
-\begin{longtable}{{cccc}}
-\toprule
-Date & High (\$) & Volume & Volume vs Avg (\%) \\
-\midrule
-"""
-    for index, row in high_price_days.iterrows():
-        latex_content += "{0} & {1:.2f} & {2:.0f} & {3:.2f} \\\\\n".format(
-            index.strftime('%Y-%m-%d'), row['High'], row['Volume'], row['Volume vs Avg'])
-    latex_content += r"\bottomrule
-\end{longtable}
-
-\subsection*{Sentiment and Volume Correlation}
-\begin{longtable}{{cccc}}
-\toprule
-Date & Sentiment & Volume & Volume Change (\%) \\
-\midrule
-"""
-    for index, row in sentiment_volume_df.head(5).iterrows():
-        latex_content += "{0} & {1} & {2:.0f} & {3:.2f} \\\\\n".format(
-            index.strftime('%Y-%m-%d'), row['Sentiment'], row['Volume'], row['Volume Change'])
-    latex_content += r"\bottomrule
-\end{longtable}
-
+\section*{Test Report for {0}}
+Analyzing from {1} to {2}.
 \end{document}
-"""
+""".format(ticker, start_date, end_date)
     return latex_content
 
 # Function to generate HTML for download
