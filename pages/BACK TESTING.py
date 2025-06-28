@@ -18,17 +18,22 @@ def fetch_data(symbol, start_date, end_date):
         if data is None or data.empty or len(data) < 50:
             st.error(f"Insufficient or no data for {symbol}. Need at least 50 days.")
             return None
-        # Ensure Close column exists and is numeric
+        # Ensure Close column exists
         if 'Close' not in data.columns:
             st.error(f"No 'Close' column in data for {symbol}.")
             return None
-        # Convert to numeric and drop NaN
-        data['Close'] = pd.to_numeric(data['Close'], errors='coerce')
+        # Convert to numeric, handle non-numeric values
+        try:
+            data['Close'] = pd.to_numeric(data['Close'], errors='coerce')
+        except Exception as e:
+            st.error(f"Error converting 'Close' to numeric for {symbol}: {e}")
+            return None
+        # Drop NaN and ensure sufficient data
         data = data.dropna()
-        # Check for valid prices
         if len(data) < 50:
             st.error(f"Insufficient valid data for {symbol} after cleaning ({len(data)} days).")
             return None
+        # Check for valid prices
         if (data['Close'] <= 0).any():
             st.error(f"Invalid data for {symbol}: Contains zero or negative prices.")
             return None
@@ -71,7 +76,8 @@ def sma_crossover_backtest(data, short_period=20, long_period=50):
                     shares = 0
                     position = 0
                     trades.append(('SELL', data.index[i], close_price, shares))
-        equity.append(cash + (shares * close_price if position == 1 else 0))
+        equity_value = cash + (shares * close_price if position == 1 else 0)
+        equity.append(max(equity_value, 0))  # Ensure equity is non-negative
     
     final_value = cash + (shares * data['Close'].iloc[-1] if position == 1 else 0)
     return trades, final_value, equity
@@ -109,7 +115,8 @@ def rsi_mean_reversion_backtest(data, rsi_period=14, oversold=30, overbought=70)
                 shares = 0
                 position = 0
                 trades.append(('SELL', data.index[i], close_price, shares))
-        equity.append(cash + (shares * close_price if position == 1 else 0))
+        equity_value = cash + (shares * close_price if position == 1 else 0)
+        equity.append(max(equity_value, 0))  # Ensure equity is non-negative
     
     final_value = cash + (shares * data['Close'].iloc[-1] if position == 1 else 0)
     return trades, final_value, equity
@@ -146,7 +153,8 @@ def bollinger_bands_backtest(data, period=20, std_dev=2):
                 shares = 0
                 position = 0
                 trades.append(('SELL', data.index[i], close_price, shares))
-        equity.append(cash + (shares * close_price if position == 1 else 0))
+        equity_value = cash + (shares * close_price if position == 1 else 0)
+        equity.append(max(equity_value, 0))  # Ensure equity is non-negative
     
     final_value = cash + (shares * data['Close'].iloc[-1] if position == 1 else 0)
     return trades, final_value, equity
@@ -164,7 +172,7 @@ def buy_and_hold_backtest(data):
     shares = cash / close_price_first
     trades = [('BUY', data.index[0], close_price_first, shares)]
     final_value = shares * data['Close'].iloc[-1]
-    equity = [shares * data['Close'].iloc[i] for i in range(len(data))]
+    equity = [max(shares * data['Close'].iloc[i], 0) for i in range(len(data))]
     return trades, final_value, equity
 
 # Performance Metrics
@@ -180,9 +188,14 @@ def calculate_metrics(equity, data):
         }
     
     try:
+        # Convert to numpy array and ensure no invalid values
         equity = np.array(equity, dtype=float)
-        if np.any(np.isnan(equity)) or np.any(np.isinf(equity)):
-            st.warning("Equity contains NaN or inf values.")
+        
+        # Remove any NaN or inf values
+        equity = equity[np.isfinite(equity)]
+        
+        if len(equity) < 2:
+            st.warning("Insufficient valid equity data after cleaning.")
             return {
                 'Total Return (%)': 0,
                 'Annualized Return (%)': 0,
@@ -191,23 +204,52 @@ def calculate_metrics(equity, data):
                 'Max Drawdown (%)': 0
             }
         
-        returns = np.diff(equity) / equity[:-1]
-        total_return = (equity[-1] - 10000) / 10000 * 100
-        annualized_return = ((equity[-1] / 10000) ** (252 / len(data)) - 1) * 100
+        # Ensure no zero or negative values for return calculation
+        equity_clean = equity[equity > 0]
+        if len(equity_clean) < 2:
+            st.warning("Equity contains zero or negative values.")
+            return {
+                'Total Return (%)': 0,
+                'Annualized Return (%)': 0,
+                'Volatility (%)': 0,
+                'Sharpe Ratio': 0,
+                'Max Drawdown (%)': 0
+            }
+        
+        # Safe returns calculation
+        returns = []
+        for i in range(1, len(equity_clean)):
+            if equity_clean[i-1] > 0:
+                returns.append((equity_clean[i] - equity_clean[i-1]) / equity_clean[i-1])
+        
+        if len(returns) == 0:
+            returns = [0]
+        
+        returns = np.array(returns)
+        
+        # Calculate metrics safely
+        total_return = (equity[-1] - 10000) / 10000 * 100 if equity[-1] > 0 else 0
+        
+        days_in_period = len(data) if len(data) > 0 else 1
+        annualized_return = ((equity[-1] / 10000) ** (252 / days_in_period) - 1) * 100 if equity[-1] > 0 and days_in_period > 0 else 0
+        
         volatility = np.std(returns) * np.sqrt(252) * 100 if len(returns) > 0 else 0
-        sharpe_ratio = annualized_return / volatility if volatility != 0 else 0
+        sharpe_ratio = annualized_return / volatility if volatility > 0 else 0
+        
+        # Max drawdown calculation
         equity_series = pd.Series(equity)
         rolling_max = equity_series.cummax()
         drawdown = (rolling_max - equity_series) / rolling_max
         max_drawdown = drawdown.max() * 100 if len(drawdown) > 0 else 0
         
         return {
-            'Total Return (%)': total_return,
-            'Annualized Return (%)': annualized_return,
-            'Volatility (%)': volatility,
-            'Sharpe Ratio': sharpe_ratio,
-            'Max Drawdown (%)': max_drawdown
+            'Total Return (%)': round(total_return, 2),
+            'Annualized Return (%)': round(annualized_return, 2),
+            'Volatility (%)': round(volatility, 2),
+            'Sharpe Ratio': round(sharpe_ratio, 2),
+            'Max Drawdown (%)': round(max_drawdown, 2)
         }
+        
     except Exception as e:
         st.error(f"Error in metrics calculation: {e}")
         return {
@@ -314,7 +356,6 @@ if submitted:
                     with col1:
                         st.write("**Performance Metrics**")
                         metrics_df = pd.DataFrame(result['metrics'].items(), columns=['Metric', 'Value'])
-                        metrics_df['Value'] = metrics_df['Value'].apply(lambda x: f"{x:.2f}")
                         st.table(metrics_df)
                         st.write("**Trades**")
                         trades_df = pd.DataFrame(result['trades'], columns=['Action', 'Date', 'Price', 'Shares'])
