@@ -423,10 +423,12 @@ if st.button("Run Analysis"):
             st.error("Please select at least one comparison strategy.")
         else:
             data = fetch_data(ticker, start_date, end_date)
+            print(f"Data after fetch: {type(data)}, {data}")  # Debug after fetch
             if data is None:
                 st.error(f"Failed to fetch data for {ticker}. Please check the ticker or date range and try again.")
                 st.stop()
             daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions, ml_predictions = calculate_profits(data, strategies, strategy_variant, start_date, end_date)
+            print(f"Data in insights: {type(data)}, {data.head()}")  # Debug before insights
             
             # Tabbed Interface
             tabs = st.tabs(["Quick Summary", "Data & Metrics", "Analysis", "Predictions", "Insights"])
@@ -737,10 +739,10 @@ if st.button("Run Analysis"):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write(f"**Consolidated Insights for {ticker} ({start_date} to {end_date})**")
                     
-                    if data is None or data.empty:
+                    if data is None or (isinstance(data, pd.DataFrame) and data.empty):
                         st.error("No valid data available for analysis.")
                     else:
-                        st.write(f"Data type: {type(data)}, Columns: {data.columns.tolist()}")  # Debug output
+                        st.write(f"Data type: {type(data)}, Columns: {data.columns.tolist() if isinstance(data, pd.DataFrame) else 'N/A'}")  # Debug output
                         
                         strong_bullish_days = sentiment_volume_df[sentiment_volume_df['Sentiment'] == 'Strong Bullish']
                         if not strong_bullish_days.empty:
@@ -756,7 +758,7 @@ if st.button("Run Analysis"):
                         
                         st.write(f"- **Long-Term Investment**: Buy at period low ${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]} with volatility {volatility:.2f}. Hold for stable growth if trends remain positive.")
                         
-                        correlation_df = data[['High', 'Volume']].copy().dropna()
+                        correlation_df = data[['High', 'Volume']].copy().dropna() if isinstance(data, pd.DataFrame) else pd.DataFrame()
                         correlation = correlation_df['High'].corr(correlation_df['Volume']) if len(correlation_df) > 1 else 0
                         st.write(f"- **Other Insights**: Price-volume correlation {correlation:.3f} indicates {'strong' if abs(correlation) > 0.5 else 'moderate'} demand on high-price days. Volume-weighted profits suggest {max(volume_weighted_profits, key=volume_weighted_profits.get)} as the most impactful strategy (${max(volume_weighted_profits.values()):.2f}).")
                     
