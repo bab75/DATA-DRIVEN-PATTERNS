@@ -5,7 +5,6 @@ import plotly.express as px
 from datetime import datetime, date, timedelta
 import numpy as np
 from sklearn.linear_model import LinearRegression
-import base64
 
 # Streamlit page configuration
 st.set_page_config(page_title="Stock Price Comparison Dashboard", page_icon="📊", layout="wide")
@@ -21,7 +20,6 @@ st.markdown("""
     h2 { color: #34495e; border-bottom: 2px solid #3498db; padding-bottom: 5px; }
     .metric-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 10px; }
     .stExpander { background: #f8f9fa; border-radius: 8px; }
-    .download-button { margin-top: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -343,76 +341,6 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         comparison_df.sort_values(by="Max Daily Gap ($)", ascending=False, inplace=True)
     
     return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions, ml_predictions
-
-# Function to generate LaTeX for PDF
-def generate_latex_report(ticker, start_date, end_date, comparison_df, aggregated_profit, high_price_days, sentiment_volume_df, ml_predictions):
-    latex_content = r"""
-\documentclass[a4paper,12pt]{article}
-\begin{document}
-\section*{Stock Analysis Report for %s}
-Analyzing data from %s to %s.
-\end{document}
-""" % (ticker, start_date, end_date)
-    return latex_content
-
-# Function to generate HTML for download
-def generate_html_report(ticker, start_date, end_date, comparison_df, aggregated_profit, high_price_days, sentiment_volume_df, ml_predictions, data, price_extremes, volatility, avg_volume):
-    html_content = f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Stock Analysis Report - {ticker}</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        h1, h2 {{ color: #2c3e50; }}
-        table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
-        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-        th {{ background-color: #f2f2f2; }}
-        .green {{ background-color: lightgreen; }}
-        .red {{ background-color: lightcoral; }}
-    </style>
-</head>
-<body>
-    <h1>Stock Analysis Report - {ticker}</h1>
-    <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-    <p>Period: {start_date} to {end_date}</p>
-
-    <h2>Comparison of Strategies</h2>
-    <table>
-        <tr><th>Strategy</th><th>Max Daily Gap ($)</th><th>Max Daily Return (%)</th><th>Aggregated Profit ($)</th><th>Aggregated Return (%)</th></tr>
-"""
-    for _, row in comparison_df.iterrows():
-        profit_class = "green" if row['Aggregated Profit ($)'] > 0 else "red" if row['Aggregated Profit ($)'] < 0 else ""
-        html_content += f"<tr><td>{row['Strategy']}</td><td>{row['Max Daily Gap ($)']:.2f}</td><td>{row['Max Daily Return (%)']:.2f}</td><td class='{profit_class}'>{row['Aggregated Profit ($)']:.2f}</td><td>{row['Aggregated Return (%)']:.2f}</td></tr>\n"
-    html_content += "</table>"
-
-    html_content += f"""
-    <h2>Market Insights and Advisory</h2>
-    <ul>
-        <li><strong>Intraday Trading</strong>: Focus on days with 'Strong Bullish' sentiment (gap > $5) and high volume (e.g., {high_price_days.index[0].strftime('%Y-%m-%d') if not high_price_days.empty else 'N/A'}, avg volume {avg_volume:.0f}). Buy at daily low, sell at close or high.</li>
-        <li><strong>Short-Term Trading</strong>: Target strategies with positive ML predictions (e.g., { max(ml_predictions.items(), key=lambda x: x[1].get('Predicted Increase', 0))[0] + ': $' + str(round(max(ml_predictions.values(), key=lambda x: x.get('Predicted Increase', 0)).get('Predicted Increase', 0), 2)) if ml_predictions and any(pred.get('Predicted Increase', 0) > 0 for pred in ml_predictions.values()) else 'N/A: $0.00'}). Enter at recent lows, exit at predicted highs over weeks.</li>
-        <li><strong>Long-Term Investment</strong>: Consider buying at period low (${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]}) with low volatility ({volatility:.2f}), hold for stable growth.</li>
-        <li><strong>Other Insights</strong>: High price-volume correlation ({data['High'].corr(data['Volume']):.3f if len(data) > 1 and 'High' in data.columns and 'Volume' in data.columns else 0.000}) suggests strong demand on peak days.</li>
-    </ul>
-
-    <h2>High Price and Volume Days</h2>
-    <table>
-        <tr><th>Date</th><th>High ($)</th><th>Volume</th><th>Volume vs Avg (%)</th></tr>
-"""
-    for index, row in high_price_days.iterrows():
-        html_content += f"<tr><td>{index.strftime('%Y-%m-%d')}</td><td>{row['High']:.2f}</td><td>{row['Volume']:.0f}</td><td>{row['Volume vs Avg']:.2f}</td></tr>\n"
-    html_content += "</table>"
-
-    html_content += """
-    <h2>Sentiment and Volume Correlation (Top 5)</h2>
-    <table>
-        <tr><th>Date</th><th>Sentiment</th><th>Volume</th><th>Volume Change (%)</th></tr>
-"""
-    for index, row in sentiment_volume_df.head(5).iterrows():
-        html_content += f"<tr><td>{index.strftime('%Y-%m-%d')}</td><td>{row['Sentiment']}</td><td>{row['Volume']:.0f}</td><td>{row['Volume Change']:.2f}</td></tr>\n"
-    html_content += "</table></body></html>"
-    return html_content
 
 # Run analysis on button click
 if st.button("Run Analysis"):
@@ -762,21 +690,6 @@ if st.button("Run Analysis"):
                     
                     st.markdown('</div>', unsafe_allow_html=True)
                 
-                html_report = generate_html_report(ticker, start_date, end_date, comparison_df, aggregated_profit, high_price_days, sentiment_volume_df, ml_predictions, data, price_extremes, volatility, avg_volume)
-                latex_report = generate_latex_report(ticker, start_date, end_date, comparison_df, aggregated_profit, high_price_days, sentiment_volume_df, ml_predictions)
-                
-                html_file = f"report_{ticker}_{start_date}_to_{end_date}.html"
-                latex_file = f"report_{ticker}_{start_date}_to_{end_date}.tex"
-                
-                b64_html = base64.b64encode(html_report.encode()).decode()
-                href_html = f'<a href="data:text/html;base64,{b64_html}" download="{html_file}">Download HTML Report</a>'
-                st.markdown(href_html, unsafe_allow_html=True)
-                
-                b64_latex = base64.b64encode(latex_report.encode()).decode()
-                href_latex = f'<a href="data:text/latex;base64,{b64_latex}" download="{latex_file}">Download LaTeX Report</a>'
-                st.markdown(href_latex, unsafe_allow_html=True)
-                st.write("Note: Use a LaTeX compiler (e.g., latexmk) to generate the PDF from the .tex file.")
-
             with st.expander("Key Insights", expanded=True):
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                 best_daily = comparison_df.loc[comparison_df["Max Daily Gap ($)"].idxmax()]
