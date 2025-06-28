@@ -250,9 +250,11 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
             mean = diffs.mean()
             std = diffs.std()
             conf_interval = [mean - 1.96 * std, mean + 1.96 * std]  # 95% confidence interval
+            # Cap Conf Lower at 0 for strategies where losses are mathematically impossible
+            conf_lower = max(conf_interval[0], 0) if strategy == "Min-Low to End-Close" else conf_interval[0]
             strategy_predictions[strategy] = {
                 "Mean": mean,
-                "Conf Lower": conf_interval[0],
+                "Conf Lower": conf_lower,
                 "Conf Upper": conf_interval[1],
                 "Std": std
             }
