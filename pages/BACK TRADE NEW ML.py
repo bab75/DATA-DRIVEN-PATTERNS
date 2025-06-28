@@ -25,7 +25,7 @@ st.markdown("""
 
 # Initialize session state for date inputs
 if 'end_date' not in st.session_state:
-    st.session_state.end_date = datetime(2025, 6, 28).date()  # Current date
+    st.session_state.end_date = datetime(2025, 4, 30).date()
 
 # Sidebar for inputs
 with st.sidebar:
@@ -34,7 +34,11 @@ with st.sidebar:
     start_date = st.date_input("Start Date", value=datetime(2025, 2, 1))
     end_date = st.date_input("End Date", value=st.session_state.end_date)
     st.session_state.end_date = end_date
-    st.markdown("**Note**: Select a date range with trading days. End date should not exceed today (June 28, 2025).")
+    allow_future = st.checkbox("Simulate Future Data (Experimental)", value=False, help="Enable to allow end dates beyond today (June 28, 2025). Note: Future data is not available via yfinance.")
+    st.markdown("""
+    **Note**: Select a date range with trading days. End date should not exceed today (June 28, 2025) unless simulating future data.  
+    **Data Source**: Data is fetched from Yahoo Finance via `yfinance`. For illiquid stocks or short timeframes, data may be incomplete. Verify with alternative sources if needed.
+    """)
 
     st.subheader("Select Comparison Strategies")
     strategies = {
@@ -52,63 +56,43 @@ with st.sidebar:
 
 # Validate date range
 if start_date >= end_date:
-    st.error("End date must be after start_date.")
+    st.error("End date must be after start date.")
     st.stop()
 
-if end_date is None:
-    st.error("Invalid end_date. Defaulting to today (June 28, 2025).")
-    end_date = date.today()
+today = date(2025, 6, 28)  # Fixed to current date
+if end_date > today and not allow_future:
+    st.error("End date cannot exceed today (June 28, 2025) unless 'Simulate Future Data' is enabled. Please adjust the end date or enable the option.")
     st.stop()
 
-today = date.today()
 if end_date > today:
-    st.error("End date cannot exceed today (June 28, 2025). Please adjust the date range.")
-    st.stop()
+    st.warning("Future data simulation is enabled, but yfinance cannot provide future data. Results may be incomplete.")
 
 # Cache data fetching for performance
 @st.cache_data
 def fetch_data(ticker, start_date, end_date):
     try:
         end_date_adjusted = end_date + timedelta(days=1)
-        ticker_obj = yf.Ticker(ticker)
-        data = ticker_obj.history(start=start_date, end=end_date_adjusted)
+        data = yf.download(ticker, start=start_date, end=end_date_adjusted, progress=False)
         if data.empty:
-            st.error(f"No data found for {ticker} between {start_date} and {end_date}. Ensure the date range includes trading days.")
-            return None, None
+            st.error(f"No data found for {ticker}. Please check the ticker or date range.")
+            return None
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = [col[0] if isinstance(col, tuple) else col for col in data.columns]
         required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
         actual_columns = data.columns.tolist()
         if not all(col in actual_columns for col in required_columns):
             st.error(f"Missing required columns. Expected: {required_columns}, Found: {actual_columns}")
-            return None, None
+            return None
         data.columns = [col.capitalize() for col in data.columns]
-        print(f"Columns after fetch: {data.columns.tolist()}")  # Debug print
-        # Ensure timezone-naive index
-        data.index = pd.to_datetime(data.index).tz_localize(None)
-        print(f"Index timezone after normalization: {data.index.tz}")  # Debug timezone
+        data.index = pd.to_datetime(data.index)
         data = data.loc[start_date:end_date]
         if data.empty:
             st.error(f"No trading data available between {start_date} and {end_date}.")
-            return None, None
-        
-        # Fetch company info and fundamentals
-        info = ticker_obj.info
-        company_details = {
-            'Name': info.get('longName', 'N/A'),
-            'Sector': info.get('sector', 'N/A'),
-            'Industry': info.get('industry', 'N/A'),
-            'Market Cap': info.get('marketCap', 'N/A'),
-            'P/E Ratio': info.get('trailingPE', 'N/A'),
-            'EPS': info.get('trailingEps', 'N/A'),
-            'Dividend Yield': info.get('dividendYield', 'N/A'),
-            'Beta': info.get('beta', 'N/A')
-        }
-        print(f"Returning data: {type(data)}, shape: {data.shape}, Company info: {company_details}")  # Debug return value
-        return data, company_details
+            return None
+        return data
     except Exception as e:
         st.error(f"Error fetching data for {ticker}: {str(e)}")
-        return None, None
+        return None
 
 # Color-coding for profit/loss, volume, and close price
 def color_profit_loss(val):
@@ -130,10 +114,10 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     aggregated_results = {}
     price_extremes = {}
     
-    # Check if data is valid
-    if data is None or data.empty or not all(col in data.columns for col in ['Open', 'High', 'Low', 'Close']):
-        st.error("Invalid or empty data. Cannot calculate profits.")
-        return None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
+    # Calculate dynamic sentiment thresholds based on close price standard deviation
+    close_std = data['Close'].std()
+    sentiment_bins = [-float('inf'), 0, close_std * 0.5, close_std, float('inf')]
+    sentiment_labels = ['Bearish/Neutral', 'Weak Bullish', 'Bullish', 'Strong Bullish']
     
     for date in data.index:
         daily_profit = {}
@@ -167,47 +151,46 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     daily_df = pd.DataFrame(daily_results)
     daily_df.set_index("Date", inplace=True)
     
-    first_open = data['Open'].iloc[0] if not data['Open'].empty else None
-    last_close = data['Close'].iloc[-1] if not data['Close'].empty else None
-    period_low = data['Low'].min() if not data['Low'].empty else None
-    period_high = data['High'].max() if not data['High'].empty else None
-    min_close = data['Close'].min() if not data['Close'].empty else None
-    first_open_date = data.index[0] if not data.index.empty else None
-    last_close_date = data.index[-1] if not data.index.empty else None
-    period_low_date = data['Low'].idxmin() if not data['Low'].empty else None
-    period_high_date = data['High'].idxmax() if not data['High'].empty else None
-    min_close_date = data['Close'].idxmin() if not data['Close'].empty else None
+    first_open = data['Open'].iloc[0]
+    last_close = data['Close'].iloc[-1]
+    period_low = data['Low'].min()
+    period_high = data['High'].max()
+    min_close = data['Close'].min()
+    first_open_date = data.index[0]
+    last_close_date = data.index[-1]
+    period_low_date = data['Low'].idxmin()
+    period_high_date = data['High'].idxmax()
+    min_close_date = data['Close'].idxmin()
     
     aggregated_profit = {}
-    if strategies["Min-Low to End-Close"] and period_low is not None and last_close is not None:
+    if strategies["Min-Low to End-Close"]:
         buy_price = period_low if strategy_variant == "Min-Low to End-Close" else min_close
         buy_date = period_low_date if strategy_variant == "Min-Low to End-Close" else min_close_date
-        if buy_date and last_close_date and buy_date > last_close_date:
+        if buy_date > last_close_date:
             st.warning(f"Min-Low to End-Close: Buy date ({buy_date}) is after sell date ({last_close_date}). Adjusting to use earliest buy date.")
             buy_date = start_date
-            buy_price = data.loc[buy_date, 'Low'] if strategy_variant == "Min-Low to End-Close" and buy_date in data.index else data.loc[buy_date, 'Close']
-        if buy_price is not None and last_close is not None:
-            profit = last_close - buy_price
-            aggregated_profit["Min-Low to End-Close ($)"] = profit
-            aggregated_profit["Min-Low to End-Close (%)"] = (profit / buy_price * 100) if buy_price != 0 else 0
-            aggregated_profit["Min-Low to End-Close Buy Date"] = buy_date
-            aggregated_profit["Min-Low to End-Close Sell Date"] = last_close_date
-    if strategies["Open-High"] and period_high is not None and first_open is not None:
+            buy_price = data.loc[buy_date, 'Low'] if strategy_variant == "Min-Low to End-Close" else data.loc[buy_date, 'Close']
+        profit = last_close - buy_price
+        aggregated_profit["Min-Low to End-Close ($)"] = profit
+        aggregated_profit["Min-Low to End-Close (%)"] = (profit / buy_price * 100) if buy_price != 0 else 0
+        aggregated_profit["Min-Low to End-Close Buy Date"] = buy_date
+        aggregated_profit["Min-Low to End-Close Sell Date"] = last_close_date
+    if strategies["Open-High"]:
         profit = period_high - first_open
         aggregated_profit["Open-High ($)"] = profit
         aggregated_profit["Open-High (%)"] = (profit / first_open * 100) if first_open != 0 else 0
         aggregated_profit["Open-High Buy Date"] = first_open_date
         aggregated_profit["Open-High Sell Date"] = period_high_date
-    if strategies["Open-Close"] and last_close is not None and first_open is not None:
+    if strategies["Open-Close"]:
         profit = last_close - first_open
         aggregated_profit["Open-Close ($)"] = profit
         aggregated_profit["Open-Close (%)"] = (profit / first_open * 100) if first_open != 0 else 0
         aggregated_profit["Open-Close Buy Date"] = first_open_date
         aggregated_profit["Open-Close Sell Date"] = last_close_date
-    if strategies["Min-Low to Max-High"] and period_low is not None and period_high is not None:
-        min_low = period_low
-        min_low_date = period_low_date
-        max_high_data = data.loc[min_low_date:end_date]['High'] if min_low_date in data.index else pd.Series()
+    if strategies["Min-Low to Max-High"]:
+        min_low = data['Low'].min()
+        min_low_date = data['Low'].idxmin()
+        max_high_data = data.loc[min_low_date:end_date]['High']
         if max_high_data.empty:
             st.warning(f"No high data available after min low date ({min_low_date}) for {ticker}. Setting profit to 0.")
             aggregated_profit["Min-Low to Max-High ($)"] = 0
@@ -223,38 +206,34 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
             aggregated_profit["Min-Low to Max-High Buy Date"] = min_low_date
             aggregated_profit["Min-Low to Max-High Sell Date"] = max_high_date
     
-    # Only populate price_extremes if data is valid
-    if not data.empty and all(col in data.columns for col in ['Open', 'High', 'Low', 'Close']):
-        price_extremes = {
-            "Metric": ["Open", "High", "Low", "Close"],
-            "Highest Value": [data['Open'].max(), data['High'].max(), data['Low'].max(), data['Close'].max()],
-            "Highest Date": [data['Open'].idxmax(), data['High'].idxmax(), data['Low'].idxmax(), data['Close'].idxmax()],
-            "Lowest Value": [data['Open'].min(), data['High'].min(), data['Low'].min(), data['Close'].min()],
-            "Lowest Date": [data['Open'].idxmin(), data['High'].idxmin(), data['Low'].idxmin(), data['Close'].idxmin()]
-        }
+    price_extremes = {
+        "Metric": ["Open", "High", "Low", "Close"],
+        "Highest Value": [data['Open'].max(), data['High'].max(), data['Low'].max(), data['Close'].max()],
+        "Highest Date": [data['Open'].idxmax(), data['High'].idxmax(), data['Low'].idxmax(), data['Close'].idxmax()],
+        "Lowest Value": [data['Open'].min(), data['High'].min(), data['Low'].min(), data['Close'].min()],
+        "Lowest Date": [data['Open'].idxmin(), data['High'].idxmin(), data['Low'].idxmin(), data['Close'].idxmin()]
+    }
     
-    volume_data = data[['Volume']].copy() if 'Volume' in data.columns else pd.DataFrame()
-    if not volume_data.empty:
-        volume_data['Volume Change'] = volume_data['Volume'].diff()
-        volume_data['Volume Color'] = volume_data.apply(
-            lambda x: color_volume(x['Volume'], volume_data['Volume'].shift(1)[x.name] if x.name in volume_data['Volume'].shift(1).index else None),
-            axis=1
-        )
-    avg_volume = data['Volume'].mean() if 'Volume' in data.columns and not data['Volume'].empty else 0
-    total_volume = data['Volume'].sum() if 'Volume' in data.columns and not data['Volume'].empty else 0
-    max_volume = data['Volume'].max() if 'Volume' in data.columns and not data['Volume'].empty else None
-    min_volume = data['Volume'].min() if 'Volume' in data.columns and not data['Volume'].empty else None
-    max_volume_date = data['Volume'].idxmax() if 'Volume' in data.columns and not data['Volume'].empty else None
-    min_volume_date = data['Volume'].idxmin() if 'Volume' in data.columns and not data['Volume'].empty else None
+    volume_data = data[['Volume']].copy()
+    volume_data['Volume Change'] = volume_data['Volume'].diff()
+    volume_data['Volume Color'] = volume_data.apply(
+        lambda x: color_volume(x['Volume'], volume_data['Volume'].shift(1)[x.name] if x.name in volume_data['Volume'].shift(1).index else None),
+        axis=1
+    )
+    avg_volume = data['Volume'].mean()
+    total_volume = data['Volume'].sum()
+    max_volume = data['Volume'].max()
+    min_volume = data['Volume'].min()
+    max_volume_date = data['Volume'].idxmax()
+    min_volume_date = data['Volume'].idxmin()
     
-    if not data.empty:
-        data['Daily Increase ($)'] = data['Close'].diff()
-        data['Open vs Prev Close ($)'] = data['Open'] - data['Close'].shift(1)
-        data['Intraday Increase ($)'] = data['Close'] - data['Open']
+    data['Daily Increase ($)'] = data['Close'].diff()
+    data['Open vs Prev Close ($)'] = data['Open'] - data['Close'].shift(1)
+    data['Intraday Increase ($)'] = data['Close'] - data['Open']
     
     daily_diffs = {}
     for strategy in strategies:
-        if strategies[strategy] and not data.empty:
+        if strategies[strategy]:
             if strategy == "Min-Low to End-Close":
                 daily_diffs[strategy] = data['Close'] - data['Low']
             elif strategy == "Open-High":
@@ -266,7 +245,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     
     strategy_predictions = {}
     for strategy, diffs in daily_diffs.items():
-        if len(diffs) > 1 and not diffs.isna().all():
+        if len(diffs) > 1:
             mean = diffs.mean()
             std = diffs.std()
             conf_interval = [mean - 1.96 * std, mean + 1.96 * std]
@@ -279,7 +258,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
             }
     
     ml_predictions = {}
-    if len(data) > 1 and any(strategies.values()) and not data.empty:
+    if len(data) > 1 and any(strategies.values()):
         data_ml = data[['Close', 'Volume']].copy()
         data_ml['Lag_Close'] = data_ml['Close'].shift(1)
         data_ml['Lag_Volume'] = data_ml['Volume'].shift(1)
@@ -287,7 +266,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
         
         train_size = int(len(data_ml) * 0.8)
         if train_size < 2 or len(data_ml) - train_size < 1:
-            st.warning("Insufficient data for ML predictions. Minimum 3 data points required.")
+            st.warning("Insufficient data for ML predictions. Minimum 10 data points recommended for reliable results.")
         else:
             train_data = data_ml[:train_size]
             test_data = data_ml[train_size:]
@@ -316,7 +295,6 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
                     model = LinearRegression()
                     model.fit(X_train, y_train)
                     
-                    # Use last available data for prediction
                     last_data = (data_ml.iloc[-1][['Lag_Close', 'Lag_Volume']].values.reshape(1, -1)
                                  if len(data_ml) > 0 else
                                  X_train[-1].reshape(1, -1))
@@ -330,24 +308,23 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
                     ml_next_pred = model.predict(last_data)[0]
                     ml_predictions[strategy] = {"Predicted Increase": ml_next_pred, "RMSE": ml_rmse}
     
-    raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy() if not data.empty else pd.DataFrame()
-    if not raw_data.empty:
-        raw_data['Close Color'] = raw_data.apply(
-            lambda x: color_close(x['Close'], raw_data['Close'].shift(1)[x.name] if x.name in raw_data['Close'].shift(1).index else None),
-            axis=1
-        )
+    raw_data = data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
+    raw_data['Close Color'] = raw_data.apply(
+        lambda x: color_close(x['Close'], raw_data['Close'].shift(1)[x.name] if x.name in raw_data['Close'].shift(1).index else None),
+        axis=1
+    )
     
-    volatility = data['Close'].std() if not data.empty and 'Close' in data.columns else 0
-    avg_daily_range = (data['High'] - data['Low']).mean() if not data.empty and 'High' in data.columns and 'Low' in data.columns else 0
+    volatility = data['Close'].std()
+    avg_daily_range = (data['High'] - data['Low']).mean()
     volume_weighted_profits = {}
     for strategy, selected in strategies.items():
-        if selected and f"{strategy} ($)" in daily_df.columns and not daily_df.empty:
+        if selected and f"{strategy} ($)" in daily_df.columns:
             dollar_col = f"{strategy} ($)"
-            volume_weighted_profits[strategy] = (daily_df[dollar_col] * (data['Volume'] / avg_volume)).sum() if avg_volume != 0 else 0
+            volume_weighted_profits[strategy] = (daily_df[dollar_col] * (data['Volume'] / avg_volume)).sum()
     
     comparison = []
     for strategy, selected in strategies.items():
-        if selected and f"{strategy} ($)" in daily_df.columns and not daily_df.empty:
+        if selected and f"{strategy} ($)" in daily_df.columns:
             dollar_col = f"{strategy} ($)"
             percent_col = f"{strategy} (%)"
             max_daily_gap = daily_df[dollar_col].max()
@@ -368,7 +345,7 @@ def calculate_profits(data, strategies, strategy_variant, start_date, end_date):
     if not comparison_df.empty:
         comparison_df.sort_values(by="Max Daily Gap ($)", ascending=False, inplace=True)
     
-    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions, ml_predictions
+    return daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions, ml_predictions, sentiment_bins, sentiment_labels, close_std
 
 # Run analysis on button click
 if st.button("Run Analysis"):
@@ -376,13 +353,11 @@ if st.button("Run Analysis"):
         if not any(strategies.values()):
             st.error("Please select at least one comparison strategy.")
         else:
-            data, company_details = fetch_data(ticker, start_date, end_date)
-            print(f"Data after fetch: {type(data)}, {data}")
-            if data is None or data.empty:
+            data = fetch_data(ticker, start_date, end_date)
+            if data is None:
                 st.error(f"Failed to fetch data for {ticker}. Please check the ticker or date range and try again.")
                 st.stop()
-            daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions, ml_predictions = calculate_profits(data, strategies, strategy_variant, start_date, end_date)
-            print(f"Data in insights: {type(data)}, {data.head()}")
+            daily_df, aggregated_profit, comparison_df, price_extremes, volume_data, avg_volume, total_volume, max_volume, min_volume, max_volume_date, min_volume_date, volatility, avg_daily_range, volume_weighted_profits, raw_data, daily_diffs, strategy_predictions, ml_predictions, sentiment_bins, sentiment_labels, close_std = calculate_profits(data, strategies, strategy_variant, start_date, end_date)
             
             # Tabbed Interface
             tabs = st.tabs(["Quick Summary", "Data & Metrics", "Analysis", "Predictions", "Insights"])
@@ -390,57 +365,34 @@ if st.button("Run Analysis"):
             with tabs[0]:
                 st.subheader("Quick Summary")
                 st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                st.write(f"**Company Details for {ticker}**")
-                if company_details:
-                    st.write(f"- **Name**: {company_details['Name']}")
-                    st.write(f"- **Sector**: {company_details['Sector']}")
-                    st.write(f"- **Industry**: {company_details['Industry']}")
-                    st.write(f"- **Market Cap**: ${company_details['Market Cap']:,} (USD)" if isinstance(company_details['Market Cap'], (int, float)) else f"- **Market Cap**: {company_details['Market Cap']}")
-                    st.write(f"- **P/E Ratio**: {company_details['P/E Ratio']:.2f}" if isinstance(company_details['P/E Ratio'], (int, float)) else f"- **P/E Ratio**: {company_details['P/E Ratio']}")
-                    st.write(f"- **EPS**: ${company_details['EPS']:.2f}" if isinstance(company_details['EPS'], (int, float)) else f"- **EPS**: {company_details['EPS']}")
-                    st.write(f"- **Dividend Yield**: {company_details['Dividend Yield']*100:.2f}%" if isinstance(company_details['Dividend Yield'], (int, float)) else f"- **Dividend Yield**: {company_details['Dividend Yield']}")
-                    st.write(f"- **Beta**: {company_details['Beta']:.2f}" if isinstance(company_details['Beta'], (int, float)) else f"- **Beta**: {company_details['Beta']}")
-                    st.write("*Fundamentals sourced from Yahoo Finance. Verify with additional sources before making investment decisions.*")
-                
-                st.write(f"**Performance Summary ({start_date} to {end_date})**")
-                if strategy_predictions and ml_predictions and not comparison_df.empty:
-                    best_confident = max(strategy_predictions.items(), key=lambda x: x[1]["Conf Lower"]) if strategy_predictions else ("N/A", {"Conf Lower": 0, "Conf Upper": 0})
-                    best_ml = max(ml_predictions.items(), key=lambda x: x[1]["Predicted Increase"]) if ml_predictions else ("N/A", {"Predicted Increase": 0})
-                    best_agg = comparison_df.loc[comparison_df["Aggregated Profit ($)"].idxmax()] if not comparison_df.empty else None
-                    if best_agg is not None:
-                        st.write(f"- **Best Historical Strategy**: {best_agg['Strategy']} (${best_agg['Aggregated Profit ($)']:.2f}, {best_agg['Aggregated Return (%)']:.2f}% from {aggregated_profit.get(f'{best_agg['Strategy']} Buy Date', 'N/A')} to {aggregated_profit.get(f'{best_agg['Strategy']} Sell Date', 'N/A')})")
-                    st.write(f"- **Most Confident Gap**: {best_confident[0]} (Expected: ${best_confident[1]['Conf Lower']:.2f} - ${best_confident[1]['Conf Upper']:.2f})")
-                    st.write(f"- **ML Predicted Gap (Next Day)**: {best_ml[0]} (${best_ml[1]['Predicted Increase']:.2f})")
-                    for strategy, profit in volume_weighted_profits.items():
-                        st.write(f"- **Volume-Weighted Profit ({strategy})**: ${profit:.2f}")
-                else:
-                    st.write("No predictions available due to insufficient data.")
+                if strategy_predictions and ml_predictions:
+                    best_confident = max(strategy_predictions.items(), key=lambda x: x[1]["Conf Lower"])
+                    best_ml = max(ml_predictions.items(), key=lambda x: x[1]["Predicted Increase"])
+                    st.write(f"Best confident gap: {best_confident[0]} (${best_confident[1]['Conf Lower']:.2f}). "
+                             f"Best ML predicted gap: {best_ml[0]} (${best_ml[1]['Predicted Increase']:.2f}).")
                 st.markdown('</div>', unsafe_allow_html=True)
 
             with tabs[1]:
                 with st.expander("Raw Stock Data", expanded=False):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write(f"Raw stock data for {ticker} ({start_date} to {end_date}):")
-                    if not raw_data.empty:
-                        display_raw_data = raw_data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
-                        styled_raw_df = display_raw_data.style.format({
-                            "Open": "{:.2f}",
-                            "High": "{:.2f}",
-                            "Low": "{:.2f}",
-                            "Close": "{:.2f}",
-                            "Volume": "{:.0f}",
-                            "Daily Increase ($)": "{:.2f}",
-                            "Open vs Prev Close ($)": "{:.2f}",
-                            "Intraday Increase ($)": "{:.2f}"
-                        })
-                        styled_raw_df = styled_raw_df.apply(
-                            lambda x: [raw_data.loc[x.name, 'Close Color']] * len(x) if x.name in raw_data.index else [''] * len(x),
-                            axis=1,
-                            subset=["Close"]
-                        )
-                        st.dataframe(styled_raw_df)
-                    else:
-                        st.write("No raw data available.")
+                    display_raw_data = raw_data[['Open', 'High', 'Low', 'Close', 'Volume', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
+                    styled_raw_df = display_raw_data.style.format({
+                        "Open": "{:.2f}",
+                        "High": "{:.2f}",
+                        "Low": "{:.2f}",
+                        "Close": "{:.2f}",
+                        "Volume": "{:.0f}",
+                        "Daily Increase ($)": "{:.2f}",
+                        "Open vs Prev Close ($)": "{:.2f}",
+                        "Intraday Increase ($)": "{:.2f}"
+                    })
+                    styled_raw_df = styled_raw_df.apply(
+                        lambda x: [raw_data.loc[x.name, 'Close Color']] * len(x) if x.name in raw_data.index else [''] * len(x),
+                        axis=1,
+                        subset=["Close"]
+                    )
+                    st.dataframe(styled_raw_df)
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with st.expander("Summary Metrics"):
@@ -453,99 +405,92 @@ if st.button("Run Analysis"):
                 
                 with st.expander("Price Extremes"):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    if price_extremes:
-                        extremes_df = pd.DataFrame(price_extremes)
-                        extremes_df.set_index("Metric", inplace=True)
-                        st.dataframe(extremes_df.style.format({"Highest Value": "{:.2f}", "Lowest Value": "{:.2f}"}))
-                    else:
-                        st.write("No price extremes data available.")
+                    extremes_df = pd.DataFrame(price_extremes)
+                    extremes_df.set_index("Metric", inplace=True)
+                    st.dataframe(extremes_df.style.format({"Highest Value": "{:.2f}", "Lowest Value": "{:.2f}"}))
                     st.markdown('</div>', unsafe_allow_html=True)
 
             with tabs[2]:
                 with st.expander("Daily Gap and Sentiment", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("Daily gap from Low to Close for selected strategies (assuming 1 share) to gauge market sentiment:")
-                    if not daily_df.empty:
-                        st.dataframe(daily_df.style.format({col: "{:.2f}" for col in daily_df.columns}).applymap(color_profit_loss, subset=[col for col in daily_df.columns if col.endswith("($)")]))
+                    st.dataframe(daily_df.style.format({col: "{:.2f}" for col in daily_df.columns}).applymap(color_profit_loss, subset=[col for col in daily_df.columns if col.endswith("($)")]))
                     
-                        if any(col.endswith("($)") for col in daily_df.columns):
-                            profit_cols = [col for col in daily_df.columns if col.endswith("($)")]
-                            pivot_df = daily_df[profit_cols].T
-                            fig_heatmap = px.imshow(pivot_df,
-                                                   labels=dict(x="Date", y="Strategy", color="Gap ($)"),
-                                                   color_continuous_scale="RdYlGn",
-                                                   aspect="auto",
-                                                   title=f"Heatmap of Daily Gap by Strategy for {ticker} ({start_date} to {end_date})")
-                            fig_heatmap.update_layout(coloraxis_colorbar_title="Gap ($)")
-                            st.plotly_chart(fig_heatmap, use_container_width=True)
+                    if not daily_df.empty and any(col.endswith("($)") for col in daily_df.columns):
+                        profit_cols = [col for col in daily_df.columns if col.endswith("($)")]
+                        pivot_df = daily_df[profit_cols].T
+                        fig_heatmap = px.imshow(pivot_df,
+                                               labels=dict(x="Date", y="Strategy", color="Gap ($)"),
+                                               color_continuous_scale="RdYlGn",
+                                               aspect="auto",
+                                               title=f"Heatmap of Daily Gap by Strategy for {ticker} ({start_date} to {end_date})")
+                        fig_heatmap.update_layout(coloraxis_colorbar_title="Gap ($)")
+                        st.plotly_chart(fig_heatmap, use_container_width=True)
                     
-                        if "Min-Low to End-Close ($)" in daily_df.columns:
-                            daily_df['Sentiment'] = pd.cut(daily_df["Min-Low to End-Close ($)"],
-                                                          bins=[-float('inf'), 0, 2, 5, float('inf')],
-                                                          labels=['Neutral', 'Weak Bullish', 'Bullish', 'Strong Bullish'])
-                            sentiment_volume_df = pd.concat([daily_df[['Min-Low to End-Close ($)', 'Sentiment']], volume_data['Volume']], axis=1)
-                            sentiment_volume_df['Volume Change'] = sentiment_volume_df['Volume'].pct_change() * 100
-                            st.write("Market Sentiment and Volume Correlation based on Min-Low to End-Close Gap:")
-                            st.dataframe(sentiment_volume_df.style.format({
+                    if "Min-Low to End-Close ($)" in daily_df.columns:
+                        daily_df['Sentiment'] = pd.cut(daily_df["Min-Low to End-Close ($)"],
+                                                      bins=sentiment_bins,
+                                                      labels=sentiment_labels)
+                        sentiment_volume_df = pd.concat([daily_df[['Min-Low to End-Close ($)', 'Sentiment']], volume_data['Volume']], axis=1)
+                        sentiment_volume_df['Volume Change'] = sentiment_volume_df['Volume'].pct_change() * 100
+                        st.write(f"Market Sentiment and Volume Correlation based on Min-Low to End-Close Gap (thresholds based on close price std: {close_std:.2f}):")
+                        st.dataframe(sentiment_volume_df.style.format({
+                            "Min-Low to End-Close ($)": "{:.2f}",
+                            "Volume": "{:.0f}",
+                            "Volume Change": "{:.2f}%"
+                        }))
+                        
+                        all_profitable = daily_df[[col for col in daily_df.columns if col.endswith("($)")]].apply(lambda x: x >= 0, axis=1).all(axis=1)
+                        profitable_days = daily_df[all_profitable].index
+                        if len(profitable_days) > 0:
+                            common_indices = profitable_days.intersection(volume_data.index)
+                            if not common_indices.empty:
+                                mean_volume_profitable = volume_data.loc[common_indices, 'Volume'].mean()
+                                st.write(f"Volume on these days (mean): {mean_volume_profitable:.0f} shares")
+                            else:
+                                st.write("No volume data available for profitable days.")
+                            st.write("Days with All Strategies Profitable:")
+                            st.dataframe(daily_df.loc[profitable_days].style.format({col: "{:.2f}" for col in daily_df.columns if col.endswith("($)")}))
+                    
+                    data_with_volume = pd.concat([data[['High', 'Close']], volume_data['Volume']], axis=1)
+                    high_price_threshold = data['High'].quantile(0.9)
+                    avg_volume = data['Volume'].mean()
+                    data_with_volume['Is High Price'] = data_with_volume['High'] >= high_price_threshold
+                    data_with_volume['Volume vs Avg'] = (data_with_volume['Volume'] - avg_volume) / avg_volume * 100
+                    high_price_days = data_with_volume[data_with_volume['Is High Price']].copy()
+
+                    if not high_price_days.empty:
+                        high_price_days['Volume vs Avg'] = high_price_days['Volume vs Avg'].fillna(0).clip(lower=0)
+                        if high_price_days['Volume vs Avg'].isna().any() or (high_price_days['Volume vs Avg'] < 0).any():
+                            st.warning("Some Volume vs Avg values were invalid and have been adjusted to 0 for plotting.")
+                        
+                        st.write(f"Days with High Price (above {high_price_threshold:.2f}):")
+                        st.dataframe(high_price_days.style.format({
+                            "High": "{:.2f}",
+                            "Close": "{:.2f}",
+                            "Volume": "{:.0f}",
+                            "Volume vs Avg": "{:.2f}%"
+                        }))
+                        st.write(f"Average Volume on High Price Days: {high_price_days['Volume'].mean():.0f} shares")
+                        st.write(f"Overall Average Volume: {avg_volume:.0f} shares")
+                        
+                        fig = px.scatter(high_price_days, x="High", y="Volume",
+                                        size="Volume vs Avg", color="Volume vs Avg",
+                                        title="High Price Days vs Volume (Size reflects % above Avg Volume)",
+                                        labels={"High": "High Price ($)", "Volume": "Volume (shares)", "Volume vs Avg": "% Above Avg Volume"})
+                        fig.update_traces(marker=dict(sizemode='area', sizeref=2. * max(high_price_days['Volume vs Avg']) / (40**2)))
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        high_price_sentiment = sentiment_volume_df[sentiment_volume_df.index.isin(high_price_days.index)]
+                        if not high_price_sentiment.empty:
+                            st.write("Sentiment on High Price Days:")
+                            st.dataframe(high_price_sentiment.style.format({
                                 "Min-Low to End-Close ($)": "{:.2f}",
                                 "Volume": "{:.0f}",
                                 "Volume Change": "{:.2f}%"
                             }))
-                            
-                            all_profitable = daily_df[[col for col in daily_df.columns if col.endswith("($)")]].apply(lambda x: x >= 0, axis=1).all(axis=1)
-                            profitable_days = daily_df[all_profitable].index
-                            if len(profitable_days) > 0:
-                                common_indices = profitable_days.intersection(volume_data.index)
-                                if not common_indices.empty:
-                                    mean_volume_profitable = volume_data.loc[common_indices, 'Volume'].mean()
-                                    st.write(f"Volume on these days (mean): {mean_volume_profitable:.0f} shares")
-                                else:
-                                    st.write("No volume data available for profitable days.")
-                                st.write("Days with All Strategies Profitable:")
-                                st.dataframe(daily_df.loc[profitable_days].style.format({col: "{:.2f}" for col in daily_df.columns if col.endswith("($)")}))
-                    
-                    data_with_volume = pd.concat([data[['High', 'Close']], volume_data['Volume']], axis=1) if not data.empty and not volume_data.empty else pd.DataFrame()
-                    if not data_with_volume.empty:
-                        high_price_threshold = data['High'].quantile(0.9)
-                        avg_volume = data['Volume'].mean()
-                        data_with_volume['Is High Price'] = data_with_volume['High'] >= high_price_threshold
-                        data_with_volume['Volume vs Avg'] = (data_with_volume['Volume'] - avg_volume) / avg_volume * 100
-                        high_price_days = data_with_volume[data_with_volume['Is High Price']].copy()
-
-                        if not high_price_days.empty:
-                            high_price_days['Volume vs Avg'] = high_price_days['Volume vs Avg'].fillna(0).clip(lower=0)
-                            if high_price_days['Volume vs Avg'].isna().any() or (high_price_days['Volume vs Avg'] < 0).any():
-                                st.warning("Some Volume vs Avg values were invalid and have been adjusted to 0 for plotting.")
-                            
-                            st.write(f"Days with High Price (above {high_price_threshold:.2f}):")
-                            st.dataframe(high_price_days.style.format({
-                                "High": "{:.2f}",
-                                "Close": "{:.2f}",
-                                "Volume": "{:.0f}",
-                                "Volume vs Avg": "{:.2f}%"
-                            }))
-                            st.write(f"Average Volume on High Price Days: {high_price_days['Volume'].mean():.0f} shares")
-                            st.write(f"Overall Average Volume: {avg_volume:.0f} shares")
-                            
-                            fig = px.scatter(high_price_days, x="High", y="Volume",
-                                            size="Volume vs Avg", color="Volume vs Avg",
-                                            title="High Price Days vs Volume (Size reflects % above Avg Volume)",
-                                            labels={"High": "High Price ($)", "Volume": "Volume (shares)", "Volume vs Avg": "% Above Avg Volume"})
-                            fig.update_traces(marker=dict(sizemode='area', sizeref=2. * max(high_price_days['Volume vs Avg']) / (40**2)))
-                            st.plotly_chart(fig, use_container_width=True)
-                            
-                            high_price_sentiment = sentiment_volume_df[sentiment_volume_df.index.isin(high_price_days.index)]
-                            if not high_price_sentiment.empty:
-                                st.write("Sentiment on High Price Days:")
-                                st.dataframe(high_price_sentiment.style.format({
-                                    "Min-Low to End-Close ($)": "{:.2f}",
-                                    "Volume": "{:.0f}",
-                                    "Volume Change": "{:.2f}%"
-                                }))
-                        else:
-                            st.write("No days identified with high prices based on the 90th percentile threshold.")
                     else:
-                        st.write("No data available for high price and volume analysis.")
+                        st.write("No days identified with high prices based on the 90th percentile threshold.")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with st.expander("Aggregated Profit/Loss"):
@@ -583,66 +528,56 @@ if st.button("Run Analysis"):
                 with st.expander("Volume Analysis"):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("Daily trading volume and change (shares):")
-                    if not volume_data.empty:
-                        display_volume_data = volume_data[['Volume', 'Volume Change']].copy()
-                        styled_df = display_volume_data.style.format({"Volume": "{:.0f}", "Volume Change": "{:.0f}"})
-                        styled_df = styled_df.apply(
-                            lambda x: [volume_data.loc[x.name, 'Volume Color']] * len(x) if x.name in volume_data.index else [''] * len(x),
-                            axis=1,
-                            subset=["Volume"]
-                        )
-                        styled_df = styled_df.applymap(color_profit_loss, subset=["Volume Change"])
-                        st.dataframe(styled_df)
-                        st.write(f"**Average Daily Volume**: {avg_volume:.0f} shares")
-                        st.write(f"**Total Volume**: {total_volume:.0f} shares")
-                        st.write(f"**Highest Volume**: {max_volume:.0f} shares on {max_volume_date}")
-                        st.write(f"**Lowest Volume**: {min_volume:.0f} shares on {min_volume_date}")
-                    else:
-                        st.write("No volume data available.")
+                    display_volume_data = volume_data[['Volume', 'Volume Change']].copy()
+                    styled_df = display_volume_data.style.format({"Volume": "{:.0f}", "Volume Change": "{:.0f}"})
+                    styled_df = styled_df.apply(
+                        lambda x: [volume_data.loc[x.name, 'Volume Color']] * len(x) if x.name in volume_data.index else [''] * len(x),
+                        axis=1,
+                        subset=["Volume"]
+                    )
+                    styled_df = styled_df.applymap(color_profit_loss, subset=["Volume Change"])
+                    st.dataframe(styled_df)
+                    st.write(f"**Average Daily Volume**: {avg_volume:.0f} shares")
+                    st.write(f"**Total Volume**: {total_volume:.0f} shares")
+                    st.write(f"**Highest Volume**: {max_volume:.0f} shares on {max_volume_date}")
+                    st.write(f"**Lowest Volume**: {min_volume:.0f} shares on {min_volume_date}")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with st.expander("Comparison of Strategies"):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write("Comparing max daily gap vs. aggregated profit (sorted by max daily gap):")
-                    if not comparison_df.empty:
-                        st.dataframe(comparison_df.style.format({
-                            "Max Daily Gap ($)": "{:.2f}",
-                            "Max Daily Return (%)": "{:.2f}",
-                            "Aggregated Profit ($)": "{:.2f}",
-                            "Aggregated Return (%)": "{:.2f}"
-                        }).applymap(color_profit_loss, subset=["Max Daily Gap ($)", "Aggregated Profit ($)"]))
-                    else:
-                        st.write("No comparison data available.")
+                    st.dataframe(comparison_df.style.format({
+                        "Max Daily Gap ($)": "{:.2f}",
+                        "Max Daily Return (%)": "{:.2f}",
+                        "Aggregated Profit ($)": "{:.2f}",
+                        "Aggregated Return (%)": "{:.2f}"
+                    }).applymap(color_profit_loss, subset=["Max Daily Gap ($)", "Aggregated Profit ($)"]))
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with st.expander("Gap and Volume Trends"):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    if not daily_df.empty:
-                        dollar_cols = [col for col in daily_df.columns if col.endswith("($)")]
-                        fig = px.line(daily_df, x=daily_df.index, y=dollar_cols,
-                                     title=f"Daily Gap for {ticker}",
-                                     labels={"value": "Gap ($)", "Date": "Date", "variable": "Strategy"})
-                        if not volume_data.empty:
-                            fig.add_scatter(x=volume_data.index, y=volume_data['Volume'], yaxis="y2", name="Volume", line=dict(color="purple", dash="dash"))
-                            fig.update_layout(
-                                hovermode='x unified',
-                                yaxis2=dict(title="Volume (shares)", overlaying="y", side="right"),
-                                showlegend=True
-                            )
-                            fig.update_traces(hovertemplate='%{y:.0f} shares', selector=dict(name="Volume"))
-                        for trace in fig.data:
-                            if trace.name != "Volume":
-                                trace.hovertemplate = f"{trace.name}: %{{y:.2f}} $"
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.write("No gap and volume trend data available.")
+                    dollar_cols = [col for col in daily_df.columns if col.endswith("($)")]
+                    fig = px.line(daily_df, x=daily_df.index, y=dollar_cols,
+                                 title=f"Daily Gap for {ticker}",
+                                 labels={"value": "Gap ($)", "Date": "Date", "variable": "Strategy"})
+                    fig.add_scatter(x=volume_data.index, y=volume_data['Volume'], yaxis="y2", name="Volume", line=dict(color="purple", dash="dash"))
+                    fig.update_layout(
+                        hovermode='x unified',
+                        yaxis2=dict(title="Volume (shares)", overlaying="y", side="right"),
+                        showlegend=True
+                    )
+                    fig.update_traces(hovertemplate='%{y:.0f} shares', selector=dict(name="Volume"))
+                    for trace in fig.data:
+                        if trace.name != "Volume":
+                            trace.hovertemplate = f"{trace.name}: %{{y:.2f}} $"
+                    st.plotly_chart(fig, use_container_width=True)
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with st.expander("Gap Contribution (Sunburst)"):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     sunburst_data = []
                     for strategy, selected in strategies.items():
-                        if selected and f"{strategy} ($)" in daily_df.columns and not daily_df.empty:
+                        if selected and f"{strategy} ($)" in daily_df.columns:
                             for date, gap in daily_df[f"{strategy} ($)"].items():
                                 if gap > 0:
                                     sunburst_data.append({
@@ -663,28 +598,31 @@ if st.button("Run Analysis"):
                 with st.expander("Daily Stock Increase Analysis"):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
                     st.write(f"Daily stock increase analysis for {ticker} ({start_date} to {end_date}):")
-                    if not raw_data.empty:
-                        increase_df = raw_data.reset_index()[['Date', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
-                        styled_increase_df = increase_df.style.format({
-                            "Daily Increase ($)": "{:.2f}",
-                            "Open vs Prev Close ($)": "{:.2f}",
-                            "Intraday Increase ($)": "{:.2f}"
-                        }).applymap(color_profit_loss, subset=["Daily Increase ($)", "Open vs Prev Close ($)", "Intraday Increase ($)"])
-                        st.dataframe(styled_increase_df)
-                        
-                        open_contrib = (raw_data['Open vs Prev Close ($)'] / raw_data['Daily Increase ($)']).dropna().mean() * 100
-                        intraday_contrib = (raw_data['Intraday Increase ($)'] / raw_data['Daily Increase ($)']).dropna().mean() * 100
-                        st.write(f"**Average Contribution to Daily Increase:**")
-                        st.write(f"- Opening Price vs Previous Close: {open_contrib:.1f}%")
-                        st.write(f"- Intraday Movement: {intraday_contrib:.1f}%")
-                    else:
-                        st.write("No daily stock increase data available.")
+                    increase_df = raw_data.reset_index()[['Date', 'Daily Increase ($)', 'Open vs Prev Close ($)', 'Intraday Increase ($)']].copy()
+                    styled_increase_df = increase_df.style.format({
+                        "Daily Increase ($)": "{:.2f}",
+                        "Open vs Prev Close ($)": "{:.2f}",
+                        "Intraday Increase ($)": "{:.2f}"
+                    }).applymap(color_profit_loss, subset=["Daily Increase ($)", "Open vs Prev Close ($)", "Intraday Increase ($)"])
+                    st.dataframe(styled_increase_df)
+                    
+                    open_contrib = (raw_data['Open vs Prev Close ($)'] / raw_data['Daily Increase ($)']).dropna().mean() * 100
+                    intraday_contrib = (raw_data['Intraday Increase ($)'] / raw_data['Daily Increase ($)']).dropna().mean() * 100
+                    st.write(f"**Average Contribution to Daily Increase:**")
+                    st.write(f"- Opening Price vs Previous Close: {open_contrib:.1f}%")
+                    st.write(f"- Intraday Movement: {intraday_contrib:.1f}%")
                     st.markdown('</div>', unsafe_allow_html=True)
 
             with tabs[3]:
-                with st.expander("Predicted Daily Gap"):
+                with st.expander("Predicted Daily Gap", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.write("**Predicted Daily Gap by Strategy (for June 29, 2025):**")
+                    st.markdown("""
+                    **Note**: Predictions use a simple Linear Regression model based on lagged Close and Volume. 
+                    Results are indicative and may not capture complex market dynamics. 
+                    At least 10 data points are recommended for reliable predictions. 
+                    Validate with other indicators before acting on these forecasts.
+                    """)
+                    st.write("**Predicted Daily Gap by Strategy:** (Gap forecasts to gauge sentiment for tomorrow, June 29, 2025)")
                     strategy_names = ["Min-Low to End-Close", "Open-High", "Open-Close", "Min-Low to Max-High"]
                     conf_numbers = []
                     conf_ranges = []
@@ -732,47 +670,52 @@ if st.button("Run Analysis"):
                     st.markdown('</div>', unsafe_allow_html=True)
 
             with tabs[4]:
-                with st.expander("Investment Recommendations", expanded=True):
+                with st.expander("Consolidated Market Insights", expanded=True):
                     st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.write(f"**Investment Recommendations for {ticker} (Based on Historical Data from {start_date} to {end_date})**")
-                    st.write("*These recommendations are based on historical patterns and ML predictions. Past performance does not guarantee future results. Consult a financial advisor before making investment decisions.*")
+                    st.write(f"**Consolidated Insights for {ticker} ({start_date} to {end_date})**")
+                    st.markdown("""
+                    **Note**: Volume-weighted profits are calculated as daily gap × (daily volume / average volume), 
+                    reflecting the relative impact of strategies, not actual profits. 
+                    Results exclude transaction costs and slippage.
+                    """)
                     
-                    if data is None or data.empty or not all(col in data.columns for col in ['Open', 'High', 'Low', 'Close']):
-                        st.error("No valid data available for analysis. Please adjust the ticker or date range.")
+                    if data is None or (isinstance(data, pd.DataFrame) and data.empty):
+                        st.error("No valid data available for analysis.")
                     else:
-                        # Intraday Trading Recommendation
-                        strong_bullish_days = sentiment_volume_df[sentiment_volume_df['Sentiment'] == 'Strong Bullish'] if not sentiment_volume_df.empty else pd.DataFrame()
+                        strong_bullish_days = sentiment_volume_df[sentiment_volume_df['Sentiment'] == 'Strong Bullish']
                         if not strong_bullish_days.empty:
                             intraday_day = strong_bullish_days.index[0].strftime('%Y-%m-%d')
                             intraday_volume = strong_bullish_days['Volume'].iloc[0]
-                            st.write(f"- **Intraday Trading**: Historical data shows strong bullish days (e.g., {intraday_day}, gap > $5, volume {intraday_volume:.0f} shares). **Recommendation**: Monitor for similar high-volume, bullish days (gap > $5). Consider buying at the daily low and selling at the close or high for short-term gains.")
+                            st.write(f"- **Intraday Trading**: Focus on 'Strong Bullish' days like {intraday_day} with gap > ${close_std:.2f} and volume {intraday_volume:.0f} shares. Buy at daily low, sell at close or high for potential gains.")
                         else:
-                            st.write(f"- **Intraday Trading**: No strong bullish days identified in the historical data. **Recommendation**: Monitor for gaps > $5 with above-average volume (>{avg_volume:.0f} shares) to identify potential intraday opportunities.")
+                            st.write(f"- **Intraday Trading**: No strong bullish days identified. Monitor for gaps > ${close_std:.2f} with high volume.")
                         
-                        # Short-Term Trading Recommendation
                         best_ml_strategy = max(ml_predictions.items(), key=lambda x: x[1]["Predicted Increase"])[0] if ml_predictions else "N/A"
                         best_ml_pred = max(ml_predictions.values(), key=lambda x: x["Predicted Increase"])["Predicted Increase"] if ml_predictions else 0
-                        low_price = price_extremes['Lowest Value'][2] if price_extremes and len(price_extremes['Lowest Value']) > 2 else None
-                        low_date = price_extremes['Lowest Date'][2] if price_extremes and len(price_extremes['Lowest Date']) > 2 else None
-                        if best_ml_pred > 0 and low_price is not None and low_date is not None:
-                            st.write(f"- **Short-Term Trading**: ML model predicts a {best_ml_strategy} gap of ${best_ml_pred:.2f} for the next trading day (June 29, 2025). **Recommendation**: Consider entering at recent lows (e.g., ${low_price:.2f} seen on {low_date}), targeting a sell at predicted highs within 1–2 weeks, assuming similar market conditions.")
-                        else:
-                            st.write(f"- **Short-Term Trading**: ML model predicts no significant positive gap for {best_ml_strategy}. **Recommendation**: Avoid short-term trades unless new bullish signals (e.g., high volume or positive news) emerge.")
+                        st.write(f"- **Short-Term Trading**: Target {best_ml_strategy} with ML predicted gap ${best_ml_pred:.2f}. Enter at recent lows (e.g., {price_extremes['Lowest Date'][2]} at ${price_extremes['Lowest Value'][2]:.2f}), exit at predicted highs over weeks.")
                         
-                        # Long-Term Investment Recommendation
-                        if price_extremes and len(price_extremes['Lowest Value']) > 2 and len(price_extremes['Lowest Date']) > 2 and not pd.isna(price_extremes['Lowest Value'][2]) and not pd.isna(price_extremes['Lowest Date'][2]):
-                            low_price = price_extremes['Lowest Value'][2]
-                            low_date = price_extremes['Lowest Date'][2]
-                            pe_ratio = company_details['P/E Ratio'] if isinstance(company_details['P/E Ratio'], (int, float)) else 'N/A'
-                            st.write(f"- **Long-Term Investment**: Historical low was ${low_price:.2f} on {low_date} with volatility {volatility:.2f}. **Recommendation**: If the stock price approaches this low (within 5–10%), consider buying for long-term growth, especially if fundamentals (e.g., P/E {pe_ratio:.2f if isinstance(pe_ratio, (int, float)) else pe_ratio}) remain strong. Hold for 6–12 months, monitoring market trends.")
-                        else:
-                            st.write(f"- **Long-Term Investment**: Insufficient data to identify historical low. **Recommendation**: Monitor for price dips and strong fundamentals (e.g., P/E {company_details['P/E Ratio']:.2f if isinstance(company_details['P/E Ratio'], (int, float)) else company_details['P/E Ratio']}) before considering long-term investment.")
+                        st.write(f"- **Long-Term Investment**: Buy at period low ${price_extremes['Lowest Value'][2]:.2f} on {price_extremes['Lowest Date'][2]} with volatility {volatility:.2f}. Hold for stable growth if trends remain positive.")
                         
-                        # Risk and Market Insights
-                        correlation_df = data[['High', 'Volume']].copy().dropna() if not data.empty else pd.DataFrame()
+                        correlation_df = data[['High', 'Volume']].copy().dropna() if isinstance(data, pd.DataFrame) else pd.DataFrame()
                         correlation = correlation_df['High'].corr(correlation_df['Volume']) if len(correlation_df) > 1 else 0
-                        best_strategy = max(volume_weighted_profits, key=volume_weighted_profits.get) if volume_weighted_profits else "N/A"
-                        best_profit = max(volume_weighted_profits.values()) if volume_weighted_profits else 0
-                        st.write(f"- **Risk and Market Insights**: Historical price-volume correlation ({correlation:.3f}) suggests {'strong' if abs(correlation) > 0.5 else 'moderate'} demand on high-price days. The {best_strategy} strategy yielded the highest volume-weighted profit (${best_profit:.2f}). **Recommendation**: Exercise caution with high-volatility stocks (volatility: {volatility:.2f}). Diversify and set stop-loss orders to manage risk.")
+                        st.write(f"- **Other Insights**: Price-volume correlation {correlation:.3f} indicates {'strong' if abs(correlation) > 0.5 else 'moderate'} demand on high-price days. Volume-weighted profits suggest {max(volume_weighted_profits, key=volume_weighted_profits.get)} as the most impactful strategy (${max(volume_weighted_profits.values()):.2f}).")
                     
                     st.markdown('</div>', unsafe_allow_html=True)
+                
+            with st.expander("Key Insights", expanded=True):
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.markdown("""
+                **Note**: Volume-weighted profits are a relative measure of strategy impact, calculated as daily gap × (daily volume / average volume). 
+                Actual profits may vary due to transaction costs and market conditions.
+                """)
+                best_daily = comparison_df.loc[comparison_df["Max Daily Gap ($)"].idxmax()]
+                best_agg = comparison_df.loc[comparison_df["Aggregated Profit ($)"].idxmax()]
+                st.write(f"**Largest Daily Gap Strategy**: {best_daily['Strategy']} on {best_daily['Best Day']} "
+                         f"(${best_daily['Max Daily Gap ($)']:.2f}, {best_daily['Max Daily Return (%)']:.2f}%)")
+                st.write(f"**Most Profitable Aggregated Strategy**: {best_agg['Strategy']} "
+                         f"(${best_agg['Aggregated Profit ($)']:.2f}, {best_agg['Aggregated Return (%)']:.2f}%) "
+                         f"from buy on {aggregated_profit[f'{best_agg['Strategy']} Buy Date']} "
+                         f"to sell on {aggregated_profit[f'{best_agg['Strategy']} Sell Date']}")
+                for strategy, profit in volume_weighted_profits.items():
+                    st.write(f"**Volume-Weighted Profit ({strategy})**: ${profit:.2f}")
+                st.markdown('</div>', unsafe_allow_html=True)
