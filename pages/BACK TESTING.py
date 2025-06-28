@@ -421,4 +421,29 @@ if submitted:
                             if not trades_df.empty:
                                 trades_df['Price'] = pd.to_numeric(trades_df['Price'], errors='coerce')
                                 if not trades_df['Price'].isna().all():
-                                    trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N ποιοSystem: * Today's date and time is 06:00 PM EDT on Saturday, June 28, 2025.)
+                                    trades_df['Price'] = trades_df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+                                    trades_df['Shares'] = trades_df['Shares'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
+                                    st.markdown(
+                                        f'<div class="custom-table">{trades_df.to_html(index=False, classes=["table-auto"])}</div>',
+                                        unsafe_allow_html=True
+                                    )
+                                else:
+                                    st.write("No valid trades executed.")
+                            else:
+                                st.write("No trades executed.")
+                        with col2:
+                            st.plotly_chart(plot_price(data, result['trades'], strategy_name), use_container_width=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
+                
+                # Suggestions Section
+                st.markdown("<h3 class='text-xl font-semibold text-gray-700 mt-6'>Suggestions</h3>", unsafe_allow_html=True)
+                suggestions = generate_suggestions(results)
+                st.markdown("<div class='suggestion-box'>", unsafe_allow_html=True)
+                for suggestion in suggestions:
+                    st.markdown(f"- {suggestion}")
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                # Equity Curve Comparison
+                if len(results) > 1:
+                    st.markdown("<h3 class='text-xl font-semibold text-gray-700 mt-6'>Equity Curves Comparison</h3>", unsafe_allow_html=True)
+                    st.plotly_chart(plot_equity_curves(results, data), use_container_width=True)
