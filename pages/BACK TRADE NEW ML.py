@@ -762,6 +762,13 @@ if st.button("Run Analysis"):
                         "ML Predicted Gap ($)": lambda x: x
                     }).set_properties(**{'text-align': 'left'})
                     st.dataframe(styled_df)
+            
+                    # Add Best ML Prediction summary
+                    if conf_numbers:
+                        best_strategy = strategy_names[conf_numbers.index(max(conf_numbers, key=lambda x: float(x.replace('$', ''))))]
+                        best_prediction = max(conf_numbers, key=lambda x: float(x.replace('$', '')))
+                        st.write(f"Best ML Prediction: {best_strategy} with a predicted gap of {best_prediction} for the next trading day ({next_trading_day.date().strftime('%B %d, %Y')}), suggesting potential short-term opportunities.")
+            
                     st.markdown('</div>', unsafe_allow_html=True)
 
             with tabs[4]:
