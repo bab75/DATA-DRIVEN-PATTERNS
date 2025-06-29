@@ -31,7 +31,7 @@ def load_financial_data(file):
         raw = pd.read_excel(file, header=None)
         
         # Extract report name from cell A1 and combine with "Annual Analysis Report"
-        a1_value = str(raw.iloc[0, 0]).strip() if not pd.isna(raw.iloc[0, 0]) and str(raw.iloc[0, 0]).strip() else "3M CO"  # Fallback to "3M CO"
+        a1_value = str(raw.iloc[0, 0]).strip() if not pd.isna(raw.iloc[0, 0]) and str(raw.iloc[0, 0]).strip() else "3M CO"
         report_name = f"{a1_value} Annual Analysis Report"
         raw_a1 = raw.iloc[0, 0]  # For debugging A1 value
 
@@ -63,6 +63,9 @@ def load_financial_data(file):
         # Drop columns (metrics) with all NaN or all zero values
         df = df.dropna(axis=1, how="all")
         df = df.loc[:, (df.abs() > 1e-10).any(axis=0)]  # Drop columns with all zeros
+        # Debug: Log columns before transposition
+        with st.expander("Debug: Columns Before Filtering"):
+            st.write(f"All columns: {df.columns.tolist()}")
         # Transpose to have years as index
         df = df.T
         df.index.name = "Year"
@@ -190,11 +193,16 @@ if st.session_state.df is not None:
                         labels={"x": "Year", "y": metric}
                     )
                     
-                    # Add trendline if 2+ points
+                    # Add trendline if 2+ non-NaN points
                     if len(series) > 1:
-                        # Use numeric years for trendline calculation
-                        x_numeric = [int(year) for year in series.index]
-                        z = np.polyfit(x_numeric, series.values, 1)
+                        # Use numeric index for calculations (0, 1, 2, ...)
+                        x_numeric = np.arange(len(series))
+                        y_values = series.values
+                        # Ensure y_values are numeric
+                        if not np.issubdtype(y_values.dtype, np.number):
+                            st.warning(f"Non-numeric data in '{metric}': {y_values.tolist()}")
+                            continue
+                        z = np.polyfit(x_numeric, y_values, 1)
                         trend = np.poly1d(z)(x_numeric)
                         fig.add_trace(go.Scatter(
                             x=series.index,  # Use string index for display
