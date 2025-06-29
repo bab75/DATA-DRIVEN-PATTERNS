@@ -20,6 +20,8 @@ if "metrics" not in st.session_state:
     st.session_state.metrics = []
 if "years" not in st.session_state:
     st.session_state.years = []
+if "report_name" not in st.session_state:
+    st.session_state.report_name = None
 
 # Function to load and process financial data
 @st.cache_data
@@ -30,6 +32,9 @@ def load_financial_data(file):
             raw = pd.read_csv(file, header=None)
         else:
             raw = pd.read_excel(file, header=None)
+        
+        # Extract report name from cell A1 (first cell)
+        report_name = str(raw.iloc[0, 0]) if not pd.isna(raw.iloc[0, 0]) else "Unknown Report"
 
         # Detect header row with years (look for FY 20XX or 20XX-12-31)
         header_row = None
@@ -39,19 +44,19 @@ def load_financial_data(file):
                 header_row = idx
                 break
         if header_row is None:
-            return None, "No year headers (e.g., FY 20XX or 20XX-12-31) found in file."
+            return None, None, "No year headers (e.g., FY 20XX or 20XX-12-31) found in file."
 
         # Set up DataFrame
         df = raw.iloc[header_row+1:].copy()
         df.columns = raw.iloc[header_row]
         df = df.dropna(axis=1, how="all").dropna(axis=0, how="all")
         if df.empty or df.shape[1] < 2:
-            return None, "DataFrame is empty or has insufficient columns."
+            return None, None, "DataFrame is empty or has insufficient columns."
         
         # Set first column as index (metrics)
         df = df.set_index(df.columns[0])
         df.columns = df.columns.astype(str).str.strip()
-        df.index = df.index.astype(str).str.strip()
+        df.index = df.index.astype(str).str.strip().replace("nan", "Unknown")  # Replace NaN in index
         
         # Convert to numeric and transpose
         df = df.apply(pd.to_numeric, errors="coerce")
@@ -68,19 +73,22 @@ def load_financial_data(file):
         # Drop rows (years) with all NaN or all zero values
         df = df.dropna(axis=0, how="all")
         df = df.loc[(df != 0).any(axis=1)]  # Drop rows with all zeros
+        # Ensure index and columns are strings to avoid JSON issues
+        df.index = df.index.astype(str)
+        df.columns = df.columns.astype(str)
 
         if df.empty:
-            return None, "No valid data after processing."
+            return None, None, "No valid data after processing."
         
-        return df, None
+        return df, report_name, None
     except Exception as e:
-        return None, f"Error loading file: {str(e)}"
+        return None, None, f"Error loading file: {str(e)}"
 
 # Sidebar for file upload
 st.sidebar.header("🔧 Upload File")
 uploaded_file = st.sidebar.file_uploader("Upload a .csv or .xls/.xlsx file", type=["csv", "xls", "xlsx"])
 if st.sidebar.button("📤 Submit") and uploaded_file:
-    st.session_state.df, st.session_state.error_message = load_financial_data(uploaded_file)
+    st.session_state.df, st.session_state.report_name, st.session_state.error_message = load_financial_data(uploaded_file)
     if st.session_state.df is None:
         st.error(st.session_state.error_message or "❌ Failed to load file.")
     else:
@@ -93,20 +101,23 @@ if st.sidebar.button("📤 Submit") and uploaded_file:
             st.write(f"DataFrame shape: {st.session_state.df.shape}")
             st.write(f"Years: {st.session_state.years}")
             st.write(f"Metrics (first 5): {st.session_state.metrics[:5]}")
+            st.write(f"Report Name: {st.session_state.report_name}")
 
 # Display filtered DataFrame
 if st.session_state.df is not None:
-    st.subheader("📋 Loaded Financial Data")
+    st.subheader(f"📋 Loaded Financial Data: {st.session_state.report_name}")
     # Filter DataFrame to include only metrics with some non-null data
     valid_metrics = [col for col in st.session_state.df.columns if st.session_state.df[col].notna().any()]
     filtered_df = st.session_state.df[valid_metrics]
     # Filter years to include only those with some non-null, non-zero data
     filtered_df = filtered_df.loc[(filtered_df.notna().any(axis=1)) & (filtered_df != 0).any(axis=1)]
     if not filtered_df.empty:
-        st.dataframe(filtered_df)
+        # Replace NaN with empty string for display to avoid JSON issues
+        display_df = filtered_df.fillna("")
+        st.dataframe(display_df)
         # Add download button for filtered DataFrame
         csv = filtered_df.to_csv().encode("utf-8")
-        st.download_button("📥 Download Filtered Data", csv, "filtered_financial_data.csv", "text/csv")
+        st.download_button("📥 Download Filtered Data", csv, f"{st.session_state.report_name}_filtered_data.csv", "text/csv")
     else:
         st.warning("⚠️ No valid data to display after filtering.")
 
@@ -154,7 +165,7 @@ if st.session_state.df is not None:
                         x=series.index,
                         y=series.values,
                         markers=True,
-                        title=f"{metric} Over Time",
+                        title=f"{metric} Over Time ({st.session_state.report_name})",
                         labels={"x": "Year", "y": metric}
                     )
                     
@@ -222,10 +233,11 @@ elif st.session_state.analysis_results and (st.session_state.analysis_results["c
     
     # Display table
     if st.session_state.analysis_results["table"] is not None:
-        st.subheader("📊 Year-Over-Year Table")
-        st.dataframe(st.session_state.analysis_results["table"])
+        st.subheader(f"📊 Year-Over-Year Table: {st.session_state.report_name}")
+        display_table = st.session_state.analysis_results["table"].fillna("")  # Avoid JSON issues
+        st.dataframe(display_table)
         csv = st.session_state.analysis_results["table"].to_csv().encode("utf-8")
-        st.download_button("📥 Download YOY Summary", csv, "yoy_summary.csv", "text/csv")
+        st.download_button("📥 Download YOY Summary", csv, f"{st.session_state.report_name}_yoy_summary.csv", "text/csv")
 elif st.session_state.df is not None:
     st.info("Configure analysis settings and click 'Generate Analysis' to view results.")
 else:
