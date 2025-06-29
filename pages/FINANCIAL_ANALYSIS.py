@@ -197,7 +197,7 @@ if st.session_state.df is not None:
                         st.warning(f"Non-numeric data detected in '{metric}': {y_values.tolist()}")
                         continue
                     
-                    # Create line chart
+                    # Create line chart with categorical x-axis
                     fig = px.line(
                         x=series.index,
                         y=y_values,
@@ -205,6 +205,7 @@ if st.session_state.df is not None:
                         title=f"{metric} Over Time ({st.session_state.report_name})",
                         labels={"x": "Year", "y": metric}
                     )
+                    fig.update_xaxes(type="category")  # Force categorical x-axis
                     
                     # Add trendline if 2+ non-NaN points
                     if len(y_values) > 1:
@@ -220,7 +221,7 @@ if st.session_state.df is not None:
                             trend = np.poly1d(z)(x_numeric)
                             fig.add_trace(go.Scatter(
                                 x=list(series.index),  # Explicitly convert to list of strings
-                                y=trend.tolist(),  # Convert to list to ensure compatibility
+                                y=trend.tolist(),  # Convert to list for compatibility
                                 name="Trendline",
                                 mode="lines",
                                 line=dict(dash="dot", color="gray")
@@ -231,16 +232,18 @@ if st.session_state.df is not None:
                     # Add deviation flags
                     try:
                         pct_change = series.pct_change().fillna(0) * 100
+                        with st.expander(f"Debug: Deviation Flags for {metric}"):
+                            st.write(f"pct_change: {pct_change.to_dict()}")
                         for year, pct_val in pct_change.items():
                             if abs(pct_val) > 30:
                                 fig.add_vline(
-                                    x=year,
+                                    x=str(year),  # Ensure year is string
                                     line=dict(color="red", dash="dot"),
                                     annotation_text="⚠️ Deviation",
                                     annotation_position="top right"
                                 )
                     except Exception as e:
-                        st.warning(f"Failed to add deviation flags for {metric}: {str(e)}")
+                        st.warning(f"Failed to add deviation flags for {metric}: {str(e)}. Displaying chart without deviation flags.")
                     
                     st.session_state.analysis_results["charts"].append(fig)
                 
