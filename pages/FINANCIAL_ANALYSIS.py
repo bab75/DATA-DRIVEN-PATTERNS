@@ -24,19 +24,16 @@ if "analysis_generated" not in st.session_state:
 
 # Sidebar upload
 st.sidebar.header("🔧 Upload File")
-uploaded_file = st.sidebar.file_uploader("Upload a .csv, .txt, or .xls/.xlsx file", type=["csv", "txt", "xls", "xlsx"])
+uploaded_file = st.sidebar.file_uploader("Upload a .csv or .xls/.xlsx file", type=["csv", "xls", "xlsx"])
 submitted = st.sidebar.button("📤 Submit")
 
 @st.cache_data
 def load_financial_data(file):
     try:
-        # Read file based on extension
         if file.name.endswith(".csv"):
-            raw = pd.read_csv(file, header=None, na_values=[""], keep_default_na=False)
-        elif file.name.endswith(".txt"):
-            raw = pd.read_csv(file, header=None, sep="\t", na_values=[""], keep_default_na=False)
-        else:  # .xls or .xlsx
-            raw = pd.read_excel(file, header=None, na_values=[""], keep_default_na=False)
+            raw = pd.read_csv(file, header=None)
+        else:
+            raw = pd.read_excel(file, header=None)
 
         # Debug: Save raw data
         raw.to_csv("raw_debug.csv", index=False)
@@ -71,6 +68,7 @@ def load_financial_data(file):
         # Transpose so years are index
         df = df.T
         df.index.name = "Year"
+        # Extract year and validate
         df.index = df.index.astype(str).map(lambda x: re.search(r'20\d{2}', x).group(0) if re.search(r'20\d{2}', x) else np.nan)
         if df.index.isna().any():
             raise ValueError("Invalid year values in index after processing.")
@@ -105,7 +103,7 @@ if submitted and uploaded_file:
         st.success("✅ File loaded successfully!")
 
     # Debug: Show raw data and header
-    raw = pd.read_csv(uploaded_file, header=None, na_values=[""], keep_default_na=False) if uploaded_file.name.endswith((".csv", ".txt")) else pd.read_excel(uploaded_file, header=None, na_values=[""], keep_default_na=False)
+    raw = pd.read_excel(uploaded_file, header=None) if uploaded_file.name.endswith((".xls", ".xlsx")) else pd.read_csv(uploaded_file, header=None)
     st.write("Raw Data Preview:")
     st.dataframe(raw.head(10), use_container_width=True)
     header_row = next((idx for idx, row in raw.iterrows() if sum(bool(re.search(r'(FY\s*20\d{2}|20\d{2})', str(cell))) for cell in row) >= 3), None)
@@ -116,7 +114,7 @@ if submitted and uploaded_file:
     st.subheader("📋 Loaded Data")
     st.write("DataFrame Info:")
     st.write(df.info())
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, use_container_width=True)  # Ensure no NaN
 
     years = sorted([int(y) for y in df.index if str(y).isdigit()])
     all_metrics = [col for col in df.columns if df[col].abs().sum() > 0]  # Exclude zero-only columns
@@ -192,7 +190,7 @@ if submitted and uploaded_file:
                     for m in metrics:
                         if m in table.columns:
                             table[f"{m} YOY (%)"] = table[m].pct_change().round(4) * 100
-                    table = table.fillna(0)
+                    table = table.fillna(0)  # Ensure no NaN in table
                     results["table"] = table
                 
                 # Store results
