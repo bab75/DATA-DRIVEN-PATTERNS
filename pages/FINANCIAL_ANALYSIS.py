@@ -44,7 +44,8 @@ def load_financial_data(file):
         # Set first column as index (metrics)
         df = df.set_index(df.columns[0])
         df.columns = df.columns.astype(str).str.strip()
-        df.index = df.index.astype(str).str.strip().replace("nan", "Unknown")  # Replace NaN in index
+        # Replace 'nan' in index with 'Unknown'
+        df.index = [str(idx).strip() if str(idx).strip() != "nan" else "Unknown" for idx in df.index]
         
         # Convert to numeric and transpose
         df = df.apply(pd.to_numeric, errors="coerce")
