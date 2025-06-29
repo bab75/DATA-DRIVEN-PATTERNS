@@ -191,16 +191,15 @@ if st.session_state.df is not None:
                         st.write(f"Index dtype: {series.index.dtype}")
                         st.write(f"Values dtype: {series.values.dtype}")
                     
-                    # Ensure values and index are numeric for calculations
+                    # Ensure values are numeric
                     y_values = pd.to_numeric(series.values, errors="coerce")
-                    x_values = pd.to_numeric(series.index, errors="coerce")
-                    if np.any(pd.isna(y_values)) or np.any(pd.isna(x_values)):
-                        st.warning(f"Non-numeric data detected in '{metric}': Values {y_values.tolist()}, Index {x_values.tolist()}")
+                    if np.any(pd.isna(y_values)):
+                        st.warning(f"Non-numeric data detected in '{metric}': {y_values.tolist()}")
                         continue
                     
                     # Create line chart
                     fig = px.line(
-                        x=series.index,  # Use string index for display
+                        x=series.index,
                         y=y_values,
                         markers=True,
                         title=f"{metric} Over Time ({st.session_state.report_name})",
@@ -210,10 +209,16 @@ if st.session_state.df is not None:
                     # Add trendline if 2+ non-NaN points
                     if len(y_values) > 1:
                         x_numeric = np.arange(len(y_values))
+                        # Debug: Log trendline inputs
+                        with st.expander(f"Debug: Trendline for {metric}"):
+                            st.write(f"x_numeric: {x_numeric.tolist()}")
+                            st.write(f"y_values: {y_values.tolist()}")
+                            st.write(f"x_numeric dtype: {x_numeric.dtype}")
+                            st.write(f"y_values dtype: {y_values.dtype}")
                         z = np.polyfit(x_numeric, y_values, 1)
                         trend = np.poly1d(z)(x_numeric)
                         fig.add_trace(go.Scatter(
-                            x=series.index,  # Use string index for display
+                            x=list(series.index),  # Explicitly convert to list of strings
                             y=trend,
                             name="Trendline",
                             mode="lines",
