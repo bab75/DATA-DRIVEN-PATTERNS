@@ -184,28 +184,35 @@ if st.session_state.df is not None:
                         st.warning(f"No valid data for '{metric}' in selected years.")
                         continue
                     
+                    # Debug: Log data types and values
+                    with st.expander(f"Debug: Data for {metric}"):
+                        st.write(f"Index: {series.index.tolist()}")
+                        st.write(f"Values: {series.values.tolist()}")
+                        st.write(f"Index dtype: {series.index.dtype}")
+                        st.write(f"Values dtype: {series.values.dtype}")
+                    
+                    # Ensure values are numeric
+                    y_values = pd.to_numeric(series.values, errors="coerce")
+                    if np.any(pd.isna(y_values)):
+                        st.warning(f"Non-numeric data detected in '{metric}': {y_values.tolist()}")
+                        continue
+                    
                     # Create line chart
                     fig = px.line(
                         x=series.index,
-                        y=series.values,
+                        y=y_values,
                         markers=True,
                         title=f"{metric} Over Time ({st.session_state.report_name})",
                         labels={"x": "Year", "y": metric}
                     )
                     
                     # Add trendline if 2+ non-NaN points
-                    if len(series) > 1:
-                        # Use numeric index for calculations (0, 1, 2, ...)
-                        x_numeric = np.arange(len(series))
-                        y_values = series.values
-                        # Ensure y_values are numeric
-                        if not np.issubdtype(y_values.dtype, np.number):
-                            st.warning(f"Non-numeric data in '{metric}': {y_values.tolist()}")
-                            continue
+                    if len(y_values) > 1:
+                        x_numeric = np.arange(len(y_values))
                         z = np.polyfit(x_numeric, y_values, 1)
                         trend = np.poly1d(z)(x_numeric)
                         fig.add_trace(go.Scatter(
-                            x=series.index,  # Use string index for display
+                            x=series.index,
                             y=trend,
                             name="Trendline",
                             mode="lines",
