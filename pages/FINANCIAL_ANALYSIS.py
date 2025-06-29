@@ -208,24 +208,28 @@ if st.session_state.df is not None:
                     
                     # Add trendline if 2+ non-NaN points
                     if len(y_values) > 1:
-                        x_numeric = np.arange(len(y_values))
-                        # Debug: Log trendline inputs
-                        with st.expander(f"Debug: Trendline for {metric}"):
-                            st.write(f"x_numeric: {x_numeric.tolist()}")
-                            st.write(f"y_values: {y_values.tolist()}")
-                            st.write(f"x_numeric dtype: {x_numeric.dtype}")
-                            st.write(f"y_values dtype: {y_values.dtype}")
-                        z = np.polyfit(x_numeric, y_values, 1)
-                        trend = np.poly1d(z)(x_numeric)
-                        fig.add_trace(go.Scatter(
-                            x=list(series.index),  # Explicitly convert to list of strings
-                            y=trend,
-                            name="Trendline",
-                            mode="lines",
-                            line=dict(dash="dot", color="gray")
-                        ))
-                        
-                        # Add deviation flags
+                        try:
+                            x_numeric = np.arange(len(y_values))
+                            # Debug: Log trendline inputs
+                            with st.expander(f"Debug: Trendline for {metric}"):
+                                st.write(f"x_numeric: {x_numeric.tolist()}")
+                                st.write(f"y_values: {y_values.tolist()}")
+                                st.write(f"x_numeric dtype: {x_numeric.dtype}")
+                                st.write(f"y_values dtype: {y_values.dtype}")
+                            z = np.polyfit(x_numeric, y_values, 1)
+                            trend = np.poly1d(z)(x_numeric)
+                            fig.add_trace(go.Scatter(
+                                x=list(series.index),  # Explicitly convert to list of strings
+                                y=trend.tolist(),  # Convert to list to ensure compatibility
+                                name="Trendline",
+                                mode="lines",
+                                line=dict(dash="dot", color="gray")
+                            ))
+                        except Exception as e:
+                            st.warning(f"Failed to add trendline for {metric}: {str(e)}. Displaying chart without trendline.")
+                    
+                    # Add deviation flags
+                    try:
                         pct_change = series.pct_change().fillna(0) * 100
                         for year, pct_val in pct_change.items():
                             if abs(pct_val) > 30:
@@ -235,6 +239,8 @@ if st.session_state.df is not None:
                                     annotation_text="⚠️ Deviation",
                                     annotation_position="top right"
                                 )
+                    except Exception as e:
+                        st.warning(f"Failed to add deviation flags for {metric}: {str(e)}")
                     
                     st.session_state.analysis_results["charts"].append(fig)
                 
