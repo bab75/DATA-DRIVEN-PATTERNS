@@ -30,9 +30,9 @@ def load_financial_data(file):
         # Read Excel file
         raw = pd.read_excel(file, header=None)
         
-        # Extract report name from cell A1 and combine with "Annual Analysis Report"
-        a1_value = str(raw.iloc[0, 0]).strip() if not pd.isna(raw.iloc[0, 0]) and str(raw.iloc[0, 0]).strip() else "3M CO"
-        report_name = f"{a1_value} Annual Analysis Report"
+        # Extract report name from cell A1
+        a1_value = str(raw.iloc[0, 0]).strip() if not pd.isna(raw.iloc[0, 0]) and str(raw.iloc[0, 0]).strip() else None
+        report_name = f"{a1_value} Annual Analysis Report" if a1_value else "Annual Analysis Report"
         raw_a1 = raw.iloc[0, 0]  # For debugging A1 value
 
         # Detect header row with years (look for FY 20XX or 20XX-12-31)
@@ -191,15 +191,16 @@ if st.session_state.df is not None:
                         st.write(f"Index dtype: {series.index.dtype}")
                         st.write(f"Values dtype: {series.values.dtype}")
                     
-                    # Ensure values are numeric
+                    # Ensure values and index are numeric for calculations
                     y_values = pd.to_numeric(series.values, errors="coerce")
-                    if np.any(pd.isna(y_values)):
-                        st.warning(f"Non-numeric data detected in '{metric}': {y_values.tolist()}")
+                    x_values = pd.to_numeric(series.index, errors="coerce")
+                    if np.any(pd.isna(y_values)) or np.any(pd.isna(x_values)):
+                        st.warning(f"Non-numeric data detected in '{metric}': Values {y_values.tolist()}, Index {x_values.tolist()}")
                         continue
                     
                     # Create line chart
                     fig = px.line(
-                        x=series.index,
+                        x=series.index,  # Use string index for display
                         y=y_values,
                         markers=True,
                         title=f"{metric} Over Time ({st.session_state.report_name})",
@@ -212,7 +213,7 @@ if st.session_state.df is not None:
                         z = np.polyfit(x_numeric, y_values, 1)
                         trend = np.poly1d(z)(x_numeric)
                         fig.add_trace(go.Scatter(
-                            x=series.index,
+                            x=series.index,  # Use string index for display
                             y=trend,
                             name="Trendline",
                             mode="lines",
