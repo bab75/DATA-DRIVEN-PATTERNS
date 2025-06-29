@@ -55,8 +55,9 @@ def load_financial_data(file):
         
         # Convert to numeric and transpose
         df = df.apply(pd.to_numeric, errors="coerce")
-        # Drop columns (metrics) with all NaN values
+        # Drop columns (metrics) with all NaN or all zero values
         df = df.dropna(axis=1, how="all")
+        df = df.loc[:, (df != 0).any(axis=0)]  # Drop columns with all zeros
         df = df.T
         df.index.name = "Year"
         # Extract year from FY 20XX or 20XX-12-31
@@ -64,6 +65,9 @@ def load_financial_data(file):
         # Drop rows with None index (invalid years)
         df = df[df.index.notnull()]
         df = df.astype(float)
+        # Drop rows (years) with all NaN or all zero values
+        df = df.dropna(axis=0, how="all")
+        df = df.loc[(df != 0).any(axis=1)]  # Drop rows with all zeros
 
         if df.empty:
             return None, "No valid data after processing."
@@ -82,13 +86,29 @@ if st.sidebar.button("📤 Submit") and uploaded_file:
     else:
         st.success("✅ File loaded successfully!")
         # Store available metrics and years
-        st.session_state.metrics = st.session_state.df.columns.tolist()
+        st.session_state.metrics = [col for col in st.session_state.df.columns if st.session_state.df[col].notna().any()]
         st.session_state.years = sorted([int(y) for y in st.session_state.df.index if str(y).isdigit()])
         # Minimal debug output
         with st.expander("Debug Info"):
             st.write(f"DataFrame shape: {st.session_state.df.shape}")
             st.write(f"Years: {st.session_state.years}")
             st.write(f"Metrics (first 5): {st.session_state.metrics[:5]}")
+
+# Display filtered DataFrame
+if st.session_state.df is not None:
+    st.subheader("📋 Loaded Financial Data")
+    # Filter DataFrame to include only metrics with some non-null data
+    valid_metrics = [col for col in st.session_state.df.columns if st.session_state.df[col].notna().any()]
+    filtered_df = st.session_state.df[valid_metrics]
+    # Filter years to include only those with some non-null, non-zero data
+    filtered_df = filtered_df.loc[(filtered_df.notna().any(axis=1)) & (filtered_df != 0).any(axis=1)]
+    if not filtered_df.empty:
+        st.dataframe(filtered_df)
+        # Add download button for filtered DataFrame
+        csv = filtered_df.to_csv().encode("utf-8")
+        st.download_button("📥 Download Filtered Data", csv, "filtered_financial_data.csv", "text/csv")
+    else:
+        st.warning("⚠️ No valid data to display after filtering.")
 
 # Analysis form
 if st.session_state.df is not None:
@@ -125,7 +145,7 @@ if st.session_state.df is not None:
             for metric in metrics:
                 try:
                     series = st.session_state.df.loc[valid_years, metric].dropna()
-                    if series.empty or series.isna().all() or len(series) < 1:
+                    if series.empty or series.isna().all() or len(series) < 1 or (series == 0).all():
                         st.warning(f"No valid data for '{metric}' in selected years.")
                         continue
                     
