@@ -35,6 +35,9 @@ def load_financial_data(file):
         else:
             raw = pd.read_excel(file, header=None)
 
+        # Debug: Show raw data
+        st.write("Raw Data Preview:", raw.head(10))
+
         # Detect the header row (look for 'FY 20XX' or '20XX' patterns)
         header_row = None
         for idx, row in raw.iterrows():
@@ -43,32 +46,42 @@ def load_financial_data(file):
                 header_row = idx
                 break
         if header_row is None:
-            raise ValueError("Could not detect year headers in file.")
+            raise ValueError("Could not detect year headers in file (expected 'FY 20XX' or '20XX' formats).")
 
         # Extract and format
         df = raw.iloc[header_row+1:].copy()
         df.columns = raw.iloc[header_row]
+        # Debug: Show header row
+        st.write("Detected Header Row:", raw.iloc[header_row])
+
+        # Clean DataFrame
         df = df.dropna(axis=1, how="all").dropna(axis=0, how="all")
         if df.empty or df.shape[1] < 2:
-            raise ValueError("DataFrame is empty or has insufficient columns after cleaning.")
-        df = df.set_index(df.columns[0])
+            raise ValueError("DataFrame is empty or has insufficient columns after initial cleaning.")
+        
+        # Set index to first column (metric names)
+        if df.shape[1] > 0:
+            df = df.set_index(df.columns[0])
+        else:
+            raise ValueError("No valid columns to set as index.")
+        
         df.columns = df.columns.astype(str).str.strip()
         df.index = df.index.astype(str).str.strip()
         df = df.apply(pd.to_numeric, errors="coerce")
 
-        # Drop columns that are all NaN or all zeros
-        df = df.loc[:, ~df.isna().all()]
-        df = df.loc[:, (df != 0).any(axis=0)]
-
+        # Transpose so years are index
         df = df.T
         df.index.name = "Year"
         # Extract year from 'FY 20XX' or '20XX' format
         df.index = df.index.astype(str).map(lambda x: re.search(r'20\d{2}', x).group(0) if re.search(r'20\d{2}', x) else None)
-        df = df.dropna().astype(float)
+        df = df.dropna(how="all")  # Drop rows with all NaN
+
+        # Drop columns that are all NaN (but keep zero-filled columns for now)
+        df = df.loc[:, ~df.isna().all()]
 
         if df.empty:
             raise ValueError("No valid data after processing.")
-        
+
         # Replace NaN with None for JSON compatibility
         df = df.where(df.notna(), None)
         
@@ -91,8 +104,9 @@ if submitted and uploaded_file:
     # Display the cleaned DataFrame
     st.subheader("📋 Loaded Data")
     # Debug: Show DataFrame info
-    st.write("DataFrame Info:", df.info())
-    # Replace None with 0 for display purposes only
+    st.write("DataFrame Info:")
+    st.write(df.info())
+    # Replace None with 0 for display
     display_df = df.fillna(0)
     st.dataframe(display_df)
 
