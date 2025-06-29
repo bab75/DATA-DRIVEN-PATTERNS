@@ -232,16 +232,28 @@ if st.session_state.df is not None:
                     # Add deviation flags
                     try:
                         pct_change = series.pct_change().fillna(0) * 100
+                        triggered_years = [year for year, pct_val in pct_change.items() if abs(pct_val) > 30]
                         with st.expander(f"Debug: Deviation Flags for {metric}"):
                             st.write(f"pct_change: {pct_change.to_dict()}")
-                        for year, pct_val in pct_change.items():
-                            if abs(pct_val) > 30:
-                                fig.add_vline(
-                                    x=str(year),  # Ensure year is string
-                                    line=dict(color="red", dash="dot"),
-                                    annotation_text="⚠️ Deviation",
-                                    annotation_position="top right"
-                                )
+                            st.write(f"Years triggering deviation flags (>30%): {triggered_years}")
+                        for year in triggered_years:
+                            fig.add_shape(
+                                type="line",
+                                x0=str(year),  # Ensure string
+                                x1=str(year),
+                                y0=min(y_values) * 1.1,  # Extend slightly beyond data range
+                                y1=max(y_values) * 1.1,
+                                line=dict(color="red", dash="dot"),
+                                name="Deviation"
+                            )
+                            fig.add_annotation(
+                                x=str(year),
+                                y=max(y_values) * 1.1,
+                                text="⚠️ Deviation",
+                                showarrow=False,
+                                yshift=10,
+                                font=dict(color="red")
+                            )
                     except Exception as e:
                         st.warning(f"Failed to add deviation flags for {metric}: {str(e)}. Displaying chart without deviation flags.")
                     
