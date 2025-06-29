@@ -31,7 +31,7 @@ def load_financial_data(file):
         raw = pd.read_excel(file, header=None)
         
         # Extract report name from cell A1 and combine with "Annual Analysis Report"
-        a1_value = str(raw.iloc[0, 0]).strip() if not pd.isna(raw.iloc[0, 0]) and str(raw.iloc[0, 0]).strip() else "Unknown"
+        a1_value = str(raw.iloc[0, 0]).strip() if not pd.isna(raw.iloc[0, 0]) and str(raw.iloc[0, 0]).strip() else "3M CO"  # Fallback to "3M CO"
         report_name = f"{a1_value} Annual Analysis Report"
         raw_a1 = raw.iloc[0, 0]  # For debugging A1 value
 
@@ -85,10 +85,29 @@ def load_financial_data(file):
     except Exception as e:
         return None, None, f"Error loading file: {str(e)}", None
 
-# Sidebar for file upload
+# Sidebar for file upload and buttons
 st.sidebar.header("🔧 Upload File")
 uploaded_file = st.sidebar.file_uploader("Upload a .xlsx file", type=["xlsx"])
-if st.sidebar.button("📤 Submit") and uploaded_file:
+
+# Create two columns for buttons
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    submit_button = st.button("📤 Submit")
+with col2:
+    clear_button = st.button("🗑️ Clear Analysis")
+
+# Handle clear analysis
+if clear_button:
+    st.session_state.df = None
+    st.session_state.report_name = None
+    st.session_state.error_message = None
+    st.session_state.metrics = []
+    st.session_state.years = []
+    st.session_state.analysis_results = None
+    st.success("✅ Analysis cleared! Upload a new file to start again.")
+
+# Handle file submission
+if submit_button and uploaded_file:
     st.session_state.df, st.session_state.report_name, st.session_state.error_message, raw_a1 = load_financial_data(uploaded_file)
     if st.session_state.df is None:
         st.error(st.session_state.error_message or "❌ Failed to load file.")
@@ -166,18 +185,19 @@ if st.session_state.df is not None:
                     fig = px.line(
                         x=series.index,
                         y=series.values,
-                        markers=Trueoul,
+                        markers=True,
                         title=f"{metric} Over Time ({st.session_state.report_name})",
                         labels={"x": "Year", "y": metric}
                     )
                     
                     # Add trendline if 2+ points
                     if len(series) > 1:
-                        x_numeric = range(len(series))
+                        # Use numeric years for trendline calculation
+                        x_numeric = [int(year) for year in series.index]
                         z = np.polyfit(x_numeric, series.values, 1)
                         trend = np.poly1d(z)(x_numeric)
                         fig.add_trace(go.Scatter(
-                            x=series.index,
+                            x=series.index,  # Use string index for display
                             y=trend,
                             name="Trendline",
                             mode="lines",
