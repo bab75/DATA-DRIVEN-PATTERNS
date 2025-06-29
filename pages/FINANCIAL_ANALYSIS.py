@@ -21,9 +21,9 @@ def load_financial_data(file):
         # Read Excel file
         raw = pd.read_excel(file, header=None)
         
-        # Extract report name from cell A1 and debug its value
-        report_name = str(raw.iloc[0, 0]).strip() if not pd.isna(raw.iloc[0, 0]) and str(raw.iloc[0, 0]).strip() else "Unknown Report"
-        raw_a1 = raw.iloc[0, 0]  # For debugging
+        # Set report name to "Annual Analysis Report" as requested
+        report_name = "Annual Analysis Report"
+        raw_a1 = raw.iloc[0, 0]  # For debugging A1 value
 
         # Detect header row with years (look for FY 20XX or 20XX-12-31)
         header_row = None
@@ -52,7 +52,7 @@ def load_financial_data(file):
         df = df.apply(pd.to_numeric, errors="coerce")
         # Drop columns (metrics) with all NaN or all zero values
         df = df.dropna(axis=1, how="all")
-        # Explicitly check for zeros with tolerance for floating-point
+        # Apply zero filtering before transposition
         df = df.loc[:, (df.abs() > 1e-10).any(axis=0)]  # Drop columns with all zeros
         # Transpose to have years as index
         df = df.T
