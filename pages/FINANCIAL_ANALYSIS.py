@@ -36,9 +36,10 @@ def load_financial_data(file):
             raw = pd.read_excel(file, header=None)
 
         # Debug: Show raw data
-        st.write("Raw Data Preview:", raw.head(10))
+        st.write("Raw Data Preview:")
+        st.dataframe(raw.head(10))
 
-        # Detect the header row (look for 'FY 20XX' or '20XX' patterns)
+        # Detect header row (look for 'FY 20XX' or '20XX')
         header_row = None
         for idx, row in raw.iterrows():
             count = sum(bool(re.search(r'(FY\s*20\d{2}|20\d{2})', str(cell))) for cell in row)
@@ -46,25 +47,24 @@ def load_financial_data(file):
                 header_row = idx
                 break
         if header_row is None:
-            raise ValueError("Could not detect year headers in file (expected 'FY 20XX' or '20XX' formats).")
+            raise ValueError("Could not detect year headers (expected 'FY 20XX' or '20XX' formats).")
+
+        # Debug: Show header row
+        st.write(f"Detected Header Row (index {header_row}):", raw.iloc[header_row].tolist())
 
         # Extract and format
         df = raw.iloc[header_row+1:].copy()
         df.columns = raw.iloc[header_row]
-        # Debug: Show header row
-        st.write("Detected Header Row:", raw.iloc[header_row])
-
-        # Clean DataFrame
         df = df.dropna(axis=1, how="all").dropna(axis=0, how="all")
         if df.empty or df.shape[1] < 2:
             raise ValueError("DataFrame is empty or has insufficient columns after initial cleaning.")
-        
+
         # Set index to first column (metric names)
         if df.shape[1] > 0:
             df = df.set_index(df.columns[0])
         else:
             raise ValueError("No valid columns to set as index.")
-        
+
         df.columns = df.columns.astype(str).str.strip()
         df.index = df.index.astype(str).str.strip()
         df = df.apply(pd.to_numeric, errors="coerce")
@@ -72,19 +72,22 @@ def load_financial_data(file):
         # Transpose so years are index
         df = df.T
         df.index.name = "Year"
-        # Extract year from 'FY 20XX' or '20XX' format
         df.index = df.index.astype(str).map(lambda x: re.search(r'20\d{2}', x).group(0) if re.search(r'20\d{2}', x) else None)
         df = df.dropna(how="all")  # Drop rows with all NaN
 
-        # Drop columns that are all NaN (but keep zero-filled columns for now)
+        # Drop columns that are all NaN
         df = df.loc[:, ~df.isna().all()]
 
         if df.empty:
             raise ValueError("No valid data after processing.")
 
-        # Replace NaN with None for JSON compatibility
-        df = df.where(df.notna(), None)
-        
+        # Replace NaN with 0 for consistency
+        df = df.fillna(0)
+
+        # Debug: Show cleaned DataFrame
+        st.write("Cleaned DataFrame Preview:")
+        st.dataframe(df.head())
+
         return df
     except Exception as e:
         st.session_state.error_message = f"Error loading file: {str(e)}"
@@ -92,32 +95,30 @@ def load_financial_data(file):
 
 # Main logic
 if submitted and uploaded_file:
-    st.session_state.error_message = None
-    df = load_financial_data(uploaded_file)
-    if df is None:
-        st.error(st.session_state.error_message or "❌ Failed to load file.")
-        st.stop()
-    
-    st.session_state.df = df
-    st.success("✅ File loaded successfully!")
-    
+    with st.spinner("Processing file..."):
+        st.session_state.error_message = None
+        df = load_financial_data(uploaded_file)
+        if df is None:
+            st.error(st.session_state.error_message or "❌ Failed to load file.")
+            st.stop()
+        
+        st.session_state.df = df
+        st.success("✅ File loaded successfully!")
+
     # Display the cleaned DataFrame
     st.subheader("📋 Loaded Data")
-    # Debug: Show DataFrame info
     st.write("DataFrame Info:")
     st.write(df.info())
-    # Replace None with 0 for display
-    display_df = df.fillna(0)
-    st.dataframe(display_df)
+    st.dataframe(df, use_container_width=True)  # Avoid Arrow serialization issues
 
     years = sorted([int(y) for y in df.index if str(y).isdigit()])
-    all_metrics = df.columns.tolist()
+    all_metrics = [col for col in df.columns if df[col].notna().any()]  # Exclude all-NaN columns
     preferred = ["Revenue", "Net Income", "Operating Income (Loss)", "Research & Development", "Restructuring Charges"]
     default_metrics = [m for m in preferred if m in all_metrics]
 
     with st.form("analysis_form"):
         st.subheader("📊 Analysis Configuration")
-        metrics = st.multiselect("📌 Select metrics to analyze", all_metrics, default=default_metrics)
+        metrics = st.multiselect("📌 Select metrics to analyze", all_metrics, default=default_metrics, key="metrics_select")
         if not years:
             st.warning("⚠️ No valid year labels found.")
             st.stop()
@@ -126,67 +127,71 @@ if submitted and uploaded_file:
 
     if analyze_button:
         try:
-            # Clear previous results
-            st.session_state.analysis_results = None
-            st.session_state.error_message = None
-            
-            selected_years = [str(y) for y in years if yr_range[0] <= y <= yr_range[1]]
-            
-            if not metrics:
-                st.warning("⚠️ Please select at least one metric to analyze.")
-                st.stop()
-            
-            if not selected_years:
-                st.warning("⚠️ No valid years in selected range.")
-                st.stop()
+            with st.spinner("Generating analysis..."):
+                # Persist selections
+                st.session_state.selected_metrics = metrics
+                st.session_state.selected_years = yr_range
 
-            results = {"charts": [], "table": None}
-            
-            # Generate charts
-            for metric in metrics:
-                if metric not in df.columns:
-                    st.warning(f"⚠️ Metric '{metric}' not found in data, skipping.")
-                    continue
+                # Clear previous results
+                st.session_state.analysis_results = None
+                st.session_state.error_message = None
+                
+                selected_years = [str(y) for y in years if yr_range[0] <= y <= yr_range[1]]
+                
+                if not metrics:
+                    st.warning("⚠️ Please select at least one metric to analyze.")
+                    st.stop()
+                
+                if not selected_years:
+                    st.warning("⚠️ No valid years in selected range.")
+                    st.stop()
+
+                results = {"charts": [], "table": None}
+                
+                # Generate charts
+                for metric in metrics:
+                    if metric not in df.columns:
+                        st.warning(f"⚠️ Metric '{metric}' not found in data, skipping.")
+                        continue
+                        
+                    series = df.loc[selected_years, metric].dropna()
+                    if len(series) == 0:
+                        st.warning(f"⚠️ No valid data for '{metric}' in selected years.")
+                        continue
                     
-                series = df.loc[selected_years, metric].dropna()
-                if len(series) == 0:
-                    st.warning(f"⚠️ No valid data for '{metric}' in selected years.")
-                    continue
+                    # Create chart
+                    fig = px.line(series, markers=True, title=f"{metric} Over Time", 
+                                 labels={"index": "Year", "value": metric})
+                    
+                    # Add trendline if enough data points
+                    if len(series) > 1:
+                        z = np.polyfit(range(len(series)), series.values, 1)
+                        trend = np.poly1d(z)(range(len(series)))
+                        fig.add_trace(go.Scatter(x=series.index, y=trend, name="Trendline",
+                                               mode="lines", line=dict(dash="dot", color="gray")))
+                    
+                    # Add deviation flags
+                    pct_change = series.pct_change().fillna(0) * 100
+                    for i, (year, pct_val) in enumerate(pct_change.items()):
+                        if abs(pct_val) > 30:
+                            fig.add_vline(x=year, line=dict(color="red", dash="dot"),
+                                         annotation_text="⚠️ Deviation", annotation_position="top right")
+                    
+                    results["charts"].append(fig)
                 
-                # Create chart
-                fig = px.line(series, markers=True, title=f"{metric} Over Time", 
-                             labels={"index": "Year", "value": metric})
+                # Generate YOY table
+                if metrics and selected_years:
+                    table = df.loc[selected_years, metrics].copy()
+                    for m in metrics:
+                        if m in table.columns:
+                            table[f"{m} YOY (%)"] = table[m].pct_change().round(4) * 100
+                    table = table.fillna(0)  # Ensure no NaN in table
+                    results["table"] = table
                 
-                # Add trendline if we have enough data points
-                if len(series) > 1:
-                    z = np.polyfit(range(len(series)), series.values, 1)
-                    trend = np.poly1d(z)(range(len(series)))
-                    fig.add_trace(go.Scatter(x=series.index, y=trend, name="Trendline",
-                                           mode="lines", line=dict(dash="dot", color="gray")))
+                # Store results
+                st.session_state.analysis_results = results
+                st.session_state.analysis_generated = True
                 
-                # Add deviation flags
-                pct_change = series.pct_change().fillna(0) * 100
-                for i, (year, pct_val) in enumerate(pct_change.items()):
-                    if abs(pct_val) > 30:
-                        fig.add_vline(x=year, line=dict(color="red", dash="dot"),
-                                     annotation_text="⚠️ Deviation", annotation_position="top right")
-                
-                results["charts"].append(fig)
-            
-            # Generate YOY table
-            if metrics and selected_years:
-                table = df.loc[selected_years, metrics].copy()
-                for m in metrics:
-                    if m in table.columns:
-                        table[f"{m} YOY (%)"] = table[m].pct_change().round(4) * 100
-                # Replace None with 0 in table for display
-                table = table.fillna(0)
-                results["table"] = table
-            
-            # Store results in session state
-            st.session_state.analysis_results = results
-            st.session_state.analysis_generated = True
-            
         except Exception as e:
             st.session_state.error_message = f"Error generating analysis: {str(e)}"
             st.error(st.session_state.error_message)
@@ -205,7 +210,7 @@ if st.session_state.analysis_results is not None and st.session_state.analysis_g
     # Display table
     if "table" in st.session_state.analysis_results and st.session_state.analysis_results["table"] is not None:
         st.subheader("📊 YOY Change Table")
-        st.dataframe(st.session_state.analysis_results["table"])
+        st.dataframe(st.session_state.analysis_results["table"], use_container_width=True)
         
         csv = st.session_state.analysis_results["table"].to_csv().encode("utf-8")
         st.download_button("📥 Download YOY Summary", csv, "yoy_summary.csv", "text/csv")
