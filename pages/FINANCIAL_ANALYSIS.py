@@ -21,8 +21,9 @@ def load_financial_data(file):
         # Read Excel file
         raw = pd.read_excel(file, header=None)
         
-        # Extract report name from cell A1
-        report_name = str(raw.iloc[0, 0]) if not pd.isna(raw.iloc[0, 0]) else "Unknown Report"
+        # Extract report name from cell A1 and debug its value
+        report_name = str(raw.iloc[0, 0]).strip() if not pd.isna(raw.iloc[0, 0]) and str(raw.iloc[0, 0]).strip() else "Unknown Report"
+        raw_a1 = raw.iloc[0, 0]  # For debugging
 
         # Detect header row with years (look for FY 20XX or 20XX-12-31)
         header_row = None
@@ -45,13 +46,15 @@ def load_financial_data(file):
         df = df.set_index(df.columns[0])
         df.columns = df.columns.astype(str).str.strip()
         # Replace 'nan' in index with 'Unknown'
-        df.index = [str(idx).strip() if str(idx).strip() != "nan" else "Unknown" for idx in df.index]
+        df.index = [str(idx).strip() if str(idx).strip().lower() != "nan" else "Unknown" for idx in df.index]
         
-        # Convert to numeric and transpose
+        # Convert to numeric
         df = df.apply(pd.to_numeric, errors="coerce")
         # Drop columns (metrics) with all NaN or all zero values
         df = df.dropna(axis=1, how="all")
-        df = df.loc[:, (df != 0).any(axis=0)]  # Drop columns with all zeros
+        # Explicitly check for zeros with tolerance for floating-point
+        df = df.loc[:, (df.abs() > 1e-10).any(axis=0)]  # Drop columns with all zeros
+        # Transpose to have years as index
         df = df.T
         df.index.name = "Year"
         # Extract year from FY 20XX or 20XX-12-31
@@ -61,7 +64,7 @@ def load_financial_data(file):
         df = df.astype(float)
         # Drop rows (years) with all NaN or all zero values
         df = df.dropna(axis=0, how="all")
-        df = df.loc[(df != 0).any(axis=1)]  # Drop rows with all zeros
+        df = df.loc[(df.abs() > 1e-10).any(axis=1)]  # Drop rows with all zeros
         # Ensure index and columns are strings to avoid JSON issues
         df.index = df.index.astype(str)
         df.columns = df.columns.astype(str)
@@ -69,15 +72,15 @@ def load_financial_data(file):
         if df.empty:
             return None, None, "No valid data after processing."
         
-        return df, report_name, None
+        return df, report_name, None, raw_a1
     except Exception as e:
-        return None, None, f"Error loading file: {str(e)}"
+        return None, None, f"Error loading file: {str(e)}", None
 
 # Sidebar for file upload
 st.sidebar.header("🔧 Upload File")
 uploaded_file = st.sidebar.file_uploader("Upload a .xlsx file", type=["xlsx"])
 if st.sidebar.button("📤 Submit") and uploaded_file:
-    st.session_state.df, st.session_state.report_name, st.session_state.error_message = load_financial_data(uploaded_file)
+    st.session_state.df, st.session_state.report_name, st.session_state.error_message, raw_a1 = load_financial_data(uploaded_file)
     if st.session_state.df is None:
         st.error(st.session_state.error_message or "❌ Failed to load file.")
     else:
@@ -88,6 +91,7 @@ if st.sidebar.button("📤 Submit") and uploaded_file:
             st.write(f"Years: {sorted([int(y) for y in st.session_state.df.index if str(y).isdigit()])}")
             st.write(f"Metrics (first 5): {st.session_state.df.columns[:5].tolist()}")
             st.write(f"Report Name: {st.session_state.report_name}")
+            st.write(f"Raw A1 Value: {raw_a1}")
 
 # Display filtered DataFrame
 if st.session_state.df is not None:
@@ -96,7 +100,7 @@ if st.session_state.df is not None:
     valid_metrics = [col for col in st.session_state.df.columns if st.session_state.df[col].notna().any()]
     filtered_df = st.session_state.df[valid_metrics]
     # Filter years to include only those with some non-null, non-zero data
-    filtered_df = filtered_df.loc[(filtered_df.notna().any(axis=1)) & (filtered_df != 0).any(axis=1)]
+    filtered_df = filtered_df.loc[(filtered_df.notna().any(axis=1)) & (filtered_df.abs() > 1e-10).any(axis=1)]
     if not filtered_df.empty:
         # Replace NaN with empty string for display to avoid JSON issues
         display_df = filtered_df.fillna("")
