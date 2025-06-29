@@ -4,6 +4,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import re
+import io
 
 st.set_page_config(page_title="Financial Dashboard", layout="wide")
 st.title("📊 Financial Analysis Dashboard")
@@ -28,14 +29,34 @@ uploaded_file = st.sidebar.file_uploader("Upload a .csv or .xls/.xlsx file", typ
 submitted = st.sidebar.button("📤 Submit")
 
 @st.cache_data
-def load_financial_data(file):
+def load_financial_data(file, file_type):
     try:
-        if file.name.endswith(".csv"):
-            raw = pd.read_csv(file, header=None)
-        else:
-            raw = pd.read_excel(file, header=None)
+        # Read file content to debug
+        file.seek(0)  # Reset file pointer
+        content = file.read()
+        if not content:
+            raise ValueError("Uploaded file is empty.")
+        
+        # Debug: Save raw content
+        with open("raw_debug.txt", "wb") as f:
+            f.write(content)
 
-        # Debug: Save raw data
+        # Read file based on extension
+        file.seek(0)  # Reset pointer again
+        if file_type == "csv":
+            # Try different delimiters
+            try:
+                raw = pd.read_csv(file, header=None, na_values=[""], keep_default_na=False, encoding="utf-8")
+            except pd.errors.ParserError:
+                file.seek(0)
+                raw = pd.read_csv(file, header=None, na_values=[""], keep_default_na=False, sep=";", encoding="utf-8")
+            except pd.errors.ParserError:
+                file.seek(0)
+                raw = pd.read_csv(file, header=None, na_values=[""], keep_default_na=False, sep="\t", encoding="utf-8")
+        else:  # .xls or .xlsx
+            raw = pd.read_excel(file, header=None, na_values=[""], keep_default_na=False)
+
+        # Debug: Save raw DataFrame
         raw.to_csv("raw_debug.csv", index=False)
 
         # Detect header row
@@ -68,7 +89,6 @@ def load_financial_data(file):
         # Transpose so years are index
         df = df.T
         df.index.name = "Year"
-        # Extract year and validate
         df.index = df.index.astype(str).map(lambda x: re.search(r'20\d{2}', x).group(0) if re.search(r'20\d{2}', x) else np.nan)
         if df.index.isna().any():
             raise ValueError("Invalid year values in index after processing.")
@@ -79,7 +99,7 @@ def load_financial_data(file):
         if df.empty:
             raise ValueError("No valid data after processing.")
 
-        # Replace NaN with 0 early
+        # Replace NaN with 0
         df = df.fillna(0)
 
         # Debug: Save cleaned DataFrame
@@ -94,7 +114,8 @@ def load_financial_data(file):
 if submitted and uploaded_file:
     with st.spinner("Processing file..."):
         st.session_state.error_message = None
-        df = load_financial_data(uploaded_file)
+        file_type = "csv" if uploaded_file.name.endswith(".csv") else "excel"
+        df = load_financial_data(uploaded_file, file_type)
         if df is None:
             st.error(st.session_state.error_message or "❌ Failed to load file.")
             st.stop()
@@ -103,7 +124,8 @@ if submitted and uploaded_file:
         st.success("✅ File loaded successfully!")
 
     # Debug: Show raw data and header
-    raw = pd.read_excel(uploaded_file, header=None) if uploaded_file.name.endswith((".xls", ".xlsx")) else pd.read_csv(uploaded_file, header=None)
+    uploaded_file.seek(0)
+    raw = pd.read_csv(uploaded_file, header=None, na_values=[""], keep_default_na=False) if file_type == "csv" else pd.read_excel(uploaded_file, header=None, na_values=[""], keep_default_na=False)
     st.write("Raw Data Preview:")
     st.dataframe(raw.head(10), use_container_width=True)
     header_row = next((idx for idx, row in raw.iterrows() if sum(bool(re.search(r'(FY\s*20\d{2}|20\d{2})', str(cell))) for cell in row) >= 3), None)
@@ -114,7 +136,7 @@ if submitted and uploaded_file:
     st.subheader("📋 Loaded Data")
     st.write("DataFrame Info:")
     st.write(df.info())
-    st.dataframe(df, use_container_width=True)  # Ensure no NaN
+    st.dataframe(df, use_container_width=True)
 
     years = sorted([int(y) for y in df.index if str(y).isdigit()])
     all_metrics = [col for col in df.columns if df[col].abs().sum() > 0]  # Exclude zero-only columns
@@ -190,7 +212,7 @@ if submitted and uploaded_file:
                     for m in metrics:
                         if m in table.columns:
                             table[f"{m} YOY (%)"] = table[m].pct_change().round(4) * 100
-                    table = table.fillna(0)  # Ensure no NaN in table
+                    table = table.fillna(0)
                     results["table"] = table
                 
                 # Store results
