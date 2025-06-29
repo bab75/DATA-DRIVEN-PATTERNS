@@ -35,11 +35,10 @@ def load_financial_data(file):
         else:
             raw = pd.read_excel(file, header=None)
 
-        # Debug: Show raw data
-        st.write("Raw Data Preview:")
-        st.dataframe(raw.head(10))
+        # Debug: Save raw data
+        raw.to_csv("raw_debug.csv", index=False)
 
-        # Detect header row (look for 'FY 20XX' or '20XX')
+        # Detect header row
         header_row = None
         for idx, row in raw.iterrows():
             count = sum(bool(re.search(r'(FY\s*20\d{2}|20\d{2})', str(cell))) for cell in row)
@@ -48,9 +47,6 @@ def load_financial_data(file):
                 break
         if header_row is None:
             raise ValueError("Could not detect year headers (expected 'FY 20XX' or '20XX' formats).")
-
-        # Debug: Show header row
-        st.write(f"Detected Header Row (index {header_row}):", raw.iloc[header_row].tolist())
 
         # Extract and format
         df = raw.iloc[header_row+1:].copy()
@@ -72,21 +68,22 @@ def load_financial_data(file):
         # Transpose so years are index
         df = df.T
         df.index.name = "Year"
-        df.index = df.index.astype(str).map(lambda x: re.search(r'20\d{2}', x).group(0) if re.search(r'20\d{2}', x) else None)
-        df = df.dropna(how="all")  # Drop rows with all NaN
+        # Extract year and validate
+        df.index = df.index.astype(str).map(lambda x: re.search(r'20\d{2}', x).group(0) if re.search(r'20\d{2}', x) else np.nan)
+        if df.index.isna().any():
+            raise ValueError("Invalid year values in index after processing.")
 
-        # Drop columns that are all NaN
-        df = df.loc[:, ~df.isna().all()]
+        df = df.dropna(how="all")  # Drop rows with all NaN
+        df = df.loc[:, ~df.isna().all()]  # Drop columns that are all NaN
 
         if df.empty:
             raise ValueError("No valid data after processing.")
 
-        # Replace NaN with 0 for consistency
+        # Replace NaN with 0 early
         df = df.fillna(0)
 
-        # Debug: Show cleaned DataFrame
-        st.write("Cleaned DataFrame Preview:")
-        st.dataframe(df.head())
+        # Debug: Save cleaned DataFrame
+        df.to_csv("cleaned_debug.csv")
 
         return df
     except Exception as e:
@@ -105,14 +102,22 @@ if submitted and uploaded_file:
         st.session_state.df = df
         st.success("✅ File loaded successfully!")
 
-    # Display the cleaned DataFrame
+    # Debug: Show raw data and header
+    raw = pd.read_excel(uploaded_file, header=None) if uploaded_file.name.endswith((".xls", ".xlsx")) else pd.read_csv(uploaded_file, header=None)
+    st.write("Raw Data Preview:")
+    st.dataframe(raw.head(10), use_container_width=True)
+    header_row = next((idx for idx, row in raw.iterrows() if sum(bool(re.search(r'(FY\s*20\d{2}|20\d{2})', str(cell))) for cell in row) >= 3), None)
+    if header_row is not None:
+        st.write(f"Detected Header Row (index {header_row}):", raw.iloc[header_row].tolist())
+
+    # Display cleaned DataFrame
     st.subheader("📋 Loaded Data")
     st.write("DataFrame Info:")
     st.write(df.info())
-    st.dataframe(df, use_container_width=True)  # Avoid Arrow serialization issues
+    st.dataframe(df, use_container_width=True)  # Ensure no NaN
 
     years = sorted([int(y) for y in df.index if str(y).isdigit()])
-    all_metrics = [col for col in df.columns if df[col].notna().any()]  # Exclude all-NaN columns
+    all_metrics = [col for col in df.columns if df[col].abs().sum() > 0]  # Exclude zero-only columns
     preferred = ["Revenue", "Net Income", "Operating Income (Loss)", "Research & Development", "Restructuring Charges"]
     default_metrics = [m for m in preferred if m in all_metrics]
 
@@ -154,8 +159,8 @@ if submitted and uploaded_file:
                         st.warning(f"⚠️ Metric '{metric}' not found in data, skipping.")
                         continue
                         
-                    series = df.loc[selected_years, metric].dropna()
-                    if len(series) == 0:
+                    series = df.loc[selected_years, metric].copy()
+                    if series.isna().all() or len(series) == 0:
                         st.warning(f"⚠️ No valid data for '{metric}' in selected years.")
                         continue
                     
