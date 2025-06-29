@@ -30,8 +30,9 @@ def load_financial_data(file):
         # Read Excel file
         raw = pd.read_excel(file, header=None)
         
-        # Set report name to "Annual Analysis Report"
-        report_name = "Annual Analysis Report"
+        # Extract report name from cell A1 and combine with "Annual Analysis Report"
+        a1_value = str(raw.iloc[0, 0]).strip() if not pd.isna(raw.iloc[0, 0]) and str(raw.iloc[0, 0]).strip() else "Unknown"
+        report_name = f"{a1_value} Annual Analysis Report"
         raw_a1 = raw.iloc[0, 0]  # For debugging A1 value
 
         # Detect header row with years (look for FY 20XX or 20XX-12-31)
@@ -165,7 +166,7 @@ if st.session_state.df is not None:
                     fig = px.line(
                         x=series.index,
                         y=series.values,
-                        markers=True,
+                        markers=Trueoul,
                         title=f"{metric} Over Time ({st.session_state.report_name})",
                         labels={"x": "Year", "y": metric}
                     )
