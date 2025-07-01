@@ -157,115 +157,38 @@ def validate_symbol(symbol):
     return bool(re.match(r'^[A-Za-z0-9.]+$', symbol.strip()))
 
 @st.cache_data
-@st.cache_data
 def load_data(primary_file, data_source, symbol, start_date, end_date, secondary_file=None, benchmark_symbol=None):
     aapl_df = pd.DataFrame()
     pl_df = pd.DataFrame()
     
-    if data_source == "Fetch Real-Time (Yahoo Finance)":
+    if data_source == "Upload CSV/XLSX" and primary_file:
         try:
-            symbol = symbol.strip()
-            if not validate_symbol(symbol):
-                st.error(f"Invalid symbol '{symbol}'. Use a valid stock symbol (e.g., AAPL, MSFT, BRK.B).")
+            primary_file.seek(0, 2)
+            file_size = primary_file.tell()
+            primary_file.seek(0)
+            if file_size == 0:
+                st.error("Uploaded file is empty. Please upload a valid CSV/XLSX file with stock data.")
                 return pd.DataFrame(), pd.DataFrame()
             
-            with st.spinner(f"Fetching data for {symbol} from Yahoo Finance..."):
-                aapl_df = yf.download(symbol, start=start_date, end=end_date + timedelta(days=1), progress=False)
+            if primary_file.name.endswith('.csv'):
+                try:
+                    aapl_df = pd.read_csv(primary_file, sep=',')
+                except pd.errors.EmptyDataError:
+                    st.error("CSV file is empty or contains no valid data. Please check the file content.")
+                    return pd.DataFrame(), pd.DataFrame()
+                except pd.errors.ParserError:
+                    primary_file.seek(0)
+                    try:
+                        aapl_df = pd.read_csv(primary_file, sep=';')
+                    except:
+                        primary_file.seek(0)
+                        aapl_df = pd.read_csv(primary_file, sep='\t')
+            elif primary_file.name.endswith('.xlsx'):
+                aapl_df = pd.read_excel(primary_file)
             
             if aapl_df.empty:
-                st.error(
-                    f"No data returned for {symbol} from Yahoo Finance. Possible causes:\n"
-                    f"- Invalid symbol (check '{symbol}').\n"
-                    f"- Date range ({start_date.strftime('%m-%d-%Y')} to {end_date.strftime('%m-%d-%Y')}) is invalid or too short.\n"
-                    f"- Network issues or Yahoo Finance API downtime."
-                )
+                st.error("No data could be loaded from the file. Please ensure the file contains valid data with columns: date, open, high, low, close, volume.")
                 return pd.DataFrame(), pd.DataFrame()
-            
-            # Check for sufficient data points
-            if len(aapl_df) < 14:
-                st.error(f"Insufficient data points ({len(aapl_df)}) for {symbol}. Select a wider date range with at least 14 trading days for ADX calculation.")
-                return pd.DataFrame(), pd.DataFrame()
-            
-            aapl_df = aapl_df.reset_index().rename(columns={
-                'Date': 'date', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'
-            })
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], errors='coerce', infer_datetime_format=True)
-            aapl_df['date'] = aapl_df['date'].dt.strftime('%m-%d-%Y')
-            aapl_df['date'] = pd.to_datetime(aapl_df['date'], format='%m-%d-%Y')
-            
-            aapl_df = aapl_df.dropna(subset=['date'])
-            aapl_df = aapl_df.interpolate(method='linear', limit_direction='both')
-            
-            # Validate required columns
-            required_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
-            missing_cols = [col for col in required_cols if col not in aapl_df.columns]
-            if missing_cols:
-                st.error(f"Missing required columns: {', '.join(missing_cols)}")
-                return pd.DataFrame(), pd.DataFrame()
-            
-            # Check for missing or invalid values in high, low, close
-            if aapl_df[['high', 'low', 'close']].isna().any().any():
-                st.error("Missing or invalid values in 'high', 'low', or 'close' columns.")
-                return pd.DataFrame(), pd.DataFrame()
-        
-        except Exception as e:
-            st.error(
-                f"Error fetching {symbol} data from Yahoo Finance: {str(e)}. Possible causes:\n"
-                f"- Network connectivity issues.\n"
-                f"- Invalid symbol or date range.\n"
-                f"- Yahoo Finance API issues. Try uploading a file or a different symbol."
-            )
-            return pd.DataFrame(), pd.DataFrame()
-    
-    # ... (rest of the load_data function remains unchanged)
-    return aapl_df, pl_df
-
-@st.cache_data
-@st.cache_data
-def detect_consolidation_breakout(df):
-    df['ma20'] = df['close'].rolling(window=20).mean()
-    df['std_dev'] = df['close'].rolling(window=20).std()
-    df['atr'] = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close']).average_true_range()
-    df['rsi'] = ta.momentum.RSIIndicator(close=df['close']).rsi()
-    macd = ta.trend.MACD(close=df['close'])
-    df['macd'] = macd.macd()
-    df['signal'] = macd.macd_signal()
-    df['macd_diff'] = df['macd'] - df['signal']
-    stochastic = ta.momentum.StochasticOscillator(high=df['high'], low=df['low'], close=df['close'])
-    df['stochastic_k'] = stochastic.stoch()
-    df['stochastic_d'] = stochastic.stoch_signal()
-    
-    # Add ADX with fallback
-    if len(df) >= 14 and not df[['high', 'low', 'close']].isna().any().any():
-        df['adx'] = ta.trend.ADXIndicator(high=df['high'], low=df['low'], close=df['close']).adx()
-    else:
-        df['adx'] = np.nan
-        st.warning("ADX calculation skipped due to insufficient or invalid data.")
-    
-    df['rvol'] = df['volume'] / df['volume'].rolling(window=20).mean()
-    df['is_consolidation'] = (df['atr'] < df['atr'].mean() * 0.8) & (df['adx'] < 20)
-    df['resistance'] = df['high'].rolling(20).max()
-    df['support'] = df['low'].rolling(20).min()
-    high_20 = df['high'].rolling(window=20).max()
-    low_20 = df['low'].rolling(window=20).min()
-    df['fib_236'] = low_20 + 0.236 * (high_20 - low_20)
-    df['fib_382'] = low_20 + 0.382 * (high_20 - low_20)
-    df['fib_50'] = low_20 + 0.5 * (high_20 - low_20)
-    df['fib_618'] = low_20 + 0.618 * (high_20 - low_20)
-    ichimoku = ta.trend.IchimokuIndicator(high=df['high'], low=df['low'])
-    df['tenkan_sen'] = ichimoku.ichimoku_conversion_line()
-    df['kijun_sen'] = ichimoku.ichimoku_base_line()
-    df['senkou_span_a'] = ichimoku.ichimoku_a()
-    df['senkou_span_b'] = ichimoku.ichimoku_b()
-    close_exceeds_resistance = df['close'] > df['resistance'].shift(1)
-    volume_condition = df['volume'] > df['volume'].mean() * 0.8
-    rsi_condition = (df['rsi'] > 30) & (df['rsi'] < 80)
-    macd_condition = df['macd'] > df['signal']
-    stochastic_condition = df['stochastic_k'] > df['stochastic_d']
-    df['buy_signal'] = close_exceeds_resistance & volume_condition & rsi_condition & macd_condition & stochastic_condition
-    df['stop_loss'] = df['close'] - 1.5 * df['atr']
-    df['take_profit'] = df['close'] + 2 * 1.5 * df['atr']
-    return df
             
             aapl_df.columns = aapl_df.columns.str.lower().str.strip()
             
