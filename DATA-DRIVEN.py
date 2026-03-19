@@ -9,6 +9,9 @@ import io
 from calendar import month_name
 import time
 
+# Set Streamlit page config — MUST be first Streamlit command
+st.set_page_config(page_title="Stock Pattern Analyzer", layout="wide")
+
 # Custom CSS for beautiful design
 st.markdown(
     """
@@ -47,9 +50,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-# Set Streamlit page config
-st.set_page_config(page_title="Stock Pattern Analyzer", layout="wide")
 
 # Initialize session state
 def initialize_session_state():
@@ -499,7 +499,7 @@ if uploaded_file and run_analysis:
 # Display results if data is available
 if st.session_state.dframe is not None and st.session_state.profit_loss_data is not None:
     st.header("Stock Pattern Analyzer")
-    st.write(f"Analyze stock patterns and predict future trends. Current date: June 24, 2025, 09:57 AM EDT")
+    st.write(f"Analyze stock patterns and predict future trends. Current date: {datetime.now().strftime('%B %d, %Y, %I:%M %p')}")
 
     # Profit/Loss unit selection
     def update_profit_loss_unit():
