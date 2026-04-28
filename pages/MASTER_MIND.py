@@ -654,3 +654,20 @@ else:
     st.info("⚠️ Please upload a CSV/XLSX file containing technical indicators or fetch real-time data to begin analysis.")
     if st.session_state.csv_data is None and st.session_state.real_time_data is not None:
         st.warning("⚠️ Real-time data provides limited analysis (price and fundamentals only). Upload a CSV/XLSX file for full technical analysis.")
+
+st.title(FUNCTIONALITY):
+   with st.expander("ℹ️ What does this app do?", expanded=False):
+    st.markdown("""
+    | Feature | What it does |
+    |---|---|
+    | **Upload CSV/XLSX** | Load historical stock data with 50+ indicators |
+    | **Fetch Real-Time** | Get today's price/volume via ticker symbol |
+    | **Quick Scan** | Fast summary: trend, RSI, support/resistance |
+    | **Moderate Detail** | MACD, Bollinger Bands, ADX, fundamentals |
+    | **In-Depth Analysis** | All 50+ indicators with full recommendation |
+    | **Visual Summary** | Price + RSI charts over time |
+    | **Interactive Dashboard** | Candlestick chart with Bollinger Bands |
+    | **Consolidated Report** | Final Buy / Hold / Sell decision |
+    | **Export** | Download any report as PDF, Markdown, or CSV |
+    | **Combine Mode** | Merge real-time price with historical indicators |
+    """)
