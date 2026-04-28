@@ -655,7 +655,7 @@ else:
     if st.session_state.csv_data is None and st.session_state.real_time_data is not None:
         st.warning("⚠️ Real-time data provides limited analysis (price and fundamentals only). Upload a CSV/XLSX file for full technical analysis.")
 
-st.title(FUNCTIONALITY):
+st.title(FUNCTIONALITY)
    with st.expander("ℹ️ What does this app do?", expanded=False):
     st.markdown("""
     | Feature | What it does |
