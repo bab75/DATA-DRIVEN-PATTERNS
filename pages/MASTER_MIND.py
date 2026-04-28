@@ -656,7 +656,7 @@ else:
         st.warning("⚠️ Real-time data provides limited analysis (price and fundamentals only). Upload a CSV/XLSX file for full technical analysis.")
 
 st.title(FUNCTIONALITY)
-   with st.expander("ℹ️ What does this app do?", expanded=False):
+    with st.expander("ℹ️ What does this app do?", expanded=False):
     st.markdown("""
     | Feature | What it does |
     |---|---|
