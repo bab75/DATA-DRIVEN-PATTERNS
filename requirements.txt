@@ -10,4 +10,6 @@ reportlab
 openpyxl
 pandas_market_calendars>=4.0.0
 pytz
- 
+kaleido==0.2.1
+
+
