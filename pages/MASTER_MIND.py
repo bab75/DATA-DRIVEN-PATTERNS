@@ -126,7 +126,7 @@ with st.sidebar.expander("📋 Manual Fundamental Data (Optional)"):
         debt_equity = st.number_input("Debt/Equity", value=float(st.session_state.fundamental_data['Debt/Equity'] or 0.0), step=0.01, format="%.2f")
         submit_fundamentals = st.form_submit_button("💾 Update Fundamentals")
 
-if submit_fundamentals:
+if 'submit_fundamentals' in dir() and submit_fundamentals:
     st.session_state.fundamental_data = {
         'EPS': eps if eps != 0.0 else None,
         'P/E': pe if pe != 0.0 else None,
@@ -346,7 +346,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 - **Support/Resistance**: Support at ${s1:.2f}, Resistance at ${r1:.2f}
 - **RSI**: {rsi:.2f} ({'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Neutral'})
 - **Volatility**: {volatility:.2f}%
-- **Recommendation**: {'Buy near support (${s1:.2f}) for bounce to ${r1:.2f}' if rsi < 30 else f'Wait for breakout above ${sma_20:.2f}'}
+- **Recommendation**: {f'Buy near support (${s1:.2f}) for bounce to ${r1:.2f}' if rsi < 30 else f'Wait for breakout above ${sma_20:.2f}'}
 - **Note**: Technical analysis based on historical data; real-time price used for current context only.
 """
 
@@ -363,7 +363,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 - **Fundamentals**:
   {''.join([f'  - {k}: {v:.2f}\n' for k, v in fundamental_data.items() if v is not None]) if fundamental_data and any(v is not None for v in fundamental_data.values()) else '  - Not provided\n'}
 - **Recommendation**:
-  - Traders: {'Buy near ${s1:.2f} for bounce to ${r1:.2f}' if rsi < 30 or price < bb_middle else f'Wait for breakout above ${r1:.2f}'}
+  - Traders: {f'Buy near ${s1:.2f} for bounce to ${r1:.2f}' if rsi < 30 or price < bb_middle else f'Wait for breakout above ${r1:.2f}'}
   - Investors: Confirm trend reversal above ${sma_20:.2f}.
 - **Note**: Technical analysis based on historical data; real-time price used for current context only.
 """
@@ -414,7 +414,7 @@ def analyze_stock_data(df=None, real_time_data=None, fundamental_data=None):
 
 #### Recommendation
 - **Conservative Investors**: Wait for price to break above SMA20 (${sma_20:.2f}).
-- **Traders**: {'Buy near support (${s1:.2f}) for bounce to ${r1:.2f}' if rsi < 30 or stoch_k < 20 else f'Wait for breakout above ${r1:.2f}'}.
+- **Traders**: {f'Buy near support (${s1:.2f}) for bounce to ${r1:.2f}' if rsi < 30 or stoch_k < 20 else f'Wait for breakout above ${r1:.2f}'}.
 - **Risk**: {'High' if (real_time_data['Volume'] if real_time_data else (latest_historical['Volume'] if latest_historical is not None else 0)) < (analysis_data['Volume'].mean() if analysis_data is not None and not analysis_data.empty else 0) else 'Moderate'} due to {'low volume' if (real_time_data['Volume'] if real_time_data else (latest_historical['Volume'] if latest_historical is not None else 0)) < (analysis_data['Volume'].mean() if analysis_data is not None and not analysis_data.empty else 0) else 'market volatility'}.
 - **Note**: Technical analysis based on historical data; real-time price used for current context only.
 """
@@ -509,7 +509,11 @@ else:
 if st.session_state.analysis_data is not None:
     quick_scan, moderate_detail, in_depth, stock_name, df, is_real_time_only, adx_value = st.session_state.analysis_data
 
-    if isinstance(df, pd.DataFrame) and not df.empty and 'Date' in df.columns:
+    if not isinstance(df, pd.DataFrame) or df.empty or 'Date' not in df.columns:
+        st.warning("⚠️ Full analysis requires a CSV/XLSX file with technical indicators. Upload one to see all tabs.")
+        if quick_scan:
+            st.markdown(quick_scan)
+    else:
         tabs = st.tabs(["Quick Scan", "Moderate Detail", "In-Depth Analysis", "Visual Summary", "Interactive Dashboard", "Consolidated Recommendation"])
 
         with tabs[0]:
